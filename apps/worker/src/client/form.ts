@@ -72,6 +72,9 @@ interface FormDef {
   backgroundImageUrl?: string | null;
   hideHeaderIcon?: boolean;
   customCss?: string | null;
+  // Lステップの「回答復元」相当。restorePreviousAnswer が OFF、または前回の
+  // 回答が無ければ null。
+  previousAnswer?: Record<string, unknown> | null;
 }
 
 interface ConsultationSlot {
@@ -169,7 +172,7 @@ function getApp(): HTMLElement {
 
 // ========== Field Rendering ==========
 
-function renderField(field: FormField): string {
+function renderField(field: FormField, previousValue?: unknown): string {
   // 見出し類は入力を持たない。Lステップの「中見出し」「小見出し」に相当。
   if (field.type === 'heading') {
     return `<h2 class="form-section-heading">${escapeHtml(field.label)}</h2>`;
@@ -209,6 +212,9 @@ function renderField(field: FormField): string {
 
   let inputHtml = '';
 
+  const prevStr = typeof previousValue === 'string' ? previousValue : '';
+  const prevChecked = Array.isArray(previousValue) ? previousValue.map(String) : [];
+
   switch (field.type) {
     case 'textarea':
       inputHtml = `<textarea
@@ -216,12 +222,12 @@ function renderField(field: FormField): string {
         id="field-${escapeHtml(field.name)}"
         class="form-textarea"
         rows="4"
-        ${placeholder}${required}></textarea>`;
+        ${placeholder}${required}>${escapeHtml(prevStr)}</textarea>`;
       break;
 
     case 'select': {
       const opts = (field.options ?? [])
-        .map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`)
+        .map((o) => `<option value="${escapeHtml(o)}"${o === prevStr ? ' selected' : ''}>${escapeHtml(o)}</option>`)
         .join('');
       inputHtml = `<select
         name="${escapeHtml(field.name)}"
@@ -238,7 +244,7 @@ function renderField(field: FormField): string {
         .map(
           (o) =>
             `<label class="radio-label">
-              <input type="radio" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${required} />
+              <input type="radio" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${required}${o === prevStr ? ' checked' : ''} />
               ${escapeHtml(o)}
             </label>`,
         )
@@ -252,7 +258,7 @@ function renderField(field: FormField): string {
         .map(
           (o) =>
             `<label class="checkbox-label">
-              <input type="checkbox" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}" />
+              <input type="checkbox" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${prevChecked.includes(o) ? ' checked' : ''} />
               ${escapeHtml(o)}
             </label>`,
         )
@@ -262,7 +268,7 @@ function renderField(field: FormField): string {
     }
 
     case 'prefecture': {
-      const opts = PREFECTURES.map((p) => `<option value="${p}">${p}</option>`).join('');
+      const opts = PREFECTURES.map((p) => `<option value="${p}"${p === prevStr ? ' selected' : ''}>${p}</option>`).join('');
       inputHtml = `<select
         name="${escapeHtml(field.name)}"
         id="field-${escapeHtml(field.name)}"
@@ -290,6 +296,7 @@ function renderField(field: FormField): string {
         name="${escapeHtml(field.name)}"
         id="field-${escapeHtml(field.name)}"
         class="form-input"
+        value="${escapeHtml(prevStr)}"
         ${placeholder}${required} />`;
       break;
   }
@@ -560,8 +567,10 @@ function render(): void {
   const xUsernameField = formDef.fields.find((f) => f.name === 'x_username');
   const hasTwoPages = !!xUsernameField && formDef.hasSubmitWebhook;
 
-  const surveyFieldsHtml = surveyFields.map(renderField).join('');
-  const xFieldHtml = xUsernameField ? renderField(xUsernameField) : '';
+  const surveyFieldsHtml = surveyFields
+    .map((f) => renderField(f, formDef.previousAnswer?.[f.name]))
+    .join('');
+  const xFieldHtml = xUsernameField ? renderField(xUsernameField, formDef.previousAnswer?.[xUsernameField.name]) : '';
 
   if (hasTwoPages) {
     // ─── 2-page layout ───
@@ -667,7 +676,9 @@ function render(): void {
     attachFormEvents();
   } else {
     // ─── Single page layout (original) ───
-    const fieldsHtml = formDef.fields.map(renderField).join('');
+    const fieldsHtml = formDef.fields
+      .map((f) => renderField(f, formDef.previousAnswer?.[f.name]))
+      .join('');
     app.innerHTML = `
       <div class="form-page">
         <div class="form-header">

@@ -143,6 +143,7 @@ function serializePublicForm(
   row: DbForm,
   consultationWebinarSlug: string | null = null,
   status?: { isExpired: boolean; isFull: boolean },
+  previousAnswer: Record<string, unknown> | null = null,
 ) {
   return {
     id: row.id,
@@ -156,6 +157,9 @@ function serializePublicForm(
     thanksUrl: row.thanks_url,
     isExpired: status?.isExpired ?? false,
     isFull: status?.isFull ?? false,
+    // Lステップの「回答復元」相当。restore_previous_answer が OFF、
+    // または前回の回答が無ければ null のまま(LIFF 側は初期値のみ使う)。
+    previousAnswer,
     // Lステップの「カラー/デザイン設定」タブ相当。トグルが OFF のままなら
     // 公開フォームへは一切出さない(Lステップも未使用時はデフォルト配色)。
     ...(row.custom_design_enabled
@@ -255,12 +259,29 @@ forms.get('/api/forms/:id', async (c) => {
     if (!form) {
       return c.json({ success: false, error: 'Form not found' }, 404);
     }
+    let previousAnswer: Record<string, unknown> | null = null;
+    if (!c.get('staff') && form.restore_previous_answer) {
+      const lineUserId = await verifyCallerLineUserId(c.req.header('Authorization'), c.env);
+      const friend = lineUserId ? await getFriendByLineUserId(c.env.DB, lineUserId) : null;
+      if (friend) {
+        const previous = await getLatestSubmissionForFriend(c.env.DB, id, friend.id);
+        if (previous) {
+          try {
+            previousAnswer = JSON.parse(previous.data) as Record<string, unknown>;
+          } catch {
+            previousAnswer = null;
+          }
+        }
+      }
+    }
+
     const data = c.get('staff')
       ? serializeForm(form, { liffId: (await resolveDefaultLineAccount(c.env.DB))?.liff_id ?? null })
       : serializePublicForm(
           form,
           await consultationWebinarSlugForForm(c.env.DB, id),
           await computeFormAvailability(c.env.DB, form),
+          previousAnswer,
         );
     return c.json({ success: true, data });
   } catch (err) {
