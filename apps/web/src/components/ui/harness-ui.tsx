@@ -11,7 +11,7 @@ export interface HarnessPageHeaderProps {
 }
 
 const PRODUCT_BRANDS: Record<string, { label: string; color: string }> = {
-  LINE: { label: 'LINE HARNESS', color: '#06c755' },
+  LINE: { label: 'BEYOND LINE', color: '#06c755' },
   X: { label: 'X HARNESS', color: '#0f1419' },
   INSTAGRAM: { label: 'INSTAGRAM HARNESS', color: '#e1306c' },
 }
