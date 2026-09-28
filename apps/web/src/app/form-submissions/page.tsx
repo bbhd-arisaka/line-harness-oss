@@ -105,6 +105,9 @@ interface Form {
   hideHeaderIcon?: boolean
   customCssEnabled?: boolean
   customCss?: string | null
+  googleSheetsEnabled?: boolean
+  googleSheetUrl?: string | null
+  googleSheetName?: string | null
 }
 
 type FormDetail = Form
@@ -191,6 +194,17 @@ export default function FormSubmissionsPage() {
   const [draftHideHeaderIcon, setDraftHideHeaderIcon] = useState(false)
   const [draftCustomCssEnabled, setDraftCustomCssEnabled] = useState(false)
   const [draftCustomCss, setDraftCustomCss] = useState('')
+  // Lステップ「Googleスプレッドシート連携 β版」相当
+  const [draftGoogleSheetsEnabled, setDraftGoogleSheetsEnabled] = useState(false)
+  const [draftGoogleSheetUrl, setDraftGoogleSheetUrl] = useState('')
+  const [draftGoogleSheetName, setDraftGoogleSheetName] = useState('')
+  const [sheetsServiceAccountEmail, setSheetsServiceAccountEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchApi<{ success: boolean; data: { configured: boolean; serviceAccountEmail: string | null } }>(
+      '/api/forms/integrations/google-sheets',
+    ).then((res) => { if (res.success) setSheetsServiceAccountEmail(res.data.serviceAccountEmail) }).catch(() => { /* silent */ })
+  }, [])
 
   const loadForms = useCallback(async () => {
     setLoading(true)
@@ -268,6 +282,9 @@ const openCreateForm = () => {
     setDraftHideHeaderIcon(false)
     setDraftCustomCssEnabled(false)
     setDraftCustomCss('')
+    setDraftGoogleSheetsEnabled(false)
+    setDraftGoogleSheetUrl('')
+    setDraftGoogleSheetName('')
     setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
@@ -305,6 +322,9 @@ const openCreateForm = () => {
     setDraftHideHeaderIcon(Boolean(form.hideHeaderIcon))
     setDraftCustomCssEnabled(Boolean(form.customCssEnabled))
     setDraftCustomCss(form.customCss ?? '')
+    setDraftGoogleSheetsEnabled(Boolean(form.googleSheetsEnabled))
+    setDraftGoogleSheetUrl(form.googleSheetUrl ?? '')
+    setDraftGoogleSheetName(form.googleSheetName ?? '')
     setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
@@ -357,6 +377,9 @@ const openCreateForm = () => {
         hideHeaderIcon: draftHideHeaderIcon,
         customCssEnabled: draftCustomCssEnabled,
         customCss: draftCustomCss.trim() || null,
+        googleSheetsEnabled: draftGoogleSheetsEnabled,
+        googleSheetUrl: draftGoogleSheetUrl.trim() || null,
+        googleSheetName: draftGoogleSheetName.trim() || null,
       }
       const res = editingFormId
         ? await fetchApi<{ success: boolean; data: Form }>(`/api/forms/${editingFormId}`, {
@@ -997,6 +1020,36 @@ const openCreateForm = () => {
                             </>
                           )}
                         </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-3">
+                    <Checkbox
+                      label="Googleスプレッドシート連携(β版)"
+                      checked={draftGoogleSheetsEnabled}
+                      onCheckedChange={setDraftGoogleSheetsEnabled}
+                    />
+                    {draftGoogleSheetsEnabled && (
+                      <div className="mt-3 space-y-3 pl-1">
+                        {sheetsServiceAccountEmail && (
+                          <p className="text-[11px] text-gray-500">
+                            スプレッドシートを次のメールアドレスへ「編集者」として共有してください:{' '}
+                            <span className="font-mono text-gray-700">{sheetsServiceAccountEmail}</span>
+                          </p>
+                        )}
+                        <Input
+                          label="スプレッドシートURL"
+                          placeholder="https://docs.google.com/spreadsheets/d/..."
+                          value={draftGoogleSheetUrl}
+                          onValueChange={setDraftGoogleSheetUrl}
+                        />
+                        <Input
+                          label="シート名(タブ名)"
+                          placeholder="シート1"
+                          value={draftGoogleSheetName}
+                          onValueChange={setDraftGoogleSheetName}
+                        />
                       </div>
                     )}
                   </div>

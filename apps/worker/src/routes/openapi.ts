@@ -608,6 +608,14 @@ const spec = {
     '/api/forms/{id}/submit': {
       post: { tags: ['Forms'], summary: '回答送信（公開）', description: 'LIFF の回答画面から呼ばれる。', security: [], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Submitted' } } },
     },
+    '/api/forms/integrations/google-sheets': {
+      get: {
+        tags: ['Forms'],
+        summary: 'Googleスプレッドシート連携の設定状況',
+        description: 'サービスアカウントが設定済みか、共有先として使うメールアドレスを返す(スプレッドシートをこのアドレスへ編集者共有する必要がある)。',
+        responses: { '200': { description: 'Service account status' } },
+      },
+    },
 
     // ── Friend Field Definitions（友だち情報欄管理）───────────────────
     '/api/friend-fields/folders': {

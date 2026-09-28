@@ -1,13 +1,14 @@
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
+export const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 
 export interface GoogleServiceAccountCredentials {
   email?: string;
   privateKey?: string;
 }
 
-type CachedToken = { accessToken: string; expiresAtMs: number; email: string };
-let cachedToken: CachedToken | null = null;
+type CachedToken = { accessToken: string; expiresAtMs: number; email: string; scope: string };
+const tokenCache = new Map<string, CachedToken>();
 
 function base64Url(bytes: Uint8Array): string {
   let binary = '';
@@ -39,6 +40,7 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
  */
 export async function getGoogleServiceAccountToken(
   credentials: GoogleServiceAccountCredentials,
+  scope: string = CALENDAR_SCOPE,
 ): Promise<string> {
   const email = credentials.email?.trim();
   const privateKey = credentials.privateKey?.trim();
@@ -46,7 +48,9 @@ export async function getGoogleServiceAccountToken(
     throw new Error('google_service_account_not_configured');
   }
 
-  if (cachedToken && cachedToken.email === email && cachedToken.expiresAtMs > Date.now() + 60_000) {
+  const cacheKey = `${email}:${scope}`;
+  const cachedToken = tokenCache.get(cacheKey);
+  if (cachedToken && cachedToken.expiresAtMs > Date.now() + 60_000) {
     return cachedToken.accessToken;
   }
 
@@ -54,7 +58,7 @@ export async function getGoogleServiceAccountToken(
   const header = encodeJson({ alg: 'RS256', typ: 'JWT' });
   const payload = encodeJson({
     iss: email,
-    scope: CALENDAR_SCOPE,
+    scope,
     aud: TOKEN_URL,
     iat: nowSeconds,
     exp: nowSeconds + 3600,
@@ -88,14 +92,15 @@ export async function getGoogleServiceAccountToken(
   }
   const data = await response.json<{ access_token?: string; expires_in?: number }>();
   if (!data.access_token) throw new Error('google_service_account_token_missing');
-  cachedToken = {
+  tokenCache.set(cacheKey, {
     accessToken: data.access_token,
     expiresAtMs: Date.now() + (data.expires_in ?? 3600) * 1000,
     email,
-  };
+    scope,
+  });
   return data.access_token;
 }
 
 export function resetGoogleServiceAccountTokenCacheForTest(): void {
-  cachedToken = null;
+  tokenCache.clear();
 }

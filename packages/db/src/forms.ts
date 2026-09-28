@@ -36,6 +36,9 @@ export interface Form {
   hide_header_icon: number;
   custom_css_enabled: number;
   custom_css: string | null;
+  google_sheets_enabled: number;
+  google_sheet_url: string | null;
+  google_sheet_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -160,6 +163,9 @@ export interface CreateFormInput {
   hideHeaderIcon?: boolean;
   customCssEnabled?: boolean;
   customCss?: string | null;
+  googleSheetsEnabled?: boolean;
+  googleSheetUrl?: string | null;
+  googleSheetName?: string | null;
 }
 
 export async function createForm(db: D1Database, input: CreateFormInput): Promise<Form> {
@@ -179,8 +185,9 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
           custom_design_enabled, background_color, form_background_color,
           header_image_url, background_image_url, hide_header_icon,
           custom_css_enabled, custom_css,
+          google_sheets_enabled, google_sheet_url, google_sheet_name,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -213,6 +220,9 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
       input.hideHeaderIcon ? 1 : 0,
       input.customCssEnabled ? 1 : 0,
       input.customCss ?? null,
+      input.googleSheetsEnabled ? 1 : 0,
+      input.googleSheetUrl ?? null,
+      input.googleSheetName ?? null,
       now,
       now,
     )
@@ -252,6 +262,9 @@ export interface UpdateFormInput {
   hideHeaderIcon?: boolean;
   customCssEnabled?: boolean;
   customCss?: string | null;
+  googleSheetsEnabled?: boolean;
+  googleSheetUrl?: string | null;
+  googleSheetName?: string | null;
 }
 
 export async function updateForm(
@@ -297,6 +310,9 @@ export async function updateForm(
            hide_header_icon = ?,
            custom_css_enabled = ?,
            custom_css = ?,
+           google_sheets_enabled = ?,
+           google_sheet_url = ?,
+           google_sheet_name = ?,
            updated_at = ?
        WHERE id = ?`,
     )
@@ -359,6 +375,11 @@ export async function updateForm(
         ? (input.customCssEnabled ? 1 : 0)
         : existing.custom_css_enabled,
       'customCss' in input ? (input.customCss ?? null) : existing.custom_css,
+      'googleSheetsEnabled' in input
+        ? (input.googleSheetsEnabled ? 1 : 0)
+        : existing.google_sheets_enabled,
+      'googleSheetUrl' in input ? (input.googleSheetUrl ?? null) : existing.google_sheet_url,
+      'googleSheetName' in input ? (input.googleSheetName ?? null) : existing.google_sheet_name,
       now,
       id,
     )

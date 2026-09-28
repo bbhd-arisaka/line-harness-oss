@@ -20,6 +20,7 @@ import {
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
+import { exportSubmissionToGoogleSheet } from '../services/google-sheets-export.js';
 import { pushViaHarnessProxy } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import type {
@@ -108,6 +109,9 @@ function serializeForm(
     hideHeaderIcon: Boolean(row.hide_header_icon),
     customCssEnabled: Boolean(row.custom_css_enabled),
     customCss: row.custom_css,
+    googleSheetsEnabled: Boolean(row.google_sheets_enabled),
+    googleSheetUrl: row.google_sheet_url,
+    googleSheetName: row.google_sheet_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastSubmittedAt: extra?.lastSubmittedAt ?? null,
@@ -230,6 +234,17 @@ function serializeSubmission(row: DbFormSubmission & { friend_name?: string | nu
   };
 }
 
+// GET /api/forms/integrations/google-sheets — サービスアカウントの設定状況(共有先メールアドレス表示用)
+forms.get('/api/forms/integrations/google-sheets', async (c) => {
+  return c.json({
+    success: true,
+    data: {
+      configured: Boolean(c.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && c.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY),
+      serviceAccountEmail: c.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? null,
+    },
+  });
+});
+
 // GET /api/forms — list all forms (with submission stats + delivering accounts)
 forms.get('/api/forms', async (c) => {
   try {
@@ -323,6 +338,9 @@ forms.post('/api/forms', async (c) => {
       hideHeaderIcon?: boolean;
       customCssEnabled?: boolean;
       customCss?: string | null;
+      googleSheetsEnabled?: boolean;
+      googleSheetUrl?: string | null;
+      googleSheetName?: string | null;
     }>();
 
     if (!body.name) {
@@ -359,6 +377,9 @@ forms.post('/api/forms', async (c) => {
       hideHeaderIcon: body.hideHeaderIcon,
       customCssEnabled: body.customCssEnabled,
       customCss: body.customCss ?? null,
+      googleSheetsEnabled: body.googleSheetsEnabled,
+      googleSheetUrl: body.googleSheetUrl ?? null,
+      googleSheetName: body.googleSheetName ?? null,
     });
 
     const liffId = (await resolveDefaultLineAccount(c.env.DB))?.liff_id ?? null;
@@ -404,6 +425,9 @@ forms.put('/api/forms/:id', async (c) => {
       hideHeaderIcon?: boolean;
       customCssEnabled?: boolean;
       customCss?: string | null;
+      googleSheetsEnabled?: boolean;
+      googleSheetUrl?: string | null;
+      googleSheetName?: string | null;
     }>();
 
     // Only include fields that were explicitly sent (avoid undefined → null conversion)
@@ -438,6 +462,9 @@ forms.put('/api/forms/:id', async (c) => {
     if (body.hideHeaderIcon !== undefined) updates.hideHeaderIcon = body.hideHeaderIcon;
     if (body.customCssEnabled !== undefined) updates.customCssEnabled = body.customCssEnabled;
     if (body.customCss !== undefined) updates.customCss = body.customCss;
+    if (body.googleSheetsEnabled !== undefined) updates.googleSheetsEnabled = body.googleSheetsEnabled;
+    if (body.googleSheetUrl !== undefined) updates.googleSheetUrl = body.googleSheetUrl;
+    if (body.googleSheetName !== undefined) updates.googleSheetName = body.googleSheetName;
 
     const updated = await updateForm(c.env.DB, id, updates as any);
 
@@ -736,6 +763,16 @@ forms.post('/api/forms/:id/submit', async (c) => {
       // Lステップの「シナリオを停止」相当。進行中の全シナリオを終了させる。
       if (form.on_submit_stop_scenarios) {
         sideEffects.push(stopAllFriendScenarios(db, friendId));
+      }
+
+      // Lステップの「Googleスプレッドシート連携 β版」相当。失敗しても回答自体は保存済み(allSettledでログのみ)。
+      if (form.google_sheets_enabled && form.google_sheet_url) {
+        sideEffects.push(
+          exportSubmissionToGoogleSheet(c.env, form, submissionData, {
+            friendName: friend.display_name,
+            submittedAt: submission.created_at,
+          }),
+        );
       }
 
       // If webhook returned a join_url (e.g. Meet Harness), send a Flex button to the user
