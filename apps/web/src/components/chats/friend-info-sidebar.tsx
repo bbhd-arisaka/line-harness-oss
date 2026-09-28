@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { api, type MileageHistoryItem, type MileageSummary } from '@/lib/api'
+import { api, fetchApi, type MileageHistoryItem, type MileageSummary } from '@/lib/api'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input, InputArea } from '@cloudflare/kumo/components/input'
+import { Select } from '@cloudflare/kumo/components/select'
 
 interface FriendDetail {
   id: string
@@ -63,6 +64,15 @@ const METADATA_LABELS: Record<string, string> = {
   lstep_member_id: 'Lステップ会員ID(移行元)',
 }
 
+interface FieldDef {
+  fieldKey: string
+  label: string
+  fieldType: 'text' | 'textarea' | 'number' | 'date' | 'select' | 'radio' | 'checkbox'
+  options: string[]
+}
+
+const CUSTOM_KEY = '__custom__'
+
 let metadataRowSeq = 0
 interface MetadataRow { rowId: number; key: string; value: string }
 
@@ -92,6 +102,16 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
   const [metadataRows, setMetadataRows] = useState<MetadataRow[]>([])
   const [savingMetadata, setSavingMetadata] = useState(false)
   const [metadataError, setMetadataError] = useState<string | null>(null)
+  const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([])
+  const [pendingFieldKey, setPendingFieldKey] = useState<string>('')
+
+  // 友だち情報欄の定義(本名など、事前に登録された項目)。友だち一覧全体で共通なので一度だけ取得。
+  useEffect(() => {
+    fetchApi<{ success: boolean; data: FieldDef[] }>('/api/friend-fields/definitions')
+      .then((res) => { if (res.success) setFieldDefs(res.data) })
+      .catch(() => { /* silent */ })
+  }, [])
+  const fieldDefsByKey = new Map(fieldDefs.map((d) => [d.fieldKey, d]))
 
   function startEditingMetadata(current: Record<string, unknown>) {
     const rows = Object.entries(current).map(([key, value]) => ({
@@ -410,40 +430,114 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
 
               {editingMetadata ? (
                 <div className="space-y-2">
-                  {metadataRows.map((row, i) => (
-                    <div key={row.rowId} className="flex items-start gap-1.5">
-                      <Input
-                        className="w-24 flex-none text-xs"
-                        aria-label="項目名"
-                        placeholder="項目名 (例: full_name)"
-                        value={row.key}
-                        onValueChange={(v) => setMetadataRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, key: v } : r)))}
-                      />
-                      <Input
-                        className="min-w-0 flex-1 text-xs"
-                        aria-label="値"
-                        placeholder="値"
-                        value={row.value}
-                        onValueChange={(v) => setMetadataRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, value: v } : r)))}
-                      />
-                      <button
-                        type="button"
-                        aria-label="この項目を削除"
-                        className="mt-1.5 flex-none text-gray-400 hover:text-red-600"
-                        onClick={() => setMetadataRows((rows) => rows.filter((_, ri) => ri !== i))}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                  {metadataRows.map((row, i) => {
+                    const def = fieldDefsByKey.get(row.key)
+                    const setValue = (v: string) =>
+                      setMetadataRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, value: v } : r)))
+                    return (
+                      <div key={row.rowId} className="flex items-start gap-1.5">
+                        {def ? (
+                          <span className="mt-1.5 w-24 flex-none truncate text-xs font-medium text-gray-600" title={def.fieldKey}>
+                            {def.label}
+                          </span>
+                        ) : (
+                          <Input
+                            className="w-24 flex-none text-xs"
+                            aria-label="項目名"
+                            placeholder="項目名 (例: full_name)"
+                            value={row.key}
+                            onValueChange={(v) => setMetadataRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, key: v } : r)))}
+                          />
+                        )}
 
-                  <button
-                    type="button"
-                    className="text-[11px] text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
-                    onClick={() => setMetadataRows((rows) => [...rows, { rowId: metadataRowSeq++, key: '', value: '' }])}
-                  >
-                    + 項目を追加
-                  </button>
+                        {def && (def.fieldType === 'select' || def.fieldType === 'radio') ? (
+                          <Select
+                            className="min-w-0 flex-1"
+                            aria-label="値"
+                            value={row.value}
+                            onValueChange={(v) => setValue(v ?? '')}
+                            items={def.options.map((o) => ({ value: o, label: o }))}
+                          />
+                        ) : def && def.fieldType === 'checkbox' ? (
+                          <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+                            {def.options.map((o) => {
+                              const selected = row.value.split(',').map((v) => v.trim()).filter(Boolean).includes(o)
+                              return (
+                                <button
+                                  key={o}
+                                  type="button"
+                                  className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                                    selected ? 'border-kumo-brand bg-kumo-control text-kumo-brand' : 'border-gray-200 text-gray-500'
+                                  }`}
+                                  onClick={() => {
+                                    const current = row.value.split(',').map((v) => v.trim()).filter(Boolean)
+                                    const next = selected ? current.filter((v) => v !== o) : [...current, o]
+                                    setValue(next.join(', '))
+                                  }}
+                                >
+                                  {o}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ) : def && def.fieldType === 'textarea' ? (
+                          <InputArea
+                            className="min-w-0 flex-1 text-xs"
+                            aria-label="値"
+                            minRows={2}
+                            value={row.value}
+                            onValueChange={setValue}
+                          />
+                        ) : (
+                          <Input
+                            className="min-w-0 flex-1 text-xs"
+                            aria-label="値"
+                            type={def?.fieldType === 'number' ? 'number' : def?.fieldType === 'date' ? 'date' : 'text'}
+                            placeholder="値"
+                            value={row.value}
+                            onValueChange={setValue}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          aria-label="この項目を削除"
+                          className="mt-1.5 flex-none text-gray-400 hover:text-red-600"
+                          onClick={() => setMetadataRows((rows) => rows.filter((_, ri) => ri !== i))}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
+
+                  <div className="flex items-center gap-1.5">
+                    <Select
+                      className="min-w-0 flex-1"
+                      aria-label="追加する項目"
+                      placeholder="項目を選択して追加..."
+                      value={pendingFieldKey}
+                      onValueChange={(v) => setPendingFieldKey(v ?? '')}
+                      items={[
+                        ...fieldDefs
+                          .filter((d) => !metadataRows.some((r) => r.key === d.fieldKey))
+                          .map((d) => ({ value: d.fieldKey, label: d.label })),
+                        { value: CUSTOM_KEY, label: '自由入力(キーを直接指定)' },
+                      ]}
+                    />
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="secondary"
+                      disabled={!pendingFieldKey}
+                      onClick={() => {
+                        const key = pendingFieldKey === CUSTOM_KEY ? '' : pendingFieldKey
+                        setMetadataRows((rows) => [...rows, { rowId: metadataRowSeq++, key, value: '' }])
+                        setPendingFieldKey('')
+                      }}
+                    >
+                      + 追加
+                    </Button>
+                  </div>
 
                   {metadataError && <p className="text-[11px] text-red-600">{metadataError}</p>}
 
@@ -465,7 +559,7 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
                 <dl className="space-y-2 text-xs">
                   {Object.entries(friend.metadata).map(([key, value]) => (
                     <div key={key}>
-                      <dt className="text-[10px] text-gray-400 uppercase tracking-wide">{METADATA_LABELS[key] ?? key}</dt>
+                      <dt className="text-[10px] text-gray-400 uppercase tracking-wide">{fieldDefsByKey.get(key)?.label ?? METADATA_LABELS[key] ?? key}</dt>
                       <dd className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words">{renderValue(value)}</dd>
                     </div>
                   ))}

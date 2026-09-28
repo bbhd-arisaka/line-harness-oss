@@ -609,6 +609,43 @@ const spec = {
       post: { tags: ['Forms'], summary: '回答送信（公開）', description: 'LIFF の回答画面から呼ばれる。', security: [], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Submitted' } } },
     },
 
+    // ── Friend Field Definitions（友だち情報欄管理）───────────────────
+    '/api/friend-fields/folders': {
+      get: { tags: ['FriendFields'], summary: 'フォルダ一覧', responses: { '200': { description: 'Folders' } } },
+      post: {
+        tags: ['FriendFields'],
+        summary: 'フォルダ作成',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, displayOrder: { type: 'integer' } }, required: ['name'] } } } },
+        responses: { '201': { description: 'Created' }, '400': { description: 'name is required' } },
+      },
+    },
+    '/api/friend-fields/folders/{id}': {
+      put: { tags: ['FriendFields'], summary: 'フォルダ更新', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated' } } },
+      delete: {
+        tags: ['FriendFields'],
+        summary: 'フォルダ削除',
+        description: '所属していた項目は自動的に未分類(folderId=null)へ移動する。項目自体は削除されない。',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Deleted' } },
+      },
+    },
+    '/api/friend-fields/definitions': {
+      get: { tags: ['FriendFields'], summary: '項目定義一覧', responses: { '200': { description: 'Field definitions' } } },
+      post: {
+        tags: ['FriendFields'],
+        summary: '項目定義を作成',
+        description:
+          '`fieldKey` は `friends.metadata` の実際の JSON キーになる（作成後の変更不可。既存キーと重複していたら 400）。\n\n' +
+          '`fieldType` は text/textarea/number/date/select/radio/checkbox。select/radio/checkbox のときだけ `options` を使う。',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { folderId: { type: 'string', nullable: true }, fieldKey: { type: 'string' }, label: { type: 'string' }, fieldType: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, defaultValue: { type: 'string', nullable: true }, displayOrder: { type: 'integer' } }, required: ['fieldKey', 'label'] } } } },
+        responses: { '201': { description: 'Created' }, '400': { description: 'fieldKey/label are required, or fieldKey already in use' } },
+      },
+    },
+    '/api/friend-fields/definitions/{id}': {
+      put: { tags: ['FriendFields'], summary: '項目定義を更新', description: '`fieldKey` は変更できない。folderId/label/fieldType/options/defaultValue/displayOrder のみ更新可。', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated' } } },
+      delete: { tags: ['FriendFields'], summary: '項目定義を削除', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Deleted' } } },
+    },
+
     // ── Entry Routes（流入リンク）─────────────────────────────────────
     // 2026-08-25 追記。MCP にも OpenAPI にも無かったため、AI エージェントが
     // Traffic Pool だけ作って「タグもシナリオも発火しない /r/」を量産する事故が起きた。
