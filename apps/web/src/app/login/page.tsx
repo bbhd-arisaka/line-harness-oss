@@ -75,9 +75,9 @@ export default function LoginPage() {
       <LayerCard className="w-full max-w-sm p-8 shadow-xl">
         <div className="text-center mb-6">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-kumo-brand text-kumo-inverse font-bold text-lg mx-auto mb-3">
-            H
+            B
           </div>
-          <h1 className="text-xl font-bold text-gray-900">L Harness</h1>
+          <h1 className="text-xl font-bold text-gray-900">beyond line</h1>
           <p className="text-sm text-gray-500 mt-1">管理画面にログイン</p>
         </div>
 

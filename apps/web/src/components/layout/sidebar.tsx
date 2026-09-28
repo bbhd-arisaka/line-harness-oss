@@ -219,10 +219,10 @@ export default function Sidebar() {
       <div className="px-6 py-5 border-b border-gray-200">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-kumo-brand text-sm font-bold text-kumo-inverse">
-            H
+            B
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-900 leading-tight">L Harness</p>
+            <p className="text-sm font-bold text-gray-900 leading-tight">beyond line</p>
             <p className="text-xs text-gray-400">管理画面</p>
           </div>
         </div>
@@ -295,7 +295,7 @@ export default function Sidebar() {
         )}
         <div className="px-6 py-4 space-y-3">
         <div className="space-y-0.5">
-          <p className="text-xs text-gray-400">L Harness v{appVersion}</p>
+          <p className="text-xs text-gray-400">beyond line v{appVersion}</p>
           <p className="text-[10px] text-gray-400 font-mono break-all">
             build {appCommitSha}{appBuildDate ? ` · ${appBuildDate}` : ''}
           </p>
@@ -346,8 +346,8 @@ export default function Sidebar() {
           aria-label="メニュー"
         />
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-kumo-brand text-xs font-bold text-kumo-inverse">H</div>
-          <p className="text-sm font-bold text-gray-900">L Harness</p>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-kumo-brand text-xs font-bold text-kumo-inverse">B</div>
+          <p className="text-sm font-bold text-gray-900">beyond line</p>
         </div>
       </div>
 

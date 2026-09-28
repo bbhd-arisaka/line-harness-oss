@@ -5,7 +5,7 @@ import { PLUGIN_GUIDE_URL, PLUGIN_SUBMIT_URL, PLUGIN_REPO } from '@/lib/plugin-c
 export default function NewsPage() {
   return (
     <div className="mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
-      <Header title="アップデートニュース" description="L Harnessで、新しくできること。" />
+      <Header title="アップデートニュース" description="beyond lineで、新しくできること。" />
       <article className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
         <div className="bg-slate-950 p-6 text-white sm:p-10">
           <p className="text-xs font-semibold tracking-widest text-emerald-300">PLUGIN MARKET / BETA</p>
