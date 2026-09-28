@@ -26,12 +26,28 @@ const FORM_VERSION = '2.1.0'; // cache buster
 interface FormField {
   name: string;
   label: string;
-  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date';
+  type:
+    | 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
+    // Lステップ互換で追加: 都道府県プルダウン・ファイル添付・表示専用の見出し2種
+    | 'prefecture' | 'file' | 'heading' | 'subheading';
   required?: boolean;
   options?: string[];
   placeholder?: string;
   columns?: number;
 }
+
+const PREFECTURES = [
+  '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+  '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+  '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県',
+  '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県',
+  '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+  '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県',
+  '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
+];
+
+/** 表示専用(見出し)で、回答データを持たない項目タイプ。 */
+const DISPLAY_ONLY_TYPES: FormField['type'][] = ['heading', 'subheading'];
 
 interface FormDef {
   id: string;
@@ -46,6 +62,8 @@ interface FormDef {
   onSubmitMessageContent?: string | null;
   onSubmitWebhookFailMessage?: string | null;
   consultationWebinarSlug?: string | null;
+  primaryColor?: string | null;
+  thanksUrl?: string | null;
 }
 
 interface ConsultationSlot {
@@ -144,6 +162,14 @@ function getApp(): HTMLElement {
 // ========== Field Rendering ==========
 
 function renderField(field: FormField): string {
+  // 見出し類は入力を持たない。Lステップの「中見出し」「小見出し」に相当。
+  if (field.type === 'heading') {
+    return `<h2 class="form-section-heading">${escapeHtml(field.label)}</h2>`;
+  }
+  if (field.type === 'subheading') {
+    return `<h3 class="form-section-subheading">${escapeHtml(field.label)}</h3>`;
+  }
+
   const required = field.required ? ' required' : '';
   const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
   const requiredMark = field.required ? '<span class="required-mark">*</span>' : '';
@@ -227,6 +253,29 @@ function renderField(field: FormField): string {
       break;
     }
 
+    case 'prefecture': {
+      const opts = PREFECTURES.map((p) => `<option value="${p}">${p}</option>`).join('');
+      inputHtml = `<select
+        name="${escapeHtml(field.name)}"
+        id="field-${escapeHtml(field.name)}"
+        class="form-select"${required}>
+        <option value="">選択してください</option>
+        ${opts}
+      </select>`;
+      break;
+    }
+
+    case 'file':
+      // 添付ファイルは Cloudflare Workers 側のアップロード先が未実装のため、
+      // ファイル名のみを回答データとして保存する(実ファイルは送らない)。
+      inputHtml = `<input
+        type="file"
+        name="${escapeHtml(field.name)}"
+        id="field-${escapeHtml(field.name)}"
+        class="form-input"
+        ${required} />`;
+      break;
+
     default:
       inputHtml = `<input
         type="${escapeHtml(field.type)}"
@@ -254,6 +303,16 @@ function injectStyles(): void {
   const style = document.createElement('style');
   style.id = 'form-styles';
   style.textContent = `
+    /* Lステップの「デザイン設定」相当。フォームごとに --form-accent を上書きできる */
+    :root { --form-accent: #06C755; }
+    .form-section-heading {
+      margin: 28px 0 12px; padding: 10px 14px; border-radius: 8px;
+      background: var(--form-accent); color: #fff; font-size: 16px; font-weight: 700;
+    }
+    .form-section-heading:first-child { margin-top: 0; }
+    .form-section-subheading {
+      margin: 16px 0 6px; font-size: 14px; font-weight: 700; color: var(--form-accent);
+    }
     .form-page { max-width: 480px; margin: 0 auto; padding: 16px; }
     .form-header { text-align: center; margin-bottom: 24px; }
     .form-header h1 { font-size: 20px; color: #333; margin-bottom: 8px; }
@@ -272,7 +331,7 @@ function injectStyles(): void {
       -webkit-appearance: none;
     }
     .form-input:focus, .form-textarea:focus, .form-select:focus {
-      outline: none; border-color: #06C755; background: #fff;
+      outline: none; border-color: var(--form-accent); background: #fff;
     }
     .form-textarea { resize: vertical; min-height: 80px; }
     .form-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
@@ -284,14 +343,14 @@ function injectStyles(): void {
       cursor: pointer; transition: border-color 0.15s;
     }
     .radio-label:has(input:checked), .checkbox-label:has(input:checked) {
-      border-color: #06C755; background: #e8faf0;
+      border-color: var(--form-accent); background: #e8faf0;
     }
-    .radio-label input, .checkbox-label input { accent-color: #06C755; width: 18px; height: 18px; }
+    .radio-label input, .checkbox-label input { accent-color: var(--form-accent); width: 18px; height: 18px; }
     .radio-label input[type="radio"] { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border: 2px solid #ccc; border-radius: 50%; background: #fff; cursor: pointer; }
-    .radio-label input[type="radio"]:checked { background: #fff; border-color: #06C755; border-width: 5px; }
+    .radio-label input[type="radio"]:checked { background: #fff; border-color: var(--form-accent); border-width: 5px; }
     .submit-btn {
       width: 100%; padding: 14px; border: none; border-radius: 8px;
-      background: #06C755; color: #fff; font-size: 16px; font-weight: 700;
+      background: var(--form-accent); color: #fff; font-size: 16px; font-weight: 700;
       cursor: pointer; font-family: inherit; margin-top: 8px; transition: opacity 0.15s;
     }
     .submit-btn:active { opacity: 0.85; }
@@ -357,8 +416,8 @@ function injectStyles(): void {
     }
     .x-condition-check.pass {
       background: rgba(6, 199, 85, 0.15);
-      color: #06C755;
-      border: 2px solid #06C755;
+      color: var(--form-accent);
+      border: 2px solid var(--form-accent);
     }
     .x-condition-check.fail {
       background: rgba(229, 62, 62, 0.15);
@@ -391,7 +450,7 @@ function injectStyles(): void {
     }
     .x-conditions-summary.pass {
       background: rgba(6, 199, 85, 0.1);
-      color: #06C755;
+      color: var(--form-accent);
       border: 1px solid rgba(6, 199, 85, 0.3);
     }
     .x-conditions-summary.fail {
@@ -400,8 +459,8 @@ function injectStyles(): void {
       border: 1px solid rgba(229, 62, 62, 0.3);
     }
     .form-success { text-align: center; padding: 40px 20px; }
-    .form-success .check { width: 64px; height: 64px; border-radius: 50%; background: #06C755; color: #fff; font-size: 32px; line-height: 64px; margin: 0 auto 16px; }
-    .form-success h2 { font-size: 20px; color: #06C755; margin-bottom: 12px; }
+    .form-success .check { width: 64px; height: 64px; border-radius: 50%; background: var(--form-accent); color: #fff; font-size: 32px; line-height: 64px; margin: 0 auto 16px; }
+    .form-success h2 { font-size: 20px; color: var(--form-accent); margin-bottom: 12px; }
     .form-success p { font-size: 14px; color: #666; line-height: 1.6; }
     .consultation-card { background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
     .consultation-head { text-align:center; margin-bottom:20px; }
@@ -411,16 +470,16 @@ function injectStyles(): void {
     .consultation-date { margin-top:18px; }
     .consultation-date h3 { margin:0 0 8px; font-size:14px; color:#374151; }
     .consultation-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
-    .slot-btn { border:1.5px solid #06C755; border-radius:9px; padding:11px 4px; background:#fff; color:#049f45; font-size:14px; font-weight:700; cursor:pointer; }
+    .slot-btn { border:1.5px solid var(--form-accent); border-radius:9px; padding:11px 4px; background:#fff; color:#049f45; font-size:14px; font-weight:700; cursor:pointer; }
     .slot-btn:active { background:#ecfdf3; }
     .slot-btn:disabled { opacity:.45; cursor:not-allowed; }
     .consultation-status { margin:14px 0 0; text-align:center; font-size:13px; color:#dc2626; font-weight:600; }
     .consultation-loading { text-align:center; padding:44px 20px; }
     .consultation-loading h2 { margin:14px 0 6px; font-size:20px; color:#1f2937; }
     .consultation-loading p { margin:0; color:#6b7280; font-size:14px; }
-    .consultation-spinner { width:30px; height:30px; margin:0 auto; border:3px solid #d1fae5; border-top-color:#06C755; border-radius:50%; animation:x-spin .8s linear infinite; }
+    .consultation-spinner { width:30px; height:30px; margin:0 auto; border:3px solid #d1fae5; border-top-color:var(--form-accent); border-radius:50%; animation:x-spin .8s linear infinite; }
     .consultation-empty { margin:16px 0 0; padding:18px; border-radius:12px; background:#f9fafb; text-align:center; color:#6b7280; font-size:14px; }
-    .consultation-primary { display:block; width:100%; box-sizing:border-box; margin-top:16px; padding:13px 16px; border:0; border-radius:999px; background:#06C755; color:#fff; text-align:center; text-decoration:none; font-size:15px; font-weight:700; cursor:pointer; }
+    .consultation-primary { display:block; width:100%; box-sizing:border-box; margin-top:16px; padding:13px 16px; border:0; border-radius:999px; background:var(--form-accent); color:#fff; text-align:center; text-decoration:none; font-size:15px; font-weight:700; cursor:pointer; }
     .consultation-secondary { display:block; margin:14px auto 0; border:0; background:transparent; color:#6b7280; font-size:13px; text-decoration:underline; cursor:pointer; }
     .consultation-confirmed { text-align:center; }
     .consultation-confirmed .check { font-size:38px; }
@@ -438,6 +497,10 @@ function render(): void {
   if (!formDef) return;
 
   injectStyles();
+  // フォームごとのアクセントカラー(Lステップの「デザイン設定」相当)。未設定ならデフォルト(LINE緑)のまま。
+  if (formDef.primaryColor) {
+    document.documentElement.style.setProperty('--form-accent', formDef.primaryColor);
+  }
   const app = getApp();
   const profileHtml = (formDef.hideProfile || !profile?.pictureUrl)
     ? ''
@@ -1092,6 +1155,9 @@ async function submitForm(): Promise<void> {
 
     if (state.formDef.consultationWebinarSlug) {
       await renderConsultationBooking(state.formDef.consultationWebinarSlug);
+    } else if (state.formDef.thanksUrl) {
+      // Lステップの「サンクスページURL」相当。設定時は既定の完了画面より優先する。
+      window.location.href = state.formDef.thanksUrl;
     } else {
       renderSuccess();
     }

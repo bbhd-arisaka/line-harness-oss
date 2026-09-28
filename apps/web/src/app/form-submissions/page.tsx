@@ -17,22 +17,31 @@ import { Loader } from '@cloudflare/kumo/components/loader'
 import { Select } from '@cloudflare/kumo/components/select'
 import { Table } from '@cloudflare/kumo/components/table'
 
-type FieldType = 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
+type FieldType =
+  | 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
+  | 'prefecture' | 'file' | 'heading' | 'subheading'
 
 const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
+  { value: 'heading', label: '見出し(中見出し)' },
+  { value: 'subheading', label: '小見出し' },
   { value: 'text', label: '1行テキスト' },
   { value: 'textarea', label: '複数行テキスト' },
   { value: 'email', label: 'メールアドレス' },
   { value: 'tel', label: '電話番号' },
   { value: 'number', label: '数値' },
   { value: 'date', label: '日付' },
+  { value: 'prefecture', label: '都道府県' },
   { value: 'select', label: 'プルダウン選択' },
   { value: 'radio', label: '単一選択(ラジオ)' },
   { value: 'checkbox', label: '複数選択(チェックボックス)' },
+  { value: 'file', label: 'ファイル添付' },
 ]
 
 /** 選択肢を持つ項目タイプ。この3つだけ「選択肢」入力欄を出す。 */
 const OPTION_TYPES: FieldType[] = ['select', 'radio', 'checkbox']
+
+/** 見出し類。回答データを持たないので必須指定・ラベル欄の扱いを変える。 */
+const DISPLAY_ONLY_TYPES: FieldType[] = ['heading', 'subheading']
 
 let fieldRowSeq = 0
 interface FieldDraft {
@@ -81,6 +90,13 @@ interface Form {
   createdAt: string
   lastSubmittedAt: string | null
   usedByAccounts: UsedByAccount[]
+  expiresAt?: string | null
+  capacityLimit?: number | null
+  answerLimitPerFriend?: 'unlimited' | 'once'
+  restorePreviousAnswer?: boolean
+  thanksUrl?: string | null
+  primaryColor?: string | null
+  onSubmitStopScenarios?: boolean
 }
 
 type FormDetail = Form
@@ -149,6 +165,15 @@ export default function FormSubmissionsPage() {
   const [draftFields, setDraftFields] = useState<FieldDraft[]>([])
   const [savingForm, setSavingForm] = useState(false)
   const [formError, setFormError] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  // Lステップ互換の詳細設定
+  const [draftExpiresAt, setDraftExpiresAt] = useState('') // datetime-local文字列、空なら期限なし
+  const [draftCapacityLimit, setDraftCapacityLimit] = useState('') // 空文字なら上限なし
+  const [draftAnswerLimitPerFriend, setDraftAnswerLimitPerFriend] = useState<'unlimited' | 'once'>('unlimited')
+  const [draftRestorePreviousAnswer, setDraftRestorePreviousAnswer] = useState(false)
+  const [draftThanksUrl, setDraftThanksUrl] = useState('')
+  const [draftPrimaryColor, setDraftPrimaryColor] = useState('')
+  const [draftStopScenarios, setDraftStopScenarios] = useState(false)
 
   const loadForms = useCallback(async () => {
     setLoading(true)
@@ -211,6 +236,14 @@ const openCreateForm = () => {
     setDraftDescription('')
     setDraftSaveToMetadata(false)
     setDraftFields([])
+    setDraftExpiresAt('')
+    setDraftCapacityLimit('')
+    setDraftAnswerLimitPerFriend('unlimited')
+    setDraftRestorePreviousAnswer(false)
+    setDraftThanksUrl('')
+    setDraftPrimaryColor('')
+    setDraftStopScenarios(false)
+    setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
   }
@@ -231,6 +264,15 @@ const openCreateForm = () => {
         optionsText: (f.options ?? []).join(', '),
       })),
     )
+    // ISO文字列(YYYY-MM-DDTHH:MM:SS...) → datetime-local入力用(YYYY-MM-DDTHH:MM)
+    setDraftExpiresAt(form.expiresAt ? form.expiresAt.slice(0, 16) : '')
+    setDraftCapacityLimit(form.capacityLimit != null ? String(form.capacityLimit) : '')
+    setDraftAnswerLimitPerFriend(form.answerLimitPerFriend ?? 'unlimited')
+    setDraftRestorePreviousAnswer(Boolean(form.restorePreviousAnswer))
+    setDraftThanksUrl(form.thanksUrl ?? '')
+    setDraftPrimaryColor(form.primaryColor ?? '')
+    setDraftStopScenarios(Boolean(form.onSubmitStopScenarios))
+    setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
   }
@@ -266,6 +308,14 @@ const openCreateForm = () => {
         description: draftDescription.trim() || null,
         saveToMetadata: draftSaveToMetadata,
         fields,
+        // datetime-local(YYYY-MM-DDTHH:MM) → サーバーの秒精度ISO文字列に揃える
+        expiresAt: draftExpiresAt ? `${draftExpiresAt}:00` : null,
+        capacityLimit: draftCapacityLimit.trim() ? Number(draftCapacityLimit) : null,
+        answerLimitPerFriend: draftAnswerLimitPerFriend,
+        restorePreviousAnswer: draftRestorePreviousAnswer,
+        thanksUrl: draftThanksUrl.trim() || null,
+        primaryColor: draftPrimaryColor.trim() || null,
+        onSubmitStopScenarios: draftStopScenarios,
       }
       const res = editingFormId
         ? await fetchApi<{ success: boolean; data: Form }>(`/api/forms/${editingFormId}`, {
@@ -734,14 +784,100 @@ const openCreateForm = () => {
                           onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, optionsText: v } : r)))}
                         />
                       )}
-                      <Checkbox
-                        className="mt-2"
-                        label="必須項目にする"
-                        checked={field.required}
-                        onCheckedChange={(checked) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, required: checked } : r)))}
-                      />
+                      {!DISPLAY_ONLY_TYPES.includes(field.type) && (
+                        <Checkbox
+                          className="mt-2"
+                          label="必須項目にする"
+                          checked={field.required}
+                          onCheckedChange={(checked) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, required: checked } : r)))}
+                        />
+                      )}
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5">
+              <button
+                type="button"
+                className="text-xs font-semibold text-gray-600 underline decoration-gray-300 underline-offset-2"
+                onClick={() => setShowAdvanced((v) => !v)}
+              >
+                {showAdvanced ? '▾ 詳細設定を閉じる' : '▸ 詳細設定(回答期限・人数制限・デザイン等)'}
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-3 space-y-3 rounded-lg border border-gray-200 p-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500">回答期限(任意)</label>
+                      <input
+                        type="datetime-local"
+                        value={draftExpiresAt}
+                        onChange={(e) => setDraftExpiresAt(e.target.value)}
+                        className="h-9 w-full rounded-lg border border-gray-300 px-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500">先着人数の上限(任意)</label>
+                      <Input
+                        type="number"
+                        placeholder="空欄なら上限なし"
+                        value={draftCapacityLimit}
+                        onValueChange={setDraftCapacityLimit}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-500">1人が回答できる回数</label>
+                    <Select
+                      value={draftAnswerLimitPerFriend}
+                      onValueChange={(v) => setDraftAnswerLimitPerFriend(v as 'unlimited' | 'once')}
+                      items={[
+                        { value: 'unlimited', label: '何度でも可能' },
+                        { value: 'once', label: '1度のみ' },
+                      ]}
+                    />
+                  </div>
+
+                  <Checkbox
+                    label="2回目以降の回答時に前回の回答を復元する"
+                    checked={draftRestorePreviousAnswer}
+                    onCheckedChange={setDraftRestorePreviousAnswer}
+                  />
+
+                  <Input
+                    label="サンクスページURL(任意・未設定なら標準の完了画面を表示)"
+                    placeholder="https://example.com/thanks"
+                    value={draftThanksUrl}
+                    onValueChange={setDraftThanksUrl}
+                  />
+
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-500">アクセントカラー(任意・16進、例 #d97786)</label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="#06C755"
+                        value={draftPrimaryColor}
+                        onValueChange={setDraftPrimaryColor}
+                        className="flex-1"
+                      />
+                      {draftPrimaryColor && (
+                        <span
+                          className="h-8 w-8 flex-none rounded border border-gray-300"
+                          style={{ backgroundColor: draftPrimaryColor }}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  <Checkbox
+                    label="回答後アクション: 進行中のシナリオを停止する"
+                    checked={draftStopScenarios}
+                    onCheckedChange={setDraftStopScenarios}
+                  />
                 </div>
               )}
             </div>

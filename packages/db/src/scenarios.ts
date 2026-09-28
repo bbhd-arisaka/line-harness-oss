@@ -536,6 +536,24 @@ export async function advanceFriendScenario(
     .run();
 }
 
+/**
+ * その友だちが進行中の全シナリオを終了させる。
+ * Lステップの回答フォーム「回答後アクション: シナリオを停止」に相当。
+ */
+export async function stopAllFriendScenarios(
+  db: D1Database,
+  friendId: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE friend_scenarios
+       SET status = 'completed', next_delivery_at = NULL, updated_at = ?
+       WHERE friend_id = ? AND status IN ('active', 'delivering', 'paused')`,
+    )
+    .bind(jstNow(), friendId)
+    .run();
+}
+
 export async function completeFriendScenario(
   db: D1Database,
   id: string,

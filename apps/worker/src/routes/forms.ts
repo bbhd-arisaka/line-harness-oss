@@ -8,11 +8,14 @@ import {
   deleteForm,
   getFormSubmissions,
   createFormSubmission,
+  countFormSubmissions,
+  getLatestSubmissionForFriend,
   getFriendByLineUserId,
   getFriendById,
   getLineAccountById,
   jstNow,
   resolveDefaultLineAccount,
+  stopAllFriendScenarios,
 } from '@line-crm/db';
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
@@ -90,6 +93,13 @@ function serializeForm(
     ogTitle: row.og_title,
     ogDescription: row.og_description,
     ogImageUrl: row.og_image_url,
+    expiresAt: row.expires_at,
+    capacityLimit: row.capacity_limit,
+    answerLimitPerFriend: row.answer_limit_per_friend,
+    restorePreviousAnswer: Boolean(row.restore_previous_answer),
+    thanksUrl: row.thanks_url,
+    primaryColor: row.primary_color,
+    onSubmitStopScenarios: Boolean(row.on_submit_stop_scenarios),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastSubmittedAt: extra?.lastSubmittedAt ?? null,
@@ -124,6 +134,7 @@ function publicWebhookConfig(row: DbForm): {
 function serializePublicForm(
   row: DbForm,
   consultationWebinarSlug: string | null = null,
+  status?: { isExpired: boolean; isFull: boolean },
 ) {
   return {
     id: row.id,
@@ -133,6 +144,10 @@ function serializePublicForm(
     isActive: Boolean(row.is_active),
     onSubmitMessageContent: row.on_submit_message_content,
     onSubmitWebhookFailMessage: row.on_submit_webhook_fail_message,
+    primaryColor: row.primary_color,
+    thanksUrl: row.thanks_url,
+    isExpired: status?.isExpired ?? false,
+    isFull: status?.isFull ?? false,
     // When this form belongs to an active webinar consultation funnel, the
     // LIFF form can switch directly to the same slot picker used by the live
     // CTA. The slug is public routing information; menu/staff IDs remain
@@ -140,6 +155,20 @@ function serializePublicForm(
     consultationWebinarSlug,
     ...publicWebhookConfig(row),
   };
+}
+
+/** 回答期限・先着数の判定。Lステップの「回答期限」「先着数制限」に相当。 */
+async function computeFormAvailability(
+  db: D1Database,
+  row: DbForm,
+): Promise<{ isExpired: boolean; isFull: boolean }> {
+  const isExpired = Boolean(row.expires_at) && row.expires_at! <= jstNow();
+  let isFull = false;
+  if (row.capacity_limit != null) {
+    const count = await countFormSubmissions(db, row.id);
+    isFull = count >= row.capacity_limit;
+  }
+  return { isExpired, isFull };
 }
 
 async function consultationWebinarSlugForForm(
@@ -211,6 +240,7 @@ forms.get('/api/forms/:id', async (c) => {
       : serializePublicForm(
           form,
           await consultationWebinarSlugForForm(c.env.DB, id),
+          await computeFormAvailability(c.env.DB, form),
         );
     return c.json({ success: true, data });
   } catch (err) {
@@ -237,6 +267,13 @@ forms.post('/api/forms', async (c) => {
       ogTitle?: string | null;
       ogDescription?: string | null;
       ogImageUrl?: string | null;
+      expiresAt?: string | null;
+      capacityLimit?: number | null;
+      answerLimitPerFriend?: 'unlimited' | 'once';
+      restorePreviousAnswer?: boolean;
+      thanksUrl?: string | null;
+      primaryColor?: string | null;
+      onSubmitStopScenarios?: boolean;
     }>();
 
     if (!body.name) {
@@ -258,6 +295,13 @@ forms.post('/api/forms', async (c) => {
       ogTitle: body.ogTitle ?? null,
       ogDescription: body.ogDescription ?? null,
       ogImageUrl: body.ogImageUrl ?? null,
+      expiresAt: body.expiresAt ?? null,
+      capacityLimit: body.capacityLimit ?? null,
+      answerLimitPerFriend: body.answerLimitPerFriend,
+      restorePreviousAnswer: body.restorePreviousAnswer,
+      thanksUrl: body.thanksUrl ?? null,
+      primaryColor: body.primaryColor ?? null,
+      onSubmitStopScenarios: body.onSubmitStopScenarios,
     });
 
     const liffId = (await resolveDefaultLineAccount(c.env.DB))?.liff_id ?? null;
@@ -288,6 +332,13 @@ forms.put('/api/forms/:id', async (c) => {
       ogTitle?: string | null;
       ogDescription?: string | null;
       ogImageUrl?: string | null;
+      expiresAt?: string | null;
+      capacityLimit?: number | null;
+      answerLimitPerFriend?: 'unlimited' | 'once';
+      restorePreviousAnswer?: boolean;
+      thanksUrl?: string | null;
+      primaryColor?: string | null;
+      onSubmitStopScenarios?: boolean;
     }>();
 
     // Only include fields that were explicitly sent (avoid undefined → null conversion)
@@ -307,6 +358,13 @@ forms.put('/api/forms/:id', async (c) => {
     if (body.ogTitle !== undefined) updates.ogTitle = body.ogTitle;
     if (body.ogDescription !== undefined) updates.ogDescription = body.ogDescription;
     if (body.ogImageUrl !== undefined) updates.ogImageUrl = body.ogImageUrl;
+    if (body.expiresAt !== undefined) updates.expiresAt = body.expiresAt;
+    if (body.capacityLimit !== undefined) updates.capacityLimit = body.capacityLimit;
+    if (body.answerLimitPerFriend !== undefined) updates.answerLimitPerFriend = body.answerLimitPerFriend;
+    if (body.restorePreviousAnswer !== undefined) updates.restorePreviousAnswer = body.restorePreviousAnswer;
+    if (body.thanksUrl !== undefined) updates.thanksUrl = body.thanksUrl;
+    if (body.primaryColor !== undefined) updates.primaryColor = body.primaryColor;
+    if (body.onSubmitStopScenarios !== undefined) updates.onSubmitStopScenarios = body.onSubmitStopScenarios;
 
     const updated = await updateForm(c.env.DB, id, updates as any);
 
@@ -424,6 +482,15 @@ forms.post('/api/forms/:id/submit', async (c) => {
     if (!form.is_active) {
       return c.json({ success: false, error: 'This form is no longer accepting responses' }, 400);
     }
+    if (form.expires_at && form.expires_at <= jstNow()) {
+      return c.json({ success: false, error: 'この回答フォームは回答期限を過ぎています' }, 400);
+    }
+    if (form.capacity_limit != null) {
+      const count = await countFormSubmissions(c.env.DB, formId);
+      if (count >= form.capacity_limit) {
+        return c.json({ success: false, error: 'この回答フォームは先着数に達しました' }, 400);
+      }
+    }
 
     const body = await c.req.json<{
       data?: Record<string, unknown>;
@@ -441,6 +508,13 @@ forms.post('/api/forms/:id/submit', async (c) => {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
     const friendId = friend.id;
+
+    if (form.answer_limit_per_friend === 'once') {
+      const previous = await getLatestSubmissionForFriend(c.env.DB, formId, friendId);
+      if (previous) {
+        return c.json({ success: false, error: 'このフォームは1人1回のみ回答できます' }, 400);
+      }
+    }
 
     // Validate required fields
     const fields = JSON.parse(form.fields || '[]') as Array<{
@@ -584,6 +658,11 @@ forms.post('/api/forms/:id/submit', async (c) => {
       // Enroll in scenario
       if (form.on_submit_scenario_id) {
         sideEffects.push(enrollFriendInScenario(db, friendId, form.on_submit_scenario_id));
+      }
+
+      // Lステップの「シナリオを停止」相当。進行中の全シナリオを終了させる。
+      if (form.on_submit_stop_scenarios) {
+        sideEffects.push(stopAllFriendScenarios(db, friendId));
       }
 
       // If webhook returned a join_url (e.g. Meet Harness), send a Flex button to the user

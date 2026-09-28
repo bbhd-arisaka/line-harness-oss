@@ -21,6 +21,13 @@ export interface Form {
   og_title: string | null;
   og_description: string | null;
   og_image_url: string | null;
+  expires_at: string | null;
+  capacity_limit: number | null;
+  answer_limit_per_friend: 'unlimited' | 'once';
+  restore_previous_answer: number;
+  thanks_url: string | null;
+  primary_color: string | null;
+  on_submit_stop_scenarios: number;
   created_at: string;
   updated_at: string;
 }
@@ -130,6 +137,13 @@ export interface CreateFormInput {
   ogTitle?: string | null;
   ogDescription?: string | null;
   ogImageUrl?: string | null;
+  expiresAt?: string | null;
+  capacityLimit?: number | null;
+  answerLimitPerFriend?: 'unlimited' | 'once';
+  restorePreviousAnswer?: boolean;
+  thanksUrl?: string | null;
+  primaryColor?: string | null;
+  onSubmitStopScenarios?: boolean;
 }
 
 export async function createForm(db: D1Database, input: CreateFormInput): Promise<Form> {
@@ -144,8 +158,10 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
           on_submit_webhook_url, on_submit_webhook_headers, on_submit_webhook_fail_message,
           save_to_metadata, is_active, submit_count,
           og_title, og_description, og_image_url,
+          expires_at, capacity_limit, answer_limit_per_friend, restore_previous_answer,
+          thanks_url, primary_color, on_submit_stop_scenarios,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -163,6 +179,13 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
       input.ogTitle ?? null,
       input.ogDescription ?? null,
       input.ogImageUrl ?? null,
+      input.expiresAt ?? null,
+      input.capacityLimit ?? null,
+      input.answerLimitPerFriend ?? 'unlimited',
+      input.restorePreviousAnswer ? 1 : 0,
+      input.thanksUrl ?? null,
+      input.primaryColor ?? null,
+      input.onSubmitStopScenarios ? 1 : 0,
       now,
       now,
     )
@@ -187,6 +210,13 @@ export interface UpdateFormInput {
   ogTitle?: string | null;
   ogDescription?: string | null;
   ogImageUrl?: string | null;
+  expiresAt?: string | null;
+  capacityLimit?: number | null;
+  answerLimitPerFriend?: 'unlimited' | 'once';
+  restorePreviousAnswer?: boolean;
+  thanksUrl?: string | null;
+  primaryColor?: string | null;
+  onSubmitStopScenarios?: boolean;
 }
 
 export async function updateForm(
@@ -217,6 +247,13 @@ export async function updateForm(
            og_title = ?,
            og_description = ?,
            og_image_url = ?,
+           expires_at = ?,
+           capacity_limit = ?,
+           answer_limit_per_friend = ?,
+           restore_previous_answer = ?,
+           thanks_url = ?,
+           primary_color = ?,
+           on_submit_stop_scenarios = ?,
            updated_at = ?
        WHERE id = ?`,
     )
@@ -250,6 +287,19 @@ export async function updateForm(
       'ogTitle' in input ? (input.ogTitle ?? null) : existing.og_title,
       'ogDescription' in input ? (input.ogDescription ?? null) : existing.og_description,
       'ogImageUrl' in input ? (input.ogImageUrl ?? null) : existing.og_image_url,
+      'expiresAt' in input ? (input.expiresAt ?? null) : existing.expires_at,
+      'capacityLimit' in input ? (input.capacityLimit ?? null) : existing.capacity_limit,
+      'answerLimitPerFriend' in input
+        ? (input.answerLimitPerFriend ?? 'unlimited')
+        : existing.answer_limit_per_friend,
+      'restorePreviousAnswer' in input
+        ? (input.restorePreviousAnswer ? 1 : 0)
+        : existing.restore_previous_answer,
+      'thanksUrl' in input ? (input.thanksUrl ?? null) : existing.thanks_url,
+      'primaryColor' in input ? (input.primaryColor ?? null) : existing.primary_color,
+      'onSubmitStopScenarios' in input
+        ? (input.onSubmitStopScenarios ? 1 : 0)
+        : existing.on_submit_stop_scenarios,
       now,
       id,
     )
@@ -304,6 +354,29 @@ export async function getFormSubmissionsByFriend(
     .bind(friendId, safeLimit)
     .all<FriendFormSubmission>();
   return result.results;
+}
+
+export async function countFormSubmissions(db: D1Database, formId: string): Promise<number> {
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS cnt FROM form_submissions WHERE form_id = ?`)
+    .bind(formId)
+    .first<{ cnt: number }>();
+  return row?.cnt ?? 0;
+}
+
+/** 「1人が回答できる回数」「回答復元」の判定に使う、その友だちの直近の回答。 */
+export async function getLatestSubmissionForFriend(
+  db: D1Database,
+  formId: string,
+  friendId: string,
+): Promise<FormSubmission | null> {
+  return db
+    .prepare(
+      `SELECT * FROM form_submissions WHERE form_id = ? AND friend_id = ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(formId, friendId)
+    .first<FormSubmission>();
 }
 
 export interface CreateFormSubmissionInput {
