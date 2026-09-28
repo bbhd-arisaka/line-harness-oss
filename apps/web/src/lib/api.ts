@@ -366,6 +366,12 @@ export const api = {
       fetchApi<ApiResponse<{ id: string | null; name: string | null; isDefault: boolean }>>(
         `/api/friends/${id}/rich-menu`,
       ),
+    // null 値のキーは削除される(サーバー側のマージ仕様)。
+    updateMetadata: (id: string, data: Record<string, string | null>) =>
+      fetchApi<ApiResponse<FriendDetail>>(`/api/friends/${id}/metadata`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   },
   tags: {
     /** withCounts で friendCount 付き (JOIN 集計 — タグ管理ページ用)。 */

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { api, type MileageHistoryItem, type MileageSummary } from '@/lib/api'
 import { Button } from '@cloudflare/kumo/components/button'
-import { InputArea } from '@cloudflare/kumo/components/input'
+import { Input, InputArea } from '@cloudflare/kumo/components/input'
 
 interface FriendDetail {
   id: string
@@ -54,6 +54,18 @@ const statusLabels: Record<NonNullable<ChatStatusInfo['status']>, { label: strin
   resolved: { label: '解決済', className: 'bg-green-100 text-green-700' },
 }
 
+/**
+ * よく使うキーだけ日本語ラベルを付ける。それ以外(Lステップの独自項目等)は
+ * キー名をそのまま出す — 項目を決め打ちで列挙すると増えるたびに直す羽目になる。
+ */
+const METADATA_LABELS: Record<string, string> = {
+  full_name: '本名',
+  lstep_member_id: 'Lステップ会員ID(移行元)',
+}
+
+let metadataRowSeq = 0
+interface MetadataRow { rowId: number; key: string; value: string }
+
 /** Render a metadata value safely as text. Objects/arrays → JSON, primitives → as-is. */
 function renderValue(value: unknown): string {
   if (value === null || value === undefined) return '-'
@@ -76,7 +88,55 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
     | { kind: 'data'; summary: MileageSummary; history: MileageHistoryItem[] }
   const [mileage, setMileage] = useState<MileageState>({ kind: 'loading' })
 
+  const [editingMetadata, setEditingMetadata] = useState(false)
+  const [metadataRows, setMetadataRows] = useState<MetadataRow[]>([])
+  const [savingMetadata, setSavingMetadata] = useState(false)
+  const [metadataError, setMetadataError] = useState<string | null>(null)
+
+  function startEditingMetadata(current: Record<string, unknown>) {
+    const rows = Object.entries(current).map(([key, value]) => ({
+      rowId: metadataRowSeq++,
+      key,
+      value: typeof value === 'string' ? value : renderValue(value),
+    }))
+    setMetadataRows(rows)
+    setMetadataError(null)
+    setEditingMetadata(true)
+  }
+
+  async function saveMetadata(friendId: string, original: Record<string, unknown>) {
+    setSavingMetadata(true)
+    setMetadataError(null)
+    try {
+      const payload: Record<string, string | null> = {}
+      const seenKeys = new Set<string>()
+      for (const row of metadataRows) {
+        const key = row.key.trim()
+        if (!key) continue
+        payload[key] = row.value
+        seenKeys.add(key)
+      }
+      // 元にあったが編集後に無くなったキーは null を送って削除する(サーバー側の仕様)。
+      for (const key of Object.keys(original)) {
+        if (!seenKeys.has(key)) payload[key] = null
+      }
+      const res = await api.friends.updateMetadata(friendId, payload)
+      if (res.success && res.data) {
+        setFriend(res.data as unknown as FriendDetail)
+        setEditingMetadata(false)
+      } else {
+        setMetadataError((res as { error?: string }).error ?? '保存に失敗しました')
+      }
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : '保存に失敗しました')
+    } finally {
+      setSavingMetadata(false)
+    }
+  }
+
   useEffect(() => {
+    setEditingMetadata(false)
+    setMetadataError(null)
     if (!friendId) {
       setFriend(null)
       return
@@ -333,20 +393,87 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
               )}
             </div>
 
-            {/* Metadata custom fields */}
-            {friend.metadata && Object.keys(friend.metadata).length > 0 && (
-              <div className="p-4">
-                <h4 className="text-[11px] font-medium text-gray-500 mb-2">友だち情報</h4>
+            {/* Metadata custom fields (本名等)。中身が空でも「本名」等を追加できるよう常に表示する */}
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[11px] font-medium text-gray-500">友だち情報</h4>
+                {!editingMetadata && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
+                    onClick={() => startEditingMetadata(friend.metadata ?? {})}
+                  >
+                    編集
+                  </button>
+                )}
+              </div>
+
+              {editingMetadata ? (
+                <div className="space-y-2">
+                  {metadataRows.map((row, i) => (
+                    <div key={row.rowId} className="flex items-start gap-1.5">
+                      <Input
+                        className="w-24 flex-none text-xs"
+                        aria-label="項目名"
+                        placeholder="項目名 (例: full_name)"
+                        value={row.key}
+                        onValueChange={(v) => setMetadataRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, key: v } : r)))}
+                      />
+                      <Input
+                        className="min-w-0 flex-1 text-xs"
+                        aria-label="値"
+                        placeholder="値"
+                        value={row.value}
+                        onValueChange={(v) => setMetadataRows((rows) => rows.map((r, ri) => (ri === i ? { ...r, value: v } : r)))}
+                      />
+                      <button
+                        type="button"
+                        aria-label="この項目を削除"
+                        className="mt-1.5 flex-none text-gray-400 hover:text-red-600"
+                        onClick={() => setMetadataRows((rows) => rows.filter((_, ri) => ri !== i))}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    className="text-[11px] text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
+                    onClick={() => setMetadataRows((rows) => [...rows, { rowId: metadataRowSeq++, key: '', value: '' }])}
+                  >
+                    + 項目を追加
+                  </button>
+
+                  {metadataError && <p className="text-[11px] text-red-600">{metadataError}</p>}
+
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      loading={savingMetadata}
+                      onClick={() => void saveMetadata(friend.id, friend.metadata ?? {})}
+                    >
+                      保存
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => setEditingMetadata(false)}>
+                      取消
+                    </Button>
+                  </div>
+                </div>
+              ) : friend.metadata && Object.keys(friend.metadata).length > 0 ? (
                 <dl className="space-y-2 text-xs">
                   {Object.entries(friend.metadata).map(([key, value]) => (
                     <div key={key}>
-                      <dt className="text-[10px] text-gray-400 uppercase tracking-wide">{key}</dt>
+                      <dt className="text-[10px] text-gray-400 uppercase tracking-wide">{METADATA_LABELS[key] ?? key}</dt>
                       <dd className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words">{renderValue(value)}</dd>
                     </div>
                   ))}
                 </dl>
-              </div>
-            )}
+              ) : (
+                <p className="text-xs text-gray-400">未設定(「編集」から本名などを追加できます)</p>
+              )}
+            </div>
 
             {/* Form answers — save_to_metadata の設定に関係なく回答履歴を表示 */}
             {friend.formSubmissions?.length > 0 && (
