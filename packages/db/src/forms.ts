@@ -28,6 +28,14 @@ export interface Form {
   thanks_url: string | null;
   primary_color: string | null;
   on_submit_stop_scenarios: number;
+  custom_design_enabled: number;
+  background_color: string | null;
+  form_background_color: string | null;
+  header_image_url: string | null;
+  background_image_url: string | null;
+  hide_header_icon: number;
+  custom_css_enabled: number;
+  custom_css: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -144,6 +152,14 @@ export interface CreateFormInput {
   thanksUrl?: string | null;
   primaryColor?: string | null;
   onSubmitStopScenarios?: boolean;
+  customDesignEnabled?: boolean;
+  backgroundColor?: string | null;
+  formBackgroundColor?: string | null;
+  headerImageUrl?: string | null;
+  backgroundImageUrl?: string | null;
+  hideHeaderIcon?: boolean;
+  customCssEnabled?: boolean;
+  customCss?: string | null;
 }
 
 export async function createForm(db: D1Database, input: CreateFormInput): Promise<Form> {
@@ -160,8 +176,11 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
           og_title, og_description, og_image_url,
           expires_at, capacity_limit, answer_limit_per_friend, restore_previous_answer,
           thanks_url, primary_color, on_submit_stop_scenarios,
+          custom_design_enabled, background_color, form_background_color,
+          header_image_url, background_image_url, hide_header_icon,
+          custom_css_enabled, custom_css,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -186,6 +205,14 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
       input.thanksUrl ?? null,
       input.primaryColor ?? null,
       input.onSubmitStopScenarios ? 1 : 0,
+      input.customDesignEnabled ? 1 : 0,
+      input.backgroundColor ?? null,
+      input.formBackgroundColor ?? null,
+      input.headerImageUrl ?? null,
+      input.backgroundImageUrl ?? null,
+      input.hideHeaderIcon ? 1 : 0,
+      input.customCssEnabled ? 1 : 0,
+      input.customCss ?? null,
       now,
       now,
     )
@@ -217,6 +244,14 @@ export interface UpdateFormInput {
   thanksUrl?: string | null;
   primaryColor?: string | null;
   onSubmitStopScenarios?: boolean;
+  customDesignEnabled?: boolean;
+  backgroundColor?: string | null;
+  formBackgroundColor?: string | null;
+  headerImageUrl?: string | null;
+  backgroundImageUrl?: string | null;
+  hideHeaderIcon?: boolean;
+  customCssEnabled?: boolean;
+  customCss?: string | null;
 }
 
 export async function updateForm(
@@ -254,6 +289,14 @@ export async function updateForm(
            thanks_url = ?,
            primary_color = ?,
            on_submit_stop_scenarios = ?,
+           custom_design_enabled = ?,
+           background_color = ?,
+           form_background_color = ?,
+           header_image_url = ?,
+           background_image_url = ?,
+           hide_header_icon = ?,
+           custom_css_enabled = ?,
+           custom_css = ?,
            updated_at = ?
        WHERE id = ?`,
     )
@@ -300,6 +343,22 @@ export async function updateForm(
       'onSubmitStopScenarios' in input
         ? (input.onSubmitStopScenarios ? 1 : 0)
         : existing.on_submit_stop_scenarios,
+      'customDesignEnabled' in input
+        ? (input.customDesignEnabled ? 1 : 0)
+        : existing.custom_design_enabled,
+      'backgroundColor' in input ? (input.backgroundColor ?? null) : existing.background_color,
+      'formBackgroundColor' in input
+        ? (input.formBackgroundColor ?? null)
+        : existing.form_background_color,
+      'headerImageUrl' in input ? (input.headerImageUrl ?? null) : existing.header_image_url,
+      'backgroundImageUrl' in input
+        ? (input.backgroundImageUrl ?? null)
+        : existing.background_image_url,
+      'hideHeaderIcon' in input ? (input.hideHeaderIcon ? 1 : 0) : existing.hide_header_icon,
+      'customCssEnabled' in input
+        ? (input.customCssEnabled ? 1 : 0)
+        : existing.custom_css_enabled,
+      'customCss' in input ? (input.customCss ?? null) : existing.custom_css,
       now,
       id,
     )

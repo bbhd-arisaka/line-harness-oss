@@ -64,6 +64,14 @@ interface FormDef {
   consultationWebinarSlug?: string | null;
   primaryColor?: string | null;
   thanksUrl?: string | null;
+  // Lステップの「カラー/デザイン設定」相当。customDesignEnabled が OFF の
+  // フォームでは API が返さないため、すべて undefined のまま既定配色になる。
+  backgroundColor?: string | null;
+  formBackgroundColor?: string | null;
+  headerImageUrl?: string | null;
+  backgroundImageUrl?: string | null;
+  hideHeaderIcon?: boolean;
+  customCss?: string | null;
 }
 
 interface ConsultationSlot {
@@ -303,8 +311,23 @@ function injectStyles(): void {
   const style = document.createElement('style');
   style.id = 'form-styles';
   style.textContent = `
-    /* Lステップの「デザイン設定」相当。フォームごとに --form-accent を上書きできる */
-    :root { --form-accent: #06C755; }
+    /* Lステップの「デザイン設定」相当。フォームごとに --form-accent 等を上書きできる */
+    :root {
+      --form-accent: #06C755;
+      --form-page-bg: transparent;
+      --form-page-bg-image: none;
+      --form-card-bg: #fff;
+    }
+    .form-page {
+      background-color: var(--form-page-bg);
+      background-image: var(--form-page-bg-image);
+      background-size: cover;
+      background-position: top center;
+    }
+    .form-header-image {
+      display: block; width: 100%; max-width: 100%; border-radius: 8px;
+      margin-bottom: 16px; object-fit: cover;
+    }
     .form-section-heading {
       margin: 28px 0 12px; padding: 10px 14px; border-radius: 8px;
       background: var(--form-accent); color: #fff; font-size: 16px; font-weight: 700;
@@ -320,7 +343,7 @@ function injectStyles(): void {
     .form-profile { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
     .form-profile img { width: 36px; height: 36px; border-radius: 50%; }
     .form-profile span { font-size: 14px; font-weight: 600; }
-    .form-body { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .form-body { background: var(--form-card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .form-field { margin-bottom: 20px; }
     .form-label { display: block; font-size: 14px; font-weight: 600; color: #333; margin-bottom: 6px; }
     .required-mark { color: #e53e3e; margin-left: 2px; }
@@ -501,8 +524,31 @@ function render(): void {
   if (formDef.primaryColor) {
     document.documentElement.style.setProperty('--form-accent', formDef.primaryColor);
   }
+  if (formDef.backgroundColor) {
+    document.documentElement.style.setProperty('--form-page-bg', formDef.backgroundColor);
+  }
+  if (formDef.formBackgroundColor) {
+    document.documentElement.style.setProperty('--form-card-bg', formDef.formBackgroundColor);
+  }
+  const safeBgImageUrl = safeHttpsUrl(formDef.backgroundImageUrl);
+  if (safeBgImageUrl) {
+    document.documentElement.style.setProperty('--form-page-bg-image', `url("${safeBgImageUrl}")`);
+  }
+  if (formDef.customCss) {
+    let customStyleEl = document.getElementById('form-custom-css') as HTMLStyleElement | null;
+    if (!customStyleEl) {
+      customStyleEl = document.createElement('style');
+      customStyleEl.id = 'form-custom-css';
+      document.head.appendChild(customStyleEl);
+    }
+    customStyleEl.textContent = formDef.customCss;
+  }
   const app = getApp();
-  const profileHtml = (formDef.hideProfile || !profile?.pictureUrl)
+  const safeHeaderImageUrl = safeHttpsUrl(formDef.headerImageUrl);
+  const headerImageHtml = safeHeaderImageUrl
+    ? `<img class="form-header-image" src="${escapeHtml(safeHeaderImageUrl)}" alt="" />`
+    : '';
+  const profileHtml = (formDef.hideHeaderIcon || formDef.hideProfile || !profile?.pictureUrl)
     ? ''
     : `<div class="form-profile">
         <img src="${profile.pictureUrl}" alt="" />
@@ -522,6 +568,7 @@ function render(): void {
     app.innerHTML = `
       <div class="form-page">
         <div class="form-header">
+          ${headerImageHtml}
           <h1>${escapeHtml(formDef.name).replace(/\\n|\n/g, '<br>')}</h1>
           ${formDef.description && !formDef.hasSubmitWebhook ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
           ${profileHtml}
@@ -624,6 +671,7 @@ function render(): void {
     app.innerHTML = `
       <div class="form-page">
         <div class="form-header">
+          ${headerImageHtml}
           <h1>${escapeHtml(formDef.name).replace(/\\n|\n/g, '<br>')}</h1>
           ${formDef.description && !formDef.hasSubmitWebhook ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
           ${profileHtml}

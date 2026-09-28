@@ -100,6 +100,14 @@ function serializeForm(
     thanksUrl: row.thanks_url,
     primaryColor: row.primary_color,
     onSubmitStopScenarios: Boolean(row.on_submit_stop_scenarios),
+    customDesignEnabled: Boolean(row.custom_design_enabled),
+    backgroundColor: row.background_color,
+    formBackgroundColor: row.form_background_color,
+    headerImageUrl: row.header_image_url,
+    backgroundImageUrl: row.background_image_url,
+    hideHeaderIcon: Boolean(row.hide_header_icon),
+    customCssEnabled: Boolean(row.custom_css_enabled),
+    customCss: row.custom_css,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastSubmittedAt: extra?.lastSubmittedAt ?? null,
@@ -148,6 +156,18 @@ function serializePublicForm(
     thanksUrl: row.thanks_url,
     isExpired: status?.isExpired ?? false,
     isFull: status?.isFull ?? false,
+    // Lステップの「カラー/デザイン設定」タブ相当。トグルが OFF のままなら
+    // 公開フォームへは一切出さない(Lステップも未使用時はデフォルト配色)。
+    ...(row.custom_design_enabled
+      ? {
+          backgroundColor: row.background_color,
+          formBackgroundColor: row.form_background_color,
+          headerImageUrl: row.header_image_url,
+          backgroundImageUrl: row.background_image_url,
+          hideHeaderIcon: Boolean(row.hide_header_icon),
+          customCss: row.custom_css_enabled ? row.custom_css : null,
+        }
+      : {}),
     // When this form belongs to an active webinar consultation funnel, the
     // LIFF form can switch directly to the same slot picker used by the live
     // CTA. The slug is public routing information; menu/staff IDs remain
@@ -274,6 +294,14 @@ forms.post('/api/forms', async (c) => {
       thanksUrl?: string | null;
       primaryColor?: string | null;
       onSubmitStopScenarios?: boolean;
+      customDesignEnabled?: boolean;
+      backgroundColor?: string | null;
+      formBackgroundColor?: string | null;
+      headerImageUrl?: string | null;
+      backgroundImageUrl?: string | null;
+      hideHeaderIcon?: boolean;
+      customCssEnabled?: boolean;
+      customCss?: string | null;
     }>();
 
     if (!body.name) {
@@ -302,6 +330,14 @@ forms.post('/api/forms', async (c) => {
       thanksUrl: body.thanksUrl ?? null,
       primaryColor: body.primaryColor ?? null,
       onSubmitStopScenarios: body.onSubmitStopScenarios,
+      customDesignEnabled: body.customDesignEnabled,
+      backgroundColor: body.backgroundColor ?? null,
+      formBackgroundColor: body.formBackgroundColor ?? null,
+      headerImageUrl: body.headerImageUrl ?? null,
+      backgroundImageUrl: body.backgroundImageUrl ?? null,
+      hideHeaderIcon: body.hideHeaderIcon,
+      customCssEnabled: body.customCssEnabled,
+      customCss: body.customCss ?? null,
     });
 
     const liffId = (await resolveDefaultLineAccount(c.env.DB))?.liff_id ?? null;
@@ -339,6 +375,14 @@ forms.put('/api/forms/:id', async (c) => {
       thanksUrl?: string | null;
       primaryColor?: string | null;
       onSubmitStopScenarios?: boolean;
+      customDesignEnabled?: boolean;
+      backgroundColor?: string | null;
+      formBackgroundColor?: string | null;
+      headerImageUrl?: string | null;
+      backgroundImageUrl?: string | null;
+      hideHeaderIcon?: boolean;
+      customCssEnabled?: boolean;
+      customCss?: string | null;
     }>();
 
     // Only include fields that were explicitly sent (avoid undefined → null conversion)
@@ -365,6 +409,14 @@ forms.put('/api/forms/:id', async (c) => {
     if (body.thanksUrl !== undefined) updates.thanksUrl = body.thanksUrl;
     if (body.primaryColor !== undefined) updates.primaryColor = body.primaryColor;
     if (body.onSubmitStopScenarios !== undefined) updates.onSubmitStopScenarios = body.onSubmitStopScenarios;
+    if (body.customDesignEnabled !== undefined) updates.customDesignEnabled = body.customDesignEnabled;
+    if (body.backgroundColor !== undefined) updates.backgroundColor = body.backgroundColor;
+    if (body.formBackgroundColor !== undefined) updates.formBackgroundColor = body.formBackgroundColor;
+    if (body.headerImageUrl !== undefined) updates.headerImageUrl = body.headerImageUrl;
+    if (body.backgroundImageUrl !== undefined) updates.backgroundImageUrl = body.backgroundImageUrl;
+    if (body.hideHeaderIcon !== undefined) updates.hideHeaderIcon = body.hideHeaderIcon;
+    if (body.customCssEnabled !== undefined) updates.customCssEnabled = body.customCssEnabled;
+    if (body.customCss !== undefined) updates.customCss = body.customCss;
 
     const updated = await updateForm(c.env.DB, id, updates as any);
 

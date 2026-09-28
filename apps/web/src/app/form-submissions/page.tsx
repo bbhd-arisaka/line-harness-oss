@@ -97,6 +97,14 @@ interface Form {
   thanksUrl?: string | null
   primaryColor?: string | null
   onSubmitStopScenarios?: boolean
+  customDesignEnabled?: boolean
+  backgroundColor?: string | null
+  formBackgroundColor?: string | null
+  headerImageUrl?: string | null
+  backgroundImageUrl?: string | null
+  hideHeaderIcon?: boolean
+  customCssEnabled?: boolean
+  customCss?: string | null
 }
 
 type FormDetail = Form
@@ -174,6 +182,15 @@ export default function FormSubmissionsPage() {
   const [draftThanksUrl, setDraftThanksUrl] = useState('')
   const [draftPrimaryColor, setDraftPrimaryColor] = useState('')
   const [draftStopScenarios, setDraftStopScenarios] = useState(false)
+  // Lステップ「カラー/デザイン設定」タブ相当
+  const [draftCustomDesignEnabled, setDraftCustomDesignEnabled] = useState(false)
+  const [draftBackgroundColor, setDraftBackgroundColor] = useState('')
+  const [draftFormBackgroundColor, setDraftFormBackgroundColor] = useState('')
+  const [draftHeaderImageUrl, setDraftHeaderImageUrl] = useState('')
+  const [draftBackgroundImageUrl, setDraftBackgroundImageUrl] = useState('')
+  const [draftHideHeaderIcon, setDraftHideHeaderIcon] = useState(false)
+  const [draftCustomCssEnabled, setDraftCustomCssEnabled] = useState(false)
+  const [draftCustomCss, setDraftCustomCss] = useState('')
 
   const loadForms = useCallback(async () => {
     setLoading(true)
@@ -243,6 +260,14 @@ const openCreateForm = () => {
     setDraftThanksUrl('')
     setDraftPrimaryColor('')
     setDraftStopScenarios(false)
+    setDraftCustomDesignEnabled(false)
+    setDraftBackgroundColor('')
+    setDraftFormBackgroundColor('')
+    setDraftHeaderImageUrl('')
+    setDraftBackgroundImageUrl('')
+    setDraftHideHeaderIcon(false)
+    setDraftCustomCssEnabled(false)
+    setDraftCustomCss('')
     setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
@@ -272,6 +297,14 @@ const openCreateForm = () => {
     setDraftThanksUrl(form.thanksUrl ?? '')
     setDraftPrimaryColor(form.primaryColor ?? '')
     setDraftStopScenarios(Boolean(form.onSubmitStopScenarios))
+    setDraftCustomDesignEnabled(Boolean(form.customDesignEnabled))
+    setDraftBackgroundColor(form.backgroundColor ?? '')
+    setDraftFormBackgroundColor(form.formBackgroundColor ?? '')
+    setDraftHeaderImageUrl(form.headerImageUrl ?? '')
+    setDraftBackgroundImageUrl(form.backgroundImageUrl ?? '')
+    setDraftHideHeaderIcon(Boolean(form.hideHeaderIcon))
+    setDraftCustomCssEnabled(Boolean(form.customCssEnabled))
+    setDraftCustomCss(form.customCss ?? '')
     setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
@@ -316,6 +349,14 @@ const openCreateForm = () => {
         thanksUrl: draftThanksUrl.trim() || null,
         primaryColor: draftPrimaryColor.trim() || null,
         onSubmitStopScenarios: draftStopScenarios,
+        customDesignEnabled: draftCustomDesignEnabled,
+        backgroundColor: draftBackgroundColor.trim() || null,
+        formBackgroundColor: draftFormBackgroundColor.trim() || null,
+        headerImageUrl: draftHeaderImageUrl.trim() || null,
+        backgroundImageUrl: draftBackgroundImageUrl.trim() || null,
+        hideHeaderIcon: draftHideHeaderIcon,
+        customCssEnabled: draftCustomCssEnabled,
+        customCss: draftCustomCss.trim() || null,
       }
       const res = editingFormId
         ? await fetchApi<{ success: boolean; data: Form }>(`/api/forms/${editingFormId}`, {
@@ -855,29 +896,110 @@ const openCreateForm = () => {
                     onValueChange={setDraftThanksUrl}
                   />
 
-                  <div>
-                    <label className="mb-1 block text-xs text-gray-500">アクセントカラー(任意・16進、例 #d97786)</label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="#06C755"
-                        value={draftPrimaryColor}
-                        onValueChange={setDraftPrimaryColor}
-                        className="flex-1"
-                      />
-                      {draftPrimaryColor && (
-                        <span
-                          className="h-8 w-8 flex-none rounded border border-gray-300"
-                          style={{ backgroundColor: draftPrimaryColor }}
-                        />
-                      )}
-                    </div>
-                  </div>
-
                   <Checkbox
                     label="回答後アクション: 進行中のシナリオを停止する"
                     checked={draftStopScenarios}
                     onCheckedChange={setDraftStopScenarios}
                   />
+
+                  <div className="border-t border-gray-200 pt-3">
+                    <Checkbox
+                      label="カスタムデザインを使用"
+                      checked={draftCustomDesignEnabled}
+                      onCheckedChange={setDraftCustomDesignEnabled}
+                    />
+
+                    {draftCustomDesignEnabled && (
+                      <div className="mt-3 space-y-3 pl-1">
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500">ボタンカラー(16進、例 #d97786)</label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder="#06C755"
+                              value={draftPrimaryColor}
+                              onValueChange={setDraftPrimaryColor}
+                              className="flex-1"
+                            />
+                            {draftPrimaryColor && (
+                              <span className="h-8 w-8 flex-none rounded border border-gray-300" style={{ backgroundColor: draftPrimaryColor }} />
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500">背景カラー(※スマートフォンでは表示されません)</label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder="#f5f5f5"
+                              value={draftBackgroundColor}
+                              onValueChange={setDraftBackgroundColor}
+                              className="flex-1"
+                            />
+                            {draftBackgroundColor && (
+                              <span className="h-8 w-8 flex-none rounded border border-gray-300" style={{ backgroundColor: draftBackgroundColor }} />
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-500">フォーム背景カラー</label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              placeholder="#ffffff"
+                              value={draftFormBackgroundColor}
+                              onValueChange={setDraftFormBackgroundColor}
+                              className="flex-1"
+                            />
+                            {draftFormBackgroundColor && (
+                              <span className="h-8 w-8 flex-none rounded border border-gray-300" style={{ backgroundColor: draftFormBackgroundColor }} />
+                            )}
+                          </div>
+                        </div>
+
+                        <Input
+                          label="ヘッダー画像URL"
+                          placeholder="https://example.com/header.jpg"
+                          value={draftHeaderImageUrl}
+                          onValueChange={setDraftHeaderImageUrl}
+                        />
+
+                        <Input
+                          label="背景画像URL"
+                          placeholder="https://example.com/background.jpg"
+                          value={draftBackgroundImageUrl}
+                          onValueChange={setDraftBackgroundImageUrl}
+                        />
+
+                        <Checkbox
+                          label="ヘッダーアイコンを非表示にする"
+                          checked={draftHideHeaderIcon}
+                          onCheckedChange={setDraftHideHeaderIcon}
+                        />
+
+                        <div>
+                          <Checkbox
+                            label="カスタムCSSを使用"
+                            checked={draftCustomCssEnabled}
+                            onCheckedChange={setDraftCustomCssEnabled}
+                          />
+                          {draftCustomCssEnabled && (
+                            <>
+                              <p className="mt-1 text-[11px] text-amber-600">
+                                ※カスタムCSS使用時はフォームが使用できなくなる可能性があります。保存後は必ずプレビューで確認してください。
+                              </p>
+                              <InputArea
+                                className="mt-2 font-mono text-xs"
+                                rows={4}
+                                placeholder=".form-body { ... }"
+                                value={draftCustomCss}
+                                onChange={(e) => setDraftCustomCss(e.target.value)}
+                              />
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
