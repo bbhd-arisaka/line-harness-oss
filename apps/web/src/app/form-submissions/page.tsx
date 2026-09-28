@@ -8,12 +8,51 @@ import Header from '@/components/layout/header'
 import { displayFormName, sortFormsByLatestAnswer } from './form-list'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Button } from '@cloudflare/kumo/components/button'
+import { Checkbox } from '@cloudflare/kumo/components/checkbox'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Empty } from '@cloudflare/kumo/components/empty'
-import { Input } from '@cloudflare/kumo/components/input'
+import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { LayerCard } from '@cloudflare/kumo/components/layer-card'
 import { Loader } from '@cloudflare/kumo/components/loader'
+import { Select } from '@cloudflare/kumo/components/select'
 import { Table } from '@cloudflare/kumo/components/table'
+
+type FieldType = 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
+
+const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
+  { value: 'text', label: '1行テキスト' },
+  { value: 'textarea', label: '複数行テキスト' },
+  { value: 'email', label: 'メールアドレス' },
+  { value: 'tel', label: '電話番号' },
+  { value: 'number', label: '数値' },
+  { value: 'date', label: '日付' },
+  { value: 'select', label: 'プルダウン選択' },
+  { value: 'radio', label: '単一選択(ラジオ)' },
+  { value: 'checkbox', label: '複数選択(チェックボックス)' },
+]
+
+/** 選択肢を持つ項目タイプ。この3つだけ「選択肢」入力欄を出す。 */
+const OPTION_TYPES: FieldType[] = ['select', 'radio', 'checkbox']
+
+let fieldRowSeq = 0
+interface FieldDraft {
+  rowId: number
+  name: string
+  label: string
+  type: FieldType
+  required: boolean
+  optionsText: string // カンマ区切り。select/radio/checkbox のときだけ使う
+}
+
+/** ラベルから項目キー(name)を機械的に作る。英数字以外は捨て、空なら連番。 */
+function slugifyFieldName(label: string, index: number): string {
+  const slug = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9ぁ-んァ-ヶー一-龯]+/gi, '_')
+    .replace(/^_+|_+$/g, '')
+  return slug || `field_${index + 1}`
+}
 
 interface UsedByAccount {
   id: string
@@ -23,11 +62,20 @@ interface UsedByAccount {
   count: number
 }
 
+interface FormField {
+  name: string
+  label: string
+  type?: FieldType
+  required?: boolean
+  options?: string[]
+}
+
 interface Form {
   id: string
   name: string
   description: string | null
-  fields: Array<{ name: string; label: string; type?: string }>
+  fields: FormField[]
+  saveToMetadata?: boolean
   isActive: boolean
   submitCount?: number
   createdAt: string
@@ -35,9 +83,7 @@ interface Form {
   usedByAccounts: UsedByAccount[]
 }
 
-interface FormDetail extends Form {
-  fields: Array<{ name: string; label: string; type?: string }>
-}
+type FormDetail = Form
 
 interface Submission {
   id: string
@@ -92,10 +138,17 @@ export default function FormSubmissionsPage() {
   const [detailSubmission, setDetailSubmission] = useState<Submission | null>(null)
   const [query, setQuery] = useState('')
   const [formFilter, setFormFilter] = useState<FormFilter>('all')
-  const [editingForm, setEditingForm] = useState<Form | null>(null)
-  const [editingName, setEditingName] = useState('')
-  const [savingName, setSavingName] = useState(false)
-  const [renameError, setRenameError] = useState('')
+
+  // 作成・編集ダイアログ。editingFormId=null なら新規作成。
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editingFormId, setEditingFormId] = useState<string | null>(null)
+  const [editingUsedByAccounts, setEditingUsedByAccounts] = useState<UsedByAccount[]>([])
+  const [draftName, setDraftName] = useState('')
+  const [draftDescription, setDraftDescription] = useState('')
+  const [draftSaveToMetadata, setDraftSaveToMetadata] = useState(false)
+  const [draftFields, setDraftFields] = useState<FieldDraft[]>([])
+  const [savingForm, setSavingForm] = useState(false)
+  const [formError, setFormError] = useState('')
 
   const loadForms = useCallback(async () => {
     setLoading(true)
@@ -151,31 +204,85 @@ export default function FormSubmissionsPage() {
     loadSubmissions(formId)
   }
 
-  const openRename = (form: Form) => {
-    setEditingForm(form)
-    setEditingName(displayFormName(form.name))
-    setRenameError('')
+const openCreateForm = () => {
+    setEditingFormId(null)
+    setEditingUsedByAccounts([])
+    setDraftName('')
+    setDraftDescription('')
+    setDraftSaveToMetadata(false)
+    setDraftFields([])
+    setFormError('')
+    setEditorOpen(true)
   }
 
-  const saveName = async () => {
-    if (!editingForm || !editingName.trim() || savingName) return
-    const name = displayFormName(editingName)
-    setSavingName(true)
-    setRenameError('')
+  const openEditForm = (form: Form) => {
+    setEditingFormId(form.id)
+    setEditingUsedByAccounts(form.usedByAccounts)
+    setDraftName(displayFormName(form.name))
+    setDraftDescription(form.description ?? '')
+    setDraftSaveToMetadata(Boolean(form.saveToMetadata))
+    setDraftFields(
+      form.fields.map((f) => ({
+        rowId: fieldRowSeq++,
+        name: f.name,
+        label: f.label,
+        type: (f.type as FieldType) ?? 'text',
+        required: Boolean(f.required),
+        optionsText: (f.options ?? []).join(', '),
+      })),
+    )
+    setFormError('')
+    setEditorOpen(true)
+  }
+
+  const addDraftField = () => {
+    setDraftFields((rows) => [
+      ...rows,
+      { rowId: fieldRowSeq++, name: '', label: '', type: 'text', required: false, optionsText: '' },
+    ])
+  }
+
+  const saveForm = async () => {
+    const name = draftName.trim()
+    if (!name || savingForm) return
+    if (draftFields.some((f) => !f.label.trim())) {
+      setFormError('すべての項目にラベルを入力してください。')
+      return
+    }
+    setSavingForm(true)
+    setFormError('')
     try {
-      const res = await fetchApi<{ success: boolean; data: Form }>(`/api/forms/${editingForm.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ name }),
-      })
-      if (!res.success) throw new Error('rename_failed')
-      setForms((current) => current.map((form) => (
-        form.id === editingForm.id ? { ...form, name } : form
-      )))
-      setEditingForm(null)
+      const fields = draftFields.map((f, i) => ({
+        name: f.name.trim() || slugifyFieldName(f.label, i),
+        label: f.label.trim(),
+        type: f.type,
+        required: f.required,
+        ...(OPTION_TYPES.includes(f.type)
+          ? { options: f.optionsText.split(',').map((o) => o.trim()).filter(Boolean) }
+          : {}),
+      }))
+      const payload = {
+        name: displayFormName(name),
+        description: draftDescription.trim() || null,
+        saveToMetadata: draftSaveToMetadata,
+        fields,
+      }
+      const res = editingFormId
+        ? await fetchApi<{ success: boolean; data: Form }>(`/api/forms/${editingFormId}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          })
+        : await fetchApi<{ success: boolean; data: Form }>('/api/forms', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          })
+      if (!res.success) throw new Error('save_failed')
+      setEditorOpen(false)
+      await loadForms()
     } catch {
-      setRenameError('フォーム名を変更できませんでした。もう一度お試しください。')
+      setFormError('保存できませんでした。もう一度お試しください。')
     } finally {
-      setSavingName(false)
+      setSavingForm(false)
     }
   }
 
@@ -223,7 +330,12 @@ export default function FormSubmissionsPage() {
 
   return (
     <div>
-      <Header title="フォーム回答" description="送信されたフォームを件数・配信アカウント・回答内容まで一覧で確認" />
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <Header title="フォーム回答" description="送信されたフォームを件数・配信アカウント・回答内容まで一覧で確認" />
+        <Button type="button" variant="primary" size="sm" onClick={openCreateForm} className="flex-none">
+          + フォームを新規作成
+        </Button>
+      </div>
 
       {/* Form cards */}
       <section className="mb-6">
@@ -267,7 +379,11 @@ export default function FormSubmissionsPage() {
         {loading ? (
           <Loader />
         ) : forms.length === 0 ? (
-          <Empty title="フォームがまだありません" description="フォームが作成されると回答を確認できます。" />
+          <Empty
+            title="フォームがまだありません"
+            description="フォームが作成されると回答を確認できます。"
+            contents={<Button type="button" variant="primary" onClick={openCreateForm}>+ フォームを新規作成</Button>}
+          />
         ) : (
           filteredForms.length === 0 ? (
             <Empty title="条件に合うフォームがありません" description="検索条件を変更してください。" />
@@ -345,10 +461,10 @@ export default function FormSubmissionsPage() {
                     size="xs"
                     shape="square"
                     variant="ghost"
-                    onClick={() => openRename(form)}
+                    onClick={() => openEditForm(form)}
                     className="absolute right-3 top-3 opacity-60 group-hover:opacity-100"
-                    aria-label={`${normalizedName}の名前を変更`}
-                    title="フォーム名を変更"
+                    aria-label={`${normalizedName}を編集`}
+                    title="フォームを編集"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931ZM19.5 7.125 16.875 4.5M18 13.5V19.125A1.875 1.875 0 0 1 16.125 21H4.875A1.875 1.875 0 0 1 3 19.125V7.875A1.875 1.875 0 0 1 4.875 6H10.5" />
@@ -540,48 +656,108 @@ export default function FormSubmissionsPage() {
         </div>
       )}
 
-      {/* Rename dialog */}
-      <Dialog.Root open={editingForm !== null} onOpenChange={(open) => { if (!open && !savingName) setEditingForm(null) }}>
-          <Dialog className="w-full max-w-md p-5">
-            <Dialog.Title>フォーム名を変更</Dialog.Title>
-            <p className="mt-1 text-xs text-gray-400">
-              回答データやURLは変わりませんが、回答者に表示されるフォーム名も変わります。
-            </p>
+      {/* フォーム作成・編集ダイアログ */}
+      <Dialog.Root open={editorOpen} onOpenChange={(open) => { if (!open && !savingForm) setEditorOpen(false) }}>
+          <Dialog className="w-full max-w-lg p-5 max-h-[85vh] overflow-y-auto">
+            <Dialog.Title>{editingFormId ? 'フォームを編集' : 'フォームを新規作成'}</Dialog.Title>
             <p className="mt-1 text-xs text-gray-400">推奨：サービス名｜目的（対象・導線）</p>
-            <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-gray-500">
-              <span className="rounded bg-gray-100 px-2 py-1">質問 {editingForm?.fields.length ?? 0}項目</span>
-              {(editingForm?.usedByAccounts ?? []).map((account) => (
-                <span key={account.id} className="rounded bg-gray-100 px-2 py-1">
-                  {account.name}
-                </span>
-              ))}
+            {editingUsedByAccounts.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-gray-500">
+                {editingUsedByAccounts.map((account) => (
+                  <span key={account.id} className="rounded bg-gray-100 px-2 py-1">{account.name}</span>
+                ))}
+              </div>
+            )}
+
+            <Input
+              label="フォーム名"
+              autoFocus
+              value={draftName}
+              onChange={(event) => setDraftName(event.target.value)}
+              className="mt-4"
+            />
+            <InputArea
+              label="説明(任意・回答者には表示されません)"
+              value={draftDescription}
+              onChange={(event) => setDraftDescription(event.target.value)}
+              className="mt-3"
+              rows={2}
+            />
+            <Checkbox
+              className="mt-3"
+              label="回答内容を友だち情報(本名など)として保存する"
+              checked={draftSaveToMetadata}
+              onCheckedChange={setDraftSaveToMetadata}
+            />
+
+            <div className="mt-5">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-semibold text-gray-700">質問項目</h4>
+                <Button type="button" size="xs" variant="secondary" onClick={addDraftField}>+ 項目を追加</Button>
+              </div>
+
+              {draftFields.length === 0 ? (
+                <p className="text-xs text-gray-400">まだ項目がありません。「項目を追加」で本名・電話番号などを追加してください。</p>
+              ) : (
+                <div className="space-y-3">
+                  {draftFields.map((field, i) => (
+                    <div key={field.rowId} className="rounded-lg border border-gray-200 p-3">
+                      <div className="flex items-start gap-2">
+                        <Input
+                          className="min-w-0 flex-1"
+                          aria-label="質問ラベル"
+                          placeholder="質問ラベル (例: 本名)"
+                          value={field.label}
+                          onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, label: v } : r)))}
+                        />
+                        <Select
+                          aria-label="回答形式"
+                          value={field.type}
+                          onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, type: v as FieldType } : r)))}
+                          items={FIELD_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                        />
+                        <button
+                          type="button"
+                          aria-label="この項目を削除"
+                          className="mt-2 flex-none text-gray-400 hover:text-red-600"
+                          onClick={() => setDraftFields((rows) => rows.filter((_, ri) => ri !== i))}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      {OPTION_TYPES.includes(field.type) && (
+                        <Input
+                          className="mt-2"
+                          aria-label="選択肢(カンマ区切り)"
+                          placeholder="選択肢をカンマ区切りで (例: 20代, 30代, 40代以上)"
+                          value={field.optionsText}
+                          onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, optionsText: v } : r)))}
+                        />
+                      )}
+                      <Checkbox
+                        className="mt-2"
+                        label="必須項目にする"
+                        checked={field.required}
+                        onCheckedChange={(checked) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, required: checked } : r)))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-              <Input
-                label="フォーム名"
-                autoFocus
-                value={editingName}
-                onChange={(event) => setEditingName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void saveName()
-                }}
-                className="mt-4"
-              />
-            {renameError && <Banner className="mt-2" size="sm" variant="error" title="変更できませんでした" description={renameError} />}
+
+            {formError && <Banner className="mt-3" size="sm" variant="error" title="保存できませんでした" description={formError} />}
+
             <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setEditingForm(null)}
-                disabled={savingName}
-              >
+              <Button type="button" variant="secondary" onClick={() => setEditorOpen(false)} disabled={savingForm}>
                 キャンセル
               </Button>
               <Button
                 type="button"
                 variant="primary"
-                loading={savingName}
-                onClick={() => void saveName()}
-                disabled={!editingName.trim() || savingName}
+                loading={savingForm}
+                onClick={() => void saveForm()}
+                disabled={!draftName.trim() || savingForm}
               >
                 保存
               </Button>
