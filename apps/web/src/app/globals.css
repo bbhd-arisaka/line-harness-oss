@@ -1,12 +1,13 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
 @source "../../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
 @import "@cloudflare/kumo/styles/tailwind";
 @import "tailwindcss";
 
 @theme {
-  --color-kumo-brand: #06c755;
-  --color-kumo-brand-hover: #05ad4d;
-  --text-color-kumo-brand: #087a36;
-  --color-harness-accent: #06c755;
+  --color-kumo-brand: #069e04;
+  --color-kumo-brand-hover: #058503;
+  --text-color-kumo-brand: #058503;
+  --color-harness-accent: #069e04;
   --color-harness-canvas: #f7f8fa;
   --color-harness-ink: #101828;
   --color-harness-line: #e4e7ec;

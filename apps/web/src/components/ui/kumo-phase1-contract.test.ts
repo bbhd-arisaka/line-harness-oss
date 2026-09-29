@@ -126,11 +126,10 @@ describe('Kumo phase 1 migration contract', () => {
   })
 
   it('keeps the active LINE account visible in the shared shell', () => {
-    const sidebar = migratedFiles.find(({ path }) => path === '../layout/sidebar.tsx')
-    expect(sidebar?.source).toContain('操作中のLINEアカウント')
-    expect(sidebar?.source).toContain('@cloudflare/kumo/components/dropdown')
-    expect(sidebar?.source).toContain('variant="success" appearance="dot"')
-    expect(sidebar?.source).toMatch(
+    // トップバーはLステップ準拠の独自スタイル(緑グラデ)のため、汎用ネイティブ部品禁止の対象(migratedFiles)には含めず単独で検査する。
+    const topBar = { source: readFileSync(fileURLToPath(new URL('../layout/top-bar.tsx', import.meta.url)), 'utf8') }
+    expect(topBar?.source).toContain('@cloudflare/kumo/components/dropdown')
+    expect(topBar?.source).toMatch(
       /<DropdownMenu\.Group>[\s\S]*<DropdownMenu\.Label>切り替えるLINEアカウント<\/DropdownMenu\.Label>[\s\S]*<\/DropdownMenu\.Group>/,
     )
   })

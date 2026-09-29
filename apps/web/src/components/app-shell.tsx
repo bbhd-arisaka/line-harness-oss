@@ -1,6 +1,8 @@
 'use client'
 import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 import Sidebar from './layout/sidebar'
+import TopBar from './layout/top-bar'
 import { UpdateBanner } from './update/update-banner'
 import { QuotaBanner } from './quota-banner'
 import AuthGuard from './auth-guard'
@@ -8,6 +10,8 @@ import { AccountProvider } from '@/contexts/account-context'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [menuCollapsed, setMenuCollapsed] = useState(false)
 
   if (pathname === '/login' || pathname === '/ui-preview') {
     return <>{children}</>
@@ -33,17 +37,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               upgrade once /admin/version + manifest resolve. */}
           <UpdateBanner />
           <QuotaBanner />
+          <TopBar
+            onToggleMenu={() => {
+              if (window.matchMedia('(min-width: 1024px)').matches) setMenuCollapsed((v) => !v)
+              else setMobileMenuOpen((v) => !v)
+            }}
+          />
           <div className="flex flex-1 min-h-0">
-            <Sidebar />
+            <Sidebar
+              mobileOpen={mobileMenuOpen}
+              onMobileClose={() => setMobileMenuOpen(false)}
+              collapsed={menuCollapsed}
+            />
             <main
-              className={`flex-1 pt-[72px] lg:pt-0 ${
+              className={`flex-1 ${
                 isFullBleed ? 'min-w-0 min-h-0 flex flex-col overflow-hidden' : 'overflow-auto'
               }`}
             >
               {isFullBleed ? (
                 children
               ) : (
-                <div className="px-4 pb-6 sm:px-6 lg:pt-8 lg:px-8 lg:pb-8">
+                <div className="px-4 py-6 sm:px-6 lg:px-8 lg:pb-8">
                   {children}
                 </div>
               )}
