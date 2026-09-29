@@ -15,7 +15,6 @@ import {
   createFormSubmission,
   countFormSubmissions,
   getLatestSubmissionForFriend,
-  getFriendByLineUserId,
   getFriendById,
   getLineAccountById,
   jstNow,
@@ -30,6 +29,7 @@ import { checkDateAgainstRule, parseYmd, type DateRule } from '../lib/date-rules
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
+import { findCallerFriend } from '../services/caller-friend.js';
 import { exportSubmissionToGoogleSheet } from '../services/google-sheets-export.js';
 import { pushViaHarnessProxy } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
@@ -416,7 +416,7 @@ forms.get('/api/forms/:id', async (c) => {
     let previousAnswer: Record<string, unknown> | null = null;
     if (!c.get('staff') && form.restore_previous_answer) {
       const lineUserId = await verifyCallerLineUserId(c.req.header('Authorization'), c.env);
-      const friend = lineUserId ? await getFriendByLineUserId(c.env.DB, lineUserId) : null;
+      const friend = lineUserId ? await findCallerFriend(c.env.DB, lineUserId, c.req.header('X-Liff-Id')) : null;
       if (friend) {
         const previous = await getLatestSubmissionForFriend(c.env.DB, id, friend.id);
         if (previous) {
@@ -703,7 +703,7 @@ forms.post('/api/forms/:id/opened', async (c) => {
     // IDs are intentionally ignored.
     const lineUserId = await verifyCallerLineUserId(c.req.header('Authorization'), c.env);
     const friend = lineUserId
-      ? await getFriendByLineUserId(c.env.DB, lineUserId)
+      ? await findCallerFriend(c.env.DB, lineUserId, c.req.header('X-Liff-Id'))
       : null;
 
     const now = jstNow();
@@ -733,7 +733,7 @@ forms.post('/api/forms/:id/partial', async (c) => {
       return c.json({ success: false, error: 'Unauthorized' }, 401);
     }
 
-    const friend = await getFriendByLineUserId(c.env.DB, lineUserId);
+    const friend = await findCallerFriend(c.env.DB, lineUserId, c.req.header('X-Liff-Id'));
 
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
@@ -789,7 +789,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
     if (!lineUserId) {
       return c.json({ success: false, error: 'Unauthorized' }, 401);
     }
-    const friend = await getFriendByLineUserId(c.env.DB, lineUserId);
+    const friend = await findCallerFriend(c.env.DB, lineUserId, c.req.header('X-Liff-Id'));
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }

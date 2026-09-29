@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { getFormById, getFriendByLineUserId } from '@line-crm/db';
+import { getFormById } from '@line-crm/db';
+import { findCallerFriend } from '../services/caller-friend.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
 import type { Env } from '../index.js';
 
@@ -29,7 +30,7 @@ formUploads.post('/api/forms/:id/upload', async (c) => {
 
     const lineUserId = await verifyCallerLineUserId(c.req.header('Authorization'), c.env);
     if (!lineUserId) return c.json({ success: false, error: 'Unauthorized' }, 401);
-    const friend = await getFriendByLineUserId(c.env.DB, lineUserId);
+    const friend = await findCallerFriend(c.env.DB, lineUserId, c.req.header('X-Liff-Id'));
     if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
 
     const form = await getFormById(c.env.DB, formId);

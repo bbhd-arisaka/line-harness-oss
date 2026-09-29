@@ -202,11 +202,14 @@ function escapeHtml(str: string): string {
 
 function apiCall(path: string, options?: RequestInit): Promise<Response> {
   const idToken = liff.getIDToken();
+  const liffIdParam = new URLSearchParams(window.location.search).get('liffId');
   return fetch(path, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      // どの公式アカウントのLIFFから開いたか(同じ人が複数アカウントの友だちでも取り違えないため)
+      ...(liffIdParam ? { 'X-Liff-Id': liffIdParam } : {}),
       ...options?.headers,
     },
   });
