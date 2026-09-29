@@ -54,8 +54,8 @@ const menuSections: MenuSection[] = [
     items: [
       { href: '/tags', label: 'タグ管理' },
       { href: '/friend-fields', label: '友だち情報欄管理' },
-      { href: '/duplicates', label: '重複検出' },
-      { href: '/users', label: 'ユーザー一覧' },
+      // 重複検出・ユーザー一覧は、同一人物をアカウントをまたいで結合する機能のため非表示
+      // (友だちはアカウントごとに別の人として扱う)
     ],
   },
   {
@@ -65,7 +65,7 @@ const menuSections: MenuSection[] = [
       { href: '/inflow-links', label: '流入経路分析' },
       { href: '/conversions', label: 'コンバージョン管理' },
       { href: '/affiliates', label: 'アフィリエイト' },
-      { href: '/scoring', label: 'マイル' },
+      // マイルは、アカウントをまたぐ機能のため非表示
     ],
   },
   {

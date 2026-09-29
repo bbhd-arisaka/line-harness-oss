@@ -358,6 +358,10 @@ broadcasts.post('/api/broadcasts', async (c) => {
       );
     }
 
+    if ((body.targetType as string) === 'multi-account-dedup') {
+      // 友だちはアカウントごとに別の人として扱うため、アカウントをまたぐ重複除外配信は新規作成不可
+      return c.json({ success: false, error: '複数アカウントをまたぐ重複除外配信は利用できません(友だちはアカウントごとに別の人として扱います)' }, 400);
+    }
     if (body.targetType === 'multi-account-dedup') {
       if (!Array.isArray(body.accountIds) || body.accountIds.length < 1) {
         return c.json({ success: false, error: 'accountIds (length >= 1) required for multi-account-dedup' }, 400);

@@ -240,7 +240,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
             size="sm"
             value={form.targetType}
             onValueChange={(value) => setForm({ ...form, targetType: value as ApiBroadcast['targetType'], targetTagId: value === 'tag' ? form.targetTagId : '' })}
-            tabs={[{ value: 'all', label: '全員' }, { value: 'tag', label: 'タグで絞り込み' }, { value: 'multi-account-dedup', label: '複数アカ重複除外' }]}
+            tabs={[{ value: 'all', label: '全員' }, { value: 'tag', label: 'タグで絞り込み' }]}
           />
           {form.targetType === 'tag' && (
             <Select
