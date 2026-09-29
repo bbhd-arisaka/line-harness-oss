@@ -23,8 +23,10 @@ import {
   stopAllFriendScenarios,
   updateFriendRegistrationFields,
   removeTagFromFriend,
+  enrollFriendInReminder,
 } from '@line-crm/db';
 import type { FormLstepOptions } from '@line-crm/db';
+import { checkDateAgainstRule, parseYmd, type DateRule } from '../lib/date-rules.js';
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
@@ -817,6 +819,10 @@ forms.post('/api/forms/:id/submit', async (c) => {
       optionActions?: Record<string, { addTagIds?: string[]; removeTagIds?: string[]; scenarioId?: string }>;
       // 選択肢ごとの定員数(先着)
       optionCapacity?: Record<string, number>;
+      // 日付ブロックの入力制限・リマインダ連携
+      dateRule?: DateRule;
+      reminderId?: string;
+      reminderTime?: string;
     }>;
 
     for (const field of fields) {
@@ -827,6 +833,25 @@ forms.post('/api/forms/:id/submit', async (c) => {
             { success: false, error: `${field.label} は必須項目です` },
             400,
           );
+        }
+      }
+    }
+
+    // 日付ブロックの入力制限(開始日・終了日・曜日・祝日)と、ファイルブロックの値の検証。
+    {
+      const today = parseYmd(jstNow().slice(0, 10)) ?? new Date();
+      for (const field of fields) {
+        const val = submissionData[field.name];
+        if (val === undefined || val === null || val === '') continue;
+        if (field.type === 'date') {
+          const err = checkDateAgainstRule(String(val), field.dateRule, today);
+          if (err) return c.json({ success: false, error: `${field.label}: ${err}` }, 400);
+        }
+        if (field.type === 'file') {
+          // 添付ファイルは、このフォームの upload API で保存したものだけを受け付ける
+          if (typeof val !== 'string' || !val.includes(`/api/form-uploads/${formId}/`)) {
+            return c.json({ success: false, error: `${field.label}: 添付ファイルが正しくありません` }, 400);
+          }
         }
       }
     }
@@ -1041,6 +1066,15 @@ forms.post('/api/forms/:id/submit', async (c) => {
         }
         for (const scenarioId of scenarioIdsToStart) {
           sideEffects.push(enrollFriendInScenario(db, friendId, scenarioId));
+        }
+        // 日付ブロックの「リマインダを設定」: 回答者が入力した日付(+時刻)を基準に、リマインダ配信へ登録する
+        for (const field of fields) {
+          const v = submissionData[field.name];
+          if (field.type !== 'date' || !field.reminderId || typeof v !== 'string' || !parseYmd(v)) continue;
+          const time = /^\d{2}:\d{2}$/.test(field.reminderTime ?? '') ? field.reminderTime! : '12:00';
+          sideEffects.push(
+            enrollFriendInReminder(db, { friendId, reminderId: field.reminderId, targetDate: `${v}T${time}:00.000+09:00` }),
+          );
         }
       }
 

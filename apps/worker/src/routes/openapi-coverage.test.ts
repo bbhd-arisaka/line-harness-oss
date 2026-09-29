@@ -115,9 +115,11 @@ const CLIENT_ONLY: readonly string[] = [
   'POST /api/webhooks/outgoing',
   'PUT /api/webhooks/incoming/{id}',
   'PUT /api/webhooks/outgoing/{id}',
-  // forms (2)
+  // forms (3)
   'POST /api/forms/{id}/opened',
   'POST /api/forms/{id}/partial',
+  // 回答者(LIFF)が ID トークンで本人確認して呼ぶ、ファイルブロックのアップロード口
+  'POST /api/forms/{id}/upload',
 ];
 
 /**

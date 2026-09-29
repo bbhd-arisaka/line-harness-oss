@@ -1,5 +1,17 @@
 // 回答フォーム編集画面(Lステップ準拠)で使う型と、API とのデータ変換。
 
+export type DateBound =
+  | { mode: 'none' }
+  | { mode: 'relative'; days: number }
+  | { mode: 'fixed'; date: string }
+
+export interface DateRule {
+  start?: DateBound
+  end?: DateBound
+  weekdays?: number[]
+  holiday?: 'ignore' | 'allow' | 'deny'
+}
+
 export type FieldType =
   | 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
   | 'prefecture' | 'file' | 'heading' | 'subheading' | 'paragraph' | 'image' | 'button'
@@ -110,6 +122,13 @@ export interface BlockDraft {
   buttonStyle: 'default' | 'outline' | 'rounded'
   buttonColor: string
   fileKind: 'image' | 'pdf'
+  // 日付ブロック
+  dateFormat: 'calendar' | 'ymd'
+  dateLimitOn: boolean
+  dateRule: DateRule
+  reminderOn: boolean
+  reminderId: string
+  reminderTime: string
 }
 
 export function newBlock(type: FieldType, section: number): BlockDraft {
@@ -143,6 +162,12 @@ export function newBlock(type: FieldType, section: number): BlockDraft {
     buttonStyle: 'default',
     buttonColor: '',
     fileKind: 'image',
+    dateFormat: 'calendar',
+    dateLimitOn: false,
+    dateRule: {},
+    reminderOn: false,
+    reminderId: '',
+    reminderTime: '12:00',
   }
 }
 
@@ -159,6 +184,7 @@ export function duplicateBlock(b: BlockDraft): BlockDraft {
     optionActions: JSON.parse(JSON.stringify(b.optionActions)),
     defaultOptions: [...b.defaultOptions],
     optionCapacity: { ...b.optionCapacity },
+    dateRule: JSON.parse(JSON.stringify(b.dateRule)),
   }
 }
 
@@ -191,6 +217,10 @@ export interface ApiField {
   buttonStyle?: 'default' | 'outline' | 'rounded'
   buttonColor?: string
   fileKind?: 'image' | 'pdf'
+  dateFormat?: 'calendar' | 'ymd'
+  dateRule?: DateRule
+  reminderId?: string
+  reminderTime?: string
 }
 
 export function blockFromApi(f: ApiField): BlockDraft {
@@ -229,6 +259,12 @@ export function blockFromApi(f: ApiField): BlockDraft {
     buttonStyle: f.buttonStyle ?? 'default',
     buttonColor: f.buttonColor ?? '',
     fileKind: f.fileKind ?? 'image',
+    dateFormat: f.dateFormat ?? 'calendar',
+    dateLimitOn: Boolean(f.dateRule),
+    dateRule: f.dateRule ?? {},
+    reminderOn: Boolean(f.reminderId),
+    reminderId: f.reminderId ?? '',
+    reminderTime: f.reminderTime ?? '12:00',
   }
 }
 
@@ -291,6 +327,20 @@ export function blocksToApi(blocks: BlockDraft[]): ApiField[] {
       if (b.buttonColor) f.buttonColor = b.buttonColor
     }
     if (b.type === 'file' && b.fileKind !== 'image') f.fileKind = b.fileKind
+    if (b.type === 'date') {
+      if (b.dateFormat !== 'calendar') f.dateFormat = b.dateFormat
+      if (b.dateLimitOn) {
+        const r = b.dateRule
+        const bound = (x?: DateBound) => (x && x.mode !== 'none' ? x : undefined)
+        f.dateRule = {
+          ...(bound(r.start) ? { start: bound(r.start) } : {}),
+          ...(bound(r.end) ? { end: bound(r.end) } : {}),
+          ...(r.weekdays && r.weekdays.length > 0 ? { weekdays: r.weekdays } : {}),
+          ...(r.holiday && r.holiday !== 'ignore' ? { holiday: r.holiday } : {}),
+        }
+      }
+      if (b.reminderOn && b.reminderId) { f.reminderId = b.reminderId; f.reminderTime = b.reminderTime }
+    }
     if (!DISPLAY_ONLY_TYPES.includes(b.type)) {
       if (b.open.description && b.description.trim()) f.description = b.description.trim()
       if (b.open.defaultValue && b.defaultValue) f.defaultValue = b.defaultValue

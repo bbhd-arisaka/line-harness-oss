@@ -54,6 +54,14 @@ export default function FriendsPage() {
   const [responseFilter, setResponseFilter] = useState<ResponseFilter>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // 友だち情報欄一覧の「友だち人数」から来たときの絞り込み(その項目に値が入っている友だち)
+  const [fieldFilter, setFieldFilter] = useState<{ key: string; label: string } | null>(null)
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const key = q.get('fieldKey')
+    if (key) setFieldFilter({ key, label: q.get('fieldLabel') || key })
+  }, [])
 
   const loadTags = useCallback(async () => {
     try {
@@ -77,6 +85,7 @@ export default function FriendsPage() {
         includeChatStatus: true,
         sort: sortMode,
         handled: responseFilter === 'unhandled' ? 'unhandled' : undefined,
+        fieldKey: fieldFilter?.key,
       })
       if (res.success) {
         setFriends(res.data.items)
@@ -89,7 +98,7 @@ export default function FriendsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, selectedTagId, selectedAccountId, searchSubmitted, sortMode, responseFilter])
+  }, [page, selectedTagId, selectedAccountId, searchSubmitted, sortMode, responseFilter, fieldFilter])
 
   useEffect(() => {
     loadTags()
@@ -140,6 +149,23 @@ export default function FriendsPage() {
         title="友だちリスト"
         description="友だちの検索や、詳細情報の確認ができます。"
       />
+
+      {fieldFilter && (
+        <div className="mb-3 flex items-center gap-2 text-sm">
+          <span className="inline-flex items-center gap-2 rounded bg-[#e6f5e5] px-3 py-1.5 font-bold text-[#069e04]">
+            友だち情報欄「{fieldFilter.label}」に値がある友だち
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              aria-label="絞り込みを解除"
+              onClick={() => { setFieldFilter(null); setPage(1); window.history.replaceState(null, '', window.location.pathname) }}
+            >
+              ×
+            </Button>
+          </span>
+        </div>
+      )}
 
       <LayerCard className="mb-4 p-4">
         <form onSubmit={handleSearchSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-center">

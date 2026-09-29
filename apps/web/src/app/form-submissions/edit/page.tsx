@@ -58,6 +58,7 @@ export default function FormEditPage() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
   const [scenarios, setScenarios] = useState<Array<{ id: string; name: string }>>([])
+  const [reminders, setReminders] = useState<Array<{ id: string; name: string }>>([])
   const [pickerFields, setPickerFields] = useState<PickerField[]>([])
   const [pickerFolders, setPickerFolders] = useState<PickerFolder[]>([])
   const [sheetsEmail, setSheetsEmail] = useState<string | null>(null)
@@ -82,10 +83,11 @@ export default function FormEditPage() {
     setFormId(id)
     ;(async () => {
       try {
-        const [fRes, tRes, sRes, dRes, pfRes, gRes] = await Promise.all([
+        const [fRes, tRes, sRes, rRes, dRes, pfRes, gRes] = await Promise.all([
           fetchApi<{ success: boolean; data: Folder[] }>('/api/forms/folders'),
           api.tags.list(),
           api.scenarios.list(),
+          api.reminders.list(),
           fetchApi<{ success: boolean; data: PickerField[] }>('/api/friend-fields/definitions'),
           fetchApi<{ success: boolean; data: PickerFolder[] }>('/api/friend-fields/folders'),
           fetchApi<{ success: boolean; data: { serviceAccountEmail: string | null } }>('/api/forms/integrations/google-sheets').catch(() => null),
@@ -93,6 +95,7 @@ export default function FormEditPage() {
         if (fRes.success) setFolders(fRes.data)
         if (tRes.success) setTags(tRes.data.map((t) => ({ id: t.id, name: t.name })))
         if (sRes.success) setScenarios(sRes.data.map((s) => ({ id: s.id, name: s.name })))
+        if (rRes.success) setReminders(rRes.data.map((r) => ({ id: r.id, name: r.name })))
         if (dRes.success) setPickerFields(dRes.data)
         if (pfRes.success) setPickerFolders(pfRes.data)
         if (gRes && gRes.success) setSheetsEmail(gRes.data.serviceAccountEmail)
@@ -430,6 +433,7 @@ export default function FormEditPage() {
                     pickerFolders={pickerFolders}
                     tags={tags}
                     scenarios={scenarios}
+                    reminders={reminders}
                     onFieldCreated={(f) => setPickerFields((prev) => [...prev, f])}
                     onSelect={() => setSelectedRowId(b.rowId)}
                     onChange={(p) => updateBlock(b.rowId, p)}

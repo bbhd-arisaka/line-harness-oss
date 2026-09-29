@@ -350,7 +350,12 @@ export default function FriendFieldsPage() {
                   </Link>
                   <span>{FIELD_TYPE_LABEL[d.fieldType] ?? '標準'}</span>
                   <span className="truncate pr-3">{d.defaultValue || '-'}</span>
-                  <span className="text-right text-[#2b7bb9] underline">{(d.friendCount ?? 0).toLocaleString('ja-JP')}人</span>
+                  <Link
+                    href={`/friends?fieldKey=${encodeURIComponent(d.fieldKey)}&fieldLabel=${encodeURIComponent(d.label)}`}
+                    className="text-right text-[#2b7bb9] underline"
+                  >
+                    {(d.friendCount ?? 0).toLocaleString('ja-JP')}人
+                  </Link>
                   <div className="relative flex items-center justify-end gap-1">
                     <button type="button" aria-label="お気に入り" onClick={() => void toggleFavorite(d)} className="p-1">
                       <Star filled={d.isFavorite} />

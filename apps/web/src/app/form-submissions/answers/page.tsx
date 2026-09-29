@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { fetchApi } from '@/lib/api'
 import Header from '@/components/layout/header'
 import { displayFormName } from '../form-list'
+import { FieldValue, isUploadedFileUrl } from '@/components/friends/field-value'
 
 interface Submission {
   id: string
@@ -156,7 +157,9 @@ export default function FormAnswersPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 text-xs">{formatDateTime(s.createdAt)}</td>
                   {shownKeys.map((k) => (
-                    <td key={k} className="max-w-[14rem] truncate px-3">{formatValue(s.data[k])}</td>
+                    <td key={k} className="max-w-[14rem] truncate px-3">
+                      {isUploadedFileUrl(s.data[k]) ? '📎 添付あり' : formatValue(s.data[k])}
+                    </td>
                   ))}
                   {keys.length > 4 && <td className="whitespace-nowrap px-3 text-xs text-[#757578]">他{keys.length - 4}項目</td>}
                 </tr>
@@ -206,7 +209,7 @@ export default function FormAnswersPage() {
                     keys.map((k) => (
                       <div key={k}>
                         <dt className="text-[11px] text-[#757578]">{labelOf[k] || k}</dt>
-                        <dd className="whitespace-pre-wrap break-words text-sm">{formatValue(detail.data[k])}</dd>
+                        <dd className="break-words text-sm"><FieldValue value={detail.data[k]} /></dd>
                       </div>
                     ))
                   )}

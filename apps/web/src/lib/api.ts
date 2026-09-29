@@ -206,6 +206,8 @@ export type FriendListParams = {
   sort?: 'recent' | 'oldest'
   /** `unhandled` で「最新が未返信の incoming」だけに絞る (サーバ側 SQL filter). */
   handled?: 'unhandled'
+  /** 友だち情報欄のキー。その項目に値が入っている友だちだけに絞る。 */
+  fieldKey?: string
 }
 
 export type FriendWithTags = Friend & { tags: Tag[] }
@@ -339,6 +341,7 @@ export const api = {
       if (params?.includeChatStatus) query.includeChatStatus = 'true'
       if (params?.sort) query.sort = params.sort
       if (params?.handled) query.handled = params.handled
+      if (params?.fieldKey) query.fieldKey = params.fieldKey
       return fetchApi<ApiResponse<PaginatedResponse<FriendListItem>>>(
         '/api/friends?' + new URLSearchParams(query)
       )
@@ -1683,6 +1686,12 @@ export const api = {
         // Optional during rolling deploys when an older worker is live.
         computedAt?: string;
       }>>(options?.forceRefresh ? '/api/duplicates/stats?refresh=1' : '/api/duplicates/stats'),
+  },
+  media: {
+    /** 登録メディア一覧(R2 にアップロード済みの画像。新しい順) */
+    list: () =>
+      fetchApi<ApiResponse<Array<{ key: string; url: string; name: string; mimeType: string; size: number; uploadedAt: string }>>>('/api/media'),
+    delete: (key: string) => fetchApi<ApiResponse<null>>(`/api/images/${encodeURIComponent(key)}`, { method: 'DELETE' }),
   },
   uploads: {
     /**

@@ -1,6 +1,7 @@
 'use client'
 
 import { resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
+import { FieldValue } from '@/components/friends/field-value'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { api, fetchApi } from '@/lib/api'
@@ -28,6 +29,7 @@ interface FriendFieldFolder {
 interface FriendFieldDefinition {
   id: string
   folderId: string | null
+  optionColors?: string[]
   fieldKey: string
   label: string
   fieldType: 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'image' | 'pdf' | 'select' | 'radio' | 'checkbox'
@@ -375,7 +377,12 @@ export default function FriendDetailPage() {
                   return (
                     <div key={def.id} className="grid gap-1.5 sm:grid-cols-[160px_1fr] sm:items-start sm:gap-4">
                       <label className="pt-2 text-sm text-kumo-subtle">{def.label}</label>
-                      {def.fieldType === 'select' || def.fieldType === 'radio' ? (
+                      {def.fieldType === 'image' || def.fieldType === 'pdf' ? (
+                        <div className="pt-2 text-sm">
+                          <FieldValue value={value} />
+                          <p className="mt-1 text-[11px] text-kumo-subtle">ファイルは回答フォームの「ファイル」ブロックから登録されます。</p>
+                        </div>
+                      ) : def.fieldType === 'select' || def.fieldType === 'radio' ? (
                         <Select
                           aria-label={def.label}
                           value={value}

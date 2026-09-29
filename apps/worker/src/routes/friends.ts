@@ -130,6 +130,14 @@ friends.get('/api/friends', async (c) => {
       conditions.push('f.line_account_id = ?');
       binds.push(lineAccountId);
     }
+    // ?fieldKey=<友だち情報欄のキー> — その項目に値が入っている友だちだけ(友だち情報欄一覧の「友だち人数」リンク用)
+    const fieldKey = c.req.query('fieldKey');
+    if (fieldKey) {
+      conditions.push(
+        "json_extract(f.metadata, '$.' || ?) IS NOT NULL AND CAST(json_extract(f.metadata, '$.' || ?) AS TEXT) != ''",
+      );
+      binds.push(fieldKey, fieldKey);
+    }
     if (search) {
       conditions.push('f.display_name LIKE ?');
       binds.push(`%${search}%`);

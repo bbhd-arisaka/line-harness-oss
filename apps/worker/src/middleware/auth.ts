@@ -162,7 +162,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     method === 'POST' &&
     (/^\/api\/forms\/[^/]+\/submit$/.test(path) ||
       /^\/api\/forms\/[^/]+\/opened$/.test(path) ||
-      /^\/api\/forms\/[^/]+\/partial$/.test(path));
+      /^\/api\/forms\/[^/]+\/partial$/.test(path) ||
+      /^\/api\/forms\/[^/]+\/upload$/.test(path));
   if (isPublicFormAction) return next();
 
   if (

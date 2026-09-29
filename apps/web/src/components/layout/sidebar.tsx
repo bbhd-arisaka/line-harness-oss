@@ -72,6 +72,7 @@ const menuSections: MenuSection[] = [
     label: 'コンテンツ',
     icon: 'folder',
     items: [
+      { href: '/media', label: '登録メディア一覧' },
       { href: '/rich-menus', label: 'リッチメニュー' },
       { href: '/pools', label: 'プール管理' },
       { href: '/plugins', label: 'プラグインマーケット' },

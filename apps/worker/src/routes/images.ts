@@ -72,6 +72,38 @@ images.post('/api/images', async (c) => {
   }
 });
 
+// GET /api/media — 登録メディア一覧(Lステップの「登録メディア一覧」相当)。
+// フォームの画像ブロックや配信で使った画像を、アップロード済みの中から選べるようにする。
+// R2 直下の「{uuid}.{ext}」だけを対象にする(form-uploads/ など個人情報のフォルダは含めない)。
+images.get('/api/media', async (c) => {
+  try {
+    const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+    const items: Array<{ key: string; url: string; name: string; mimeType: string; size: number; uploadedAt: string }> = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < 5; page++) {
+      const res = await c.env.IMAGES.list({ delimiter: '/', limit: 1000, cursor, include: ['httpMetadata', 'customMetadata'] } as R2ListOptions);
+      for (const o of res.objects) {
+        if (o.key.includes('/')) continue;
+        items.push({
+          key: o.key,
+          url: `${workerUrl}/images/${o.key}`,
+          name: o.customMetadata?.originalFilename || o.key,
+          mimeType: o.httpMetadata?.contentType || '',
+          size: o.size,
+          uploadedAt: o.uploaded.toISOString(),
+        });
+      }
+      if (!res.truncated) break;
+      cursor = res.cursor;
+    }
+    items.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+    return c.json({ success: true, data: items });
+  } catch (err) {
+    console.error('GET /api/media error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // GET /images/:key — serve image (public, no auth)
 images.get('/images/:key', async (c) => {
   const key = c.req.param('key');

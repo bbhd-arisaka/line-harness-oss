@@ -716,6 +716,30 @@ const spec = {
       delete: { tags: ['FriendFields'], summary: '項目定義を削除', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Deleted' } } },
     },
 
+    // ── メディア・回答フォームの添付ファイル ────────────────────────────
+    '/api/media': {
+      get: {
+        tags: ['Forms'],
+        summary: '登録メディア一覧',
+        description:
+          'R2 にアップロード済みの画像(`POST /api/images` で登録したもの)を新しい順に返す。' +
+          '回答フォームの個人情報(`form-uploads/`)は含まない。フォームの画像ブロックや配信で再利用する。',
+        responses: { '200': { description: 'Media list' } },
+      },
+    },
+    '/api/form-uploads/{formId}/{file}': {
+      get: {
+        tags: ['Forms'],
+        summary: '回答フォームの添付ファイルを取得(管理者のみ)',
+        description: '回答者が「ファイル」ブロックで添付した画像/PDF。個人情報のため公開URLにはせず、管理者の認証が必要。',
+        parameters: [
+          { name: 'formId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'file', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'File' }, '404': { description: 'Not found' } },
+      },
+    },
+
     // ── Entry Routes（流入リンク）─────────────────────────────────────
     // 2026-08-25 追記。MCP にも OpenAPI にも無かったため、AI エージェントが
     // Traffic Pool だけ作って「タグもシナリオも発火しない /r/」を量産する事故が起きた。

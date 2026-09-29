@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { FriendFieldPicker, type PickerField, type PickerFolder } from './friend-field-picker'
 import { OptionActionDialog, OptionSettingsDialog } from './option-dialogs'
+import { MediaPickerModal } from '@/components/media/media-picker'
 import {
   BLOCK_TYPE_LABEL,
   CHOICE_TYPES,
@@ -15,6 +16,8 @@ import {
   targetKey,
   type BlockDraft,
   type ChoiceMode,
+  type DateBound,
+  type DateRule,
   type OptionAction,
   type RegistrationTarget,
 } from './editor-types'
@@ -62,6 +65,7 @@ export function BlockCard({
   pickerFolders,
   tags,
   scenarios,
+  reminders,
   onFieldCreated,
   onSelect,
   onChange,
@@ -73,12 +77,14 @@ export function BlockCard({
   pickerFolders: PickerFolder[]
   tags: Array<{ id: string; name: string }>
   scenarios: Array<{ id: string; name: string }>
+  reminders: Array<{ id: string; name: string }>
   onFieldCreated: (f: PickerField) => void
   onSelect: () => void
   onChange: (patch: Partial<BlockDraft>) => void
 }) {
   const [settingsFor, setSettingsFor] = useState<string | null>(null)
   const [actionFor, setActionFor] = useState<string | null>(null)
+  const [mediaOpen, setMediaOpen] = useState(false)
 
   const isDisplay = DISPLAY_ONLY_TYPES.includes(block.type)
   const isText = TEXT_INPUT_TYPES.includes(block.type)
@@ -175,6 +181,16 @@ export function BlockCard({
             </div>
           )}
 
+          {block.type === 'date' && (
+            <div className="order-last">
+              <Label>入力形式</Label>
+              <select className={selectCls} value={block.dateFormat} onChange={(e) => onChange({ dateFormat: e.target.value as 'calendar' | 'ymd' })}>
+                <option value="calendar">カレンダー</option>
+                <option value="ymd">年月日入力</option>
+              </select>
+            </div>
+          )}
+
           <div className="min-w-[14rem] flex-1">
             <Label>{block.type === 'paragraph' ? 'テキスト' : block.type === 'button' ? 'ボタン' : block.type === 'image' ? '画像の説明(代替テキスト)' : isHeading ? '見出し' : 'タイトル'}</Label>
             <div className="flex items-center gap-2">
@@ -209,8 +225,24 @@ export function BlockCard({
         {block.type === 'image' && (
           <div className="flex flex-wrap items-end gap-4">
             <div className="min-w-[16rem] flex-1">
-              <Label>画像URL</Label>
-              <input className={input} placeholder="https://example.com/image.jpg" value={block.imageUrl} onChange={(e) => onChange({ imageUrl: e.target.value })} />
+              <Label>画像</Label>
+              <div className="flex items-center gap-2">
+                {block.imageUrl && <img src={block.imageUrl} alt="" className="h-9 w-9 rounded border border-[#cacace] object-cover" />}
+                <button
+                  type="button"
+                  onClick={() => setMediaOpen(true)}
+                  className={`h-9 whitespace-nowrap rounded border px-3 text-xs font-bold ${block.imageUrl ? 'border-[#cacace] bg-white hover:bg-[#f7f7f9]' : 'border-[#e5451f] bg-[#fff8f6] text-[#e5451f]'}`}
+                >
+                  {block.imageUrl ? '変更' : 'なし(選択)'}
+                </button>
+                <input className={input} placeholder="または画像のURLを直接入力" value={block.imageUrl} onChange={(e) => onChange({ imageUrl: e.target.value })} />
+              </div>
+              <MediaPickerModal
+                open={mediaOpen}
+                selectedUrl={block.imageUrl}
+                onClose={() => setMediaOpen(false)}
+                onPick={(m) => { onChange({ imageUrl: m.url }); setMediaOpen(false) }}
+              />
             </div>
             <div>
               <Label>サイズ</Label>
@@ -437,11 +469,26 @@ export function BlockCard({
                   友だち情報に登録
                 </label>
               )}
+              {block.type === 'date' && (
+                <>
+                  <label className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={block.reminderOn} onChange={(e) => onChange({ reminderOn: e.target.checked })} />
+                    リマインダを設定
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={block.dateLimitOn} onChange={(e) => onChange({ dateLimitOn: e.target.checked })} />
+                    入力制限
+                  </label>
+                </>
+              )}
               <label className="flex items-center gap-1.5">
                 <input type="checkbox" checked={block.required} onChange={(e) => onChange({ required: e.target.checked })} />
                 必須
               </label>
             </div>
+            {block.type === 'date' && (
+              <DatePanels block={block} reminders={reminders} onChange={onChange} />
+            )}
             {friendOnly && hasFriendTarget && (
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-[11px] text-[#757578]">友だち情報欄</span>
@@ -478,3 +525,116 @@ export function BlockCard({
   )
 }
 
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+function BoundEditor({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: DateBound | undefined
+  onChange: (b: DateBound) => void
+}) {
+  const mode = value?.mode ?? 'none'
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-12 text-xs text-[#757578]">{label}</span>
+      <select
+        className={selectCls}
+        value={mode}
+        onChange={(e) => {
+          const m = e.target.value
+          if (m === 'relative') onChange({ mode: 'relative', days: 0 })
+          else if (m === 'fixed') onChange({ mode: 'fixed', date: '' })
+          else onChange({ mode: 'none' })
+        }}
+      >
+        <option value="none">制限しない</option>
+        <option value="relative">回答日を起点に指定</option>
+        <option value="fixed">特定の日付</option>
+      </select>
+      {value?.mode === 'relative' && (
+        <span className="flex items-center gap-1.5 text-xs">
+          回答日の
+          <input
+            type="number"
+            className={`${input} w-20`}
+            value={value.days}
+            onChange={(e) => onChange({ mode: 'relative', days: Number(e.target.value) || 0 })}
+          />
+          日後(0=当日、マイナス=過去)
+        </span>
+      )}
+      {value?.mode === 'fixed' && (
+        <input type="date" className={`${input} w-44`} value={value.date} onChange={(e) => onChange({ mode: 'fixed', date: e.target.value })} />
+      )}
+    </div>
+  )
+}
+
+/** 日付ブロックの「リマインダを設定」「入力制限」の設定欄(Lステップ準拠)。 */
+function DatePanels({
+  block,
+  reminders,
+  onChange,
+}: {
+  block: BlockDraft
+  reminders: Array<{ id: string; name: string }>
+  onChange: (patch: Partial<BlockDraft>) => void
+}) {
+  const rule = block.dateRule
+  const setRule = (patch: Partial<DateRule>) => onChange({ dateRule: { ...rule, ...patch } })
+  const weekdays = rule.weekdays ?? []
+  return (
+    <div className="mt-3 space-y-3">
+      {block.reminderOn && (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
+          <span className="text-xs font-bold">リマインダを設定</span>
+          <select className={`${selectCls} min-w-[14rem]`} value={block.reminderId} onChange={(e) => onChange({ reminderId: e.target.value })}>
+            <option value="">リマインダを選択</option>
+            {reminders.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+          <span className="text-xs text-[#757578]">友だちが入力した日付の</span>
+          <input type="time" className={`${selectCls} w-28`} value={block.reminderTime} onChange={(e) => onChange({ reminderTime: e.target.value })} />
+          {reminders.length === 0 && <span className="text-[11px] text-[#e5451f]">リマインダ配信が未作成です(先に「リマインダ配信」で作成してください)</span>}
+        </div>
+      )}
+      {block.dateLimitOn && (
+        <div className="space-y-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
+          <span className="text-xs font-bold">入力制限</span>
+          <BoundEditor label="開始日" value={rule.start} onChange={(b) => setRule({ start: b })} />
+          <BoundEditor label="終了日" value={rule.end} onChange={(b) => setRule({ end: b })} />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-12 text-xs text-[#757578]">曜日</span>
+            <span className="text-[11px] text-[#757578]">選択可能な曜日(未選択なら全曜日)</span>
+            <div className="inline-flex">
+              {WEEKDAYS.map((w, i) => {
+                const on = weekdays.includes(i)
+                return (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => setRule({ weekdays: on ? weekdays.filter((d) => d !== i) : [...weekdays, i].sort() })}
+                    className={`h-8 w-8 border border-[#cacace] text-xs first:rounded-l last:rounded-r [&:not(:first-child)]:-ml-px ${
+                      on ? 'relative z-10 border-[#069e04] bg-[#e6f5e5] font-bold text-[#069e04]' : 'bg-white'
+                    }`}
+                  >
+                    {w}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="ml-2 text-[11px] text-[#757578]">祝日オプション</span>
+            <select className={selectCls} value={rule.holiday ?? 'ignore'} onChange={(e) => setRule({ holiday: e.target.value as DateRule['holiday'] })}>
+              <option value="ignore">なし(考慮しない)</option>
+              <option value="allow">選択した曜日 + 祝日もOK</option>
+              <option value="deny">選択した曜日のうち祝日はNG</option>
+            </select>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

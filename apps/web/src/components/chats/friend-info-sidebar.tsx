@@ -7,6 +7,7 @@ import { Button } from '@cloudflare/kumo/components/button'
 import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
 import { FriendFieldPicker, type PickerFolder } from '@/components/forms/friend-field-picker'
+import { FieldValue } from '@/components/friends/field-value'
 import { FriendNameEditDialog, NameEditPencil, resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 
 interface FriendDetail {
@@ -74,6 +75,7 @@ const METADATA_LABELS: Record<string, string> = {
 interface FieldDef {
   id: string
   folderId: string | null
+  optionColors?: string[]
   fieldKey: string
   label: string
   fieldType: 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'image' | 'pdf' | 'select' | 'radio' | 'checkbox'
@@ -635,7 +637,7 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
                   {Object.entries(friend.metadata).map(([key, value]) => (
                     <div key={key}>
                       <dt className="text-[10px] text-gray-400 uppercase tracking-wide">{fieldDefsByKey.get(key)?.label ?? METADATA_LABELS[key] ?? key}</dt>
-                      <dd className="text-gray-700 mt-0.5 whitespace-pre-wrap break-words">{renderValue(value)}</dd>
+                      <dd className="text-gray-700 mt-0.5 break-words"><FieldValue value={value} def={fieldDefsByKey.get(key)} /></dd>
                     </div>
                   ))}
                 </dl>
@@ -664,8 +666,8 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
                           {answers.map(([key, value]) => (
                             <div key={key}>
                               <dt className="text-[10px] text-gray-400">{labels.get(key) ?? key}</dt>
-                              <dd className="mt-0.5 whitespace-pre-wrap break-words text-xs text-gray-700">
-                                {renderValue(value)}
+                              <dd className="mt-0.5 break-words text-xs text-gray-700">
+                                <FieldValue value={value} />
                               </dd>
                             </div>
                           ))}

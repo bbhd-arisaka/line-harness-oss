@@ -9,6 +9,7 @@
  *
  * URL format: https://liff.line.me/{LIFF_ID}?page=form&id={FORM_ID}
  */
+import { checkDateAgainstRule, formatYmd, parseYmd, resolveDateRange, type DateRule } from '../lib/date-rules.js';
 
 declare const liff: {
   init(config: { liffId: string }): Promise<void>;
@@ -54,6 +55,10 @@ interface FormField {
   imageLinkUrl?: string;
   buttonStyle?: 'default' | 'outline' | 'rounded';
   buttonColor?: string;
+  // 日付ブロック: 入力形式と入力制限。ファイルブロック: 受け付ける種別。
+  dateFormat?: 'calendar' | 'ymd';
+  dateRule?: DateRule;
+  fileKind?: 'image' | 'pdf';
 }
 
 const PREFECTURES = [
@@ -211,6 +216,9 @@ function getGateId(): string | null {
   const gateParam = new URLSearchParams(window.location.search).get('gate');
   return gateParam || state.formDef?.webhookGateId || null;
 }
+
+/** 添付ファイルのアップロード中の件数。0 になるまで送信できない。 */
+let uploadingCount = 0;
 
 function getApp(): HTMLElement {
   return document.getElementById('app')!;
@@ -379,16 +387,45 @@ function renderField(field: FormField, previousValue?: unknown): string {
       break;
     }
 
-    case 'file':
-      // 添付ファイルは Cloudflare Workers 側のアップロード先が未実装のため、
-      // ファイル名のみを回答データとして保存する(実ファイルは送らない)。
-      inputHtml = `<input
-        type="file"
-        name="${escapeHtml(field.name)}"
-        id="field-${escapeHtml(field.name)}"
-        class="form-input"
-        ${required} />`;
+    case 'file': {
+      // ファイルは選んだ瞬間にアップロードし、返ってきたURLだけを回答データにする(同名の hidden 入力が値を持つ)。
+      const accept = field.fileKind === 'pdf' ? '.pdf,application/pdf' : '.jpg,.jpeg,.png,.gif,.heic,image/*';
+      const hint = field.fileKind === 'pdf' ? '「.pdf」の形式のみ添付できます。' : '「.jpg、.jpeg、.png、.gif、.heic」の形式のみ添付できます。';
+      inputHtml = `<div class="file-drop">
+        <input type="file" class="form-input" accept="${accept}" data-file-for="${escapeHtml(field.name)}" data-file-kind="${field.fileKind === 'pdf' ? 'pdf' : 'image'}" />
+        <input type="hidden" name="${escapeHtml(field.name)}" id="field-${escapeHtml(field.name)}" value="${escapeHtml(prevStr)}" />
+        <p class="file-status" data-file-status-for="${escapeHtml(field.name)}">${prevStr ? '添付済み' : hint}</p>
+      </div>`;
       break;
+    }
+
+    case 'date': {
+      const { min, max } = resolveDateRange(field.dateRule, new Date());
+      if (field.dateFormat === 'ymd') {
+        const thisYear = new Date().getFullYear();
+        const from = min ? min.getFullYear() : thisYear - 100;
+        const to = max ? max.getFullYear() : thisYear + 5;
+        const parts = prevStr && parseYmd(prevStr) ? prevStr.split('-') : ['', '', ''];
+        const yOpts = ['<option value="">年</option>'];
+        for (let y = to; y >= from; y--) yOpts.push(`<option value="${y}"${String(y) === parts[0] ? ' selected' : ''}>${y}</option>`);
+        const mOpts = ['<option value="">月</option>'];
+        for (let m = 1; m <= 12; m++) mOpts.push(`<option value="${m}"${String(m) === String(Number(parts[1])) ? ' selected' : ''}>${m}</option>`);
+        const dOpts = ['<option value="">日</option>'];
+        for (let d = 1; d <= 31; d++) dOpts.push(`<option value="${d}"${String(d) === String(Number(parts[2])) ? ' selected' : ''}>${d}</option>`);
+        inputHtml = `<div class="date-ymd" data-date-field="${escapeHtml(field.name)}" style="display:flex;gap:8px">
+          <select class="form-select" data-ymd="y" style="flex:1.4">${yOpts.join('')}</select>
+          <select class="form-select" data-ymd="m" style="flex:1">${mOpts.join('')}</select>
+          <select class="form-select" data-ymd="d" style="flex:1">${dOpts.join('')}</select>
+          <input type="hidden" name="${escapeHtml(field.name)}" id="field-${escapeHtml(field.name)}" value="${escapeHtml(prevStr)}" />
+        </div><p class="form-error" data-date-error-for="${escapeHtml(field.name)}" hidden></p>`;
+      } else {
+        const minAttr = min ? ` min="${formatYmd(min)}"` : '';
+        const maxAttr = max ? ` max="${formatYmd(max)}"` : '';
+        inputHtml = `<input type="date" name="${escapeHtml(field.name)}" id="field-${escapeHtml(field.name)}" class="form-input" data-date-field="${escapeHtml(field.name)}" value="${escapeHtml(prevStr)}"${minAttr}${maxAttr}${required} />
+        <p class="form-error" data-date-error-for="${escapeHtml(field.name)}" hidden></p>`;
+      }
+      break;
+    }
 
     default:
       inputHtml = `<input
@@ -508,6 +545,8 @@ function injectStyles(): void {
       cursor: pointer; font-family: inherit; margin-top: 8px; transition: opacity 0.15s;
     }
     .submit-btn:active { opacity: 0.85; }
+    .file-drop { border: 1.5px dashed #c9c9c9; border-radius: 8px; padding: 12px; background: #fafafa; }
+    .file-status { font-size: 12px; color: #777; margin: 8px 0 0; word-break: break-all; }
     .form-field-description { font-size: 12px; color: #777; margin: -2px 0 8px; line-height: 1.5; }
     .submit-btn.secondary { background: #fff; color: var(--form-accent); border: 1.5px solid var(--form-accent); }
     .section-nav { display: flex; gap: 10px; }
@@ -1345,6 +1384,7 @@ function collectFormData(): Record<string, unknown> {
 function validateForm(): string | null {
   const { formDef } = state;
   if (!formDef) return null;
+  if (uploadingCount > 0) return 'ファイルのアップロードが完了するまでお待ちください';
 
   for (const field of formDef.fields) {
     if (!field.required || field.hidden) continue;
@@ -1784,7 +1824,73 @@ function attachXAutocomplete(): void {
   });
 }
 
+/** 日付ブロック: 年月日入力の合成と、入力制限(開始日・終了日・曜日・祝日)のチェック。 */
+function attachDateFields(): void {
+  const fields = state.formDef?.fields ?? [];
+  document.querySelectorAll<HTMLElement>('[data-date-field]').forEach((el) => {
+    const name = el.dataset.dateField ?? '';
+    const field = fields.find((f) => f.name === name);
+    const errEl = document.querySelector<HTMLElement>(`[data-date-error-for="${name}"]`);
+    const hidden = document.querySelector<HTMLInputElement>(`input[name="${name}"]`);
+    const show = (msg: string | null) => { if (errEl) { errEl.textContent = msg ?? ''; errEl.hidden = !msg; } };
+    const validate = (value: string): boolean => {
+      if (!value) { show(null); return true; }
+      const err = checkDateAgainstRule(value, field?.dateRule, new Date());
+      show(err);
+      return !err;
+    };
+    if (el.classList.contains('date-ymd')) {
+      const sel = (k: string) => el.querySelector<HTMLSelectElement>(`[data-ymd="${k}"]`)!;
+      const compose = () => {
+        const y = sel('y').value, m = sel('m').value, d = sel('d').value;
+        if (!y || !m || !d) { if (hidden) hidden.value = ''; show(null); return; }
+        const value = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        if (!parseYmd(value)) { if (hidden) hidden.value = ''; show('存在しない日付です'); return; }
+        if (hidden) hidden.value = validate(value) ? value : '';
+      };
+      ['y', 'm', 'd'].forEach((k) => sel(k).addEventListener('change', compose));
+    } else {
+      const input = el as HTMLInputElement;
+      input.addEventListener('change', () => { if (!validate(input.value)) input.value = ''; });
+    }
+  });
+}
+
+/** ファイルブロック: 選んだらすぐアップロードして、返ってきたURLを hidden 入力へ入れる。 */
+function attachFileUploads(): void {
+  document.querySelectorAll<HTMLInputElement>('input[type="file"][data-file-for]').forEach((input) => {
+    const name = input.dataset.fileFor ?? '';
+    const status = document.querySelector<HTMLElement>(`[data-file-status-for="${name}"]`);
+    const hidden = document.querySelector<HTMLInputElement>(`input[type="hidden"][name="${name}"]`);
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      if (!file || !state.formDef) return;
+      if (status) { status.style.color = ''; status.textContent = 'アップロード中...'; }
+      if (hidden) hidden.value = '';
+      uploadingCount++;
+      try {
+        const res = await apiCall(`/api/forms/${state.formDef.id}/upload?field=${encodeURIComponent(name)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Filename': encodeURIComponent(file.name) },
+          body: file,
+        });
+        const json = await res.json() as { success: boolean; data?: { url: string }; error?: string };
+        if (!res.ok || !json.success || !json.data) throw new Error(json.error || 'アップロードに失敗しました');
+        if (hidden) hidden.value = json.data.url;
+        if (status) status.textContent = `${file.name} を添付しました`;
+      } catch (e) {
+        input.value = '';
+        if (status) { status.style.color = 'var(--form-error)'; status.textContent = e instanceof Error ? e.message : 'アップロードに失敗しました'; }
+      } finally {
+        uploadingCount--;
+      }
+    });
+  });
+}
+
 function attachFormEvents(): void {
+  attachDateFields();
+  attachFileUploads();
   // プルダウンで「その他」を選んだときだけ、内容の入力欄を出す
   document.querySelectorAll<HTMLSelectElement>('select.form-select').forEach((sel) => {
     const other = document.querySelector<HTMLInputElement>(`[data-other-for="${sel.name}"]`);
