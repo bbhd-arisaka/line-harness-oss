@@ -8,7 +8,7 @@ import {
   deleteTrackedLink,
   recordLinkClick,
   getLinkClicks,
-  getFriendByLineUserId,
+  getFriendByLineUserIdForAccount,
 } from '@line-crm/db';
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
@@ -361,7 +361,13 @@ trackedLinks.get('/t/:linkId', async (c) => {
 
   // Resolve friendId from LINE user ID if provided
   if (!friendId && lineUserId) {
-    const friend = await getFriendByLineUserId(c.env.DB, lineUserId);
+    // リンクを所有するアカウントの友だちに限定(同じ人が複数アカウントに居ても取り違えない)
+    const linkAccount = link ? await resolveLinkAccount(c.env.DB, link) : null;
+    const friend = await getFriendByLineUserIdForAccount(
+      c.env.DB,
+      lineUserId,
+      (linkAccount?.id as string | undefined) ?? null,
+    );
     if (friend) {
       friendId = friend.id;
     }

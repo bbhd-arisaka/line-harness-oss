@@ -6,6 +6,7 @@ import {
   upsertFriend,
   updateFriendFollowStatus,
   getFriendByLineUserId,
+  getFriendByLineUserIdForAccount,
   getScenarios,
   enrollFriendInScenario,
   upsertChatOnMessage,
@@ -40,7 +41,8 @@ async function ensureFriendFromWebhookUser(
   userId: string,
   lineAccountId: string | null,
 ): Promise<Friend | null> {
-  let friend = await getFriendByLineUserId(db, userId);
+  // 同じ人が複数アカウントの友だちでも、このアカウントの行だけを対象にする
+  let friend = await getFriendByLineUserIdForAccount(db, userId, lineAccountId);
 
   if (!friend) {
     let profile: Awaited<ReturnType<LineClient['getProfile']>> | null = null;
@@ -55,6 +57,7 @@ async function ensureFriendFromWebhookUser(
 
     friend = await upsertFriend(db, {
       lineUserId: userId,
+      lineAccountId,
       displayName: profile?.displayName ?? null,
       pictureUrl: profile?.pictureUrl ?? null,
       statusMessage: profile?.statusMessage ?? null,
@@ -62,15 +65,7 @@ async function ensureFriendFromWebhookUser(
     console.log(`[webhook] auto-registered existing friend userId=${userId} friendId=${friend.id}`);
   }
 
-  if (lineAccountId && friend.line_account_id !== lineAccountId) {
-    const now = jstNow();
-    await db
-      .prepare('UPDATE friends SET line_account_id = ?, is_following = 1, updated_at = ? WHERE id = ?')
-      .bind(lineAccountId, now, friend.id)
-      .run();
-    friend = { ...friend, line_account_id: lineAccountId, is_following: 1, updated_at: now };
-  }
-
+  // 所属アカウントの書き換えは行わない(以前は別アカウントの行を奪っていた)
   return friend;
 }
 
@@ -225,19 +220,13 @@ async function handleEvent(
 
     const friend = await upsertFriend(db, {
       lineUserId: userId,
+      lineAccountId,
       displayName: profile?.displayName ?? null,
       pictureUrl: profile?.pictureUrl ?? null,
       statusMessage: profile?.statusMessage ?? null,
     });
 
     console.log(`[follow] friend.id=${friend.id} friend.line_account_id=${(friend as any).line_account_id}`);
-
-    // Set line_account_id for multi-account tracking (always update on follow)
-    if (lineAccountId) {
-      await db.prepare('UPDATE friends SET line_account_id = ?, updated_at = ? WHERE id = ?')
-        .bind(lineAccountId, jstNow(), friend.id).run();
-      console.log(`[follow] line_account_id set to ${lineAccountId} for friend ${friend.id}`);
-    }
 
     // 新規・再フォローのどちらでも、最初の友だち登録マイルを同じキーで非同期投入する。
     // first_followed_at を使うため再フォローやWebhook再送では二重加算されない。
@@ -367,7 +356,7 @@ async function handleEvent(
       event.source.type === 'user' ? event.source.userId : undefined;
     if (!userId) return;
 
-    await updateFriendFollowStatus(db, userId, false);
+    await updateFriendFollowStatus(db, userId, false, lineAccountId);
     return;
   }
 
@@ -544,56 +533,7 @@ async function handleEvent(
       occurredAt: now,
     });
 
-    // Cross-account trigger: send message from another account via UUID
-    if (incomingText === '体験を完了する' && lineAccountId) {
-      try {
-        const friendRecord = await db.prepare('SELECT user_id FROM friends WHERE id = ?').bind(friend.id).first<{ user_id: string | null }>();
-        if (friendRecord?.user_id) {
-          // Find the same user on other accounts
-          const otherFriends = await db.prepare(
-            'SELECT f.line_user_id, la.channel_access_token FROM friends f INNER JOIN line_accounts la ON la.id = f.line_account_id WHERE f.user_id = ? AND f.line_account_id != ? AND f.is_following = 1'
-          ).bind(friendRecord.user_id, lineAccountId).all<{ line_user_id: string; channel_access_token: string }>();
-
-          for (const other of otherFriends.results) {
-            const otherClient = new LineClient(other.channel_access_token);
-            await otherClient.pushMessage(other.line_user_id, [buildMessage('flex', JSON.stringify({
-              type: 'bubble', size: 'giga',
-              header: { type: 'box', layout: 'vertical', paddingAll: '20px', backgroundColor: '#fffbeb',
-                contents: [{ type: 'text', text: `${friend.display_name || ''}さんへ`, size: 'lg', weight: 'bold', color: '#1e293b' }],
-              },
-              body: { type: 'box', layout: 'vertical', paddingAll: '20px',
-                contents: [
-                  { type: 'text', text: '別アカウントからのアクションを検知しました。', size: 'sm', color: '#06C755', weight: 'bold', wrap: true },
-                  { type: 'text', text: 'アカウント連携が正常に動作しています。体験ありがとうございました。', size: 'sm', color: '#1e293b', wrap: true, margin: 'md' },
-                  { type: 'separator', margin: 'lg' },
-                  { type: 'text', text: 'ステップ配信・フォーム即返信・アカウント連携・リッチメニュー・自動返信 — 全て無料、全てOSS。', size: 'xs', color: '#64748b', wrap: true, margin: 'lg' },
-                ],
-              },
-              footer: { type: 'box', layout: 'vertical', paddingAll: '16px',
-                contents: [
-                  { type: 'button', action: { type: 'message', label: '導入について相談する', text: '導入支援を希望します' }, style: 'primary', color: '#06C755' },
-                  ...(liffUrl ? [{ type: 'button', action: { type: 'uri', label: 'フィードバックを送る', uri: `${liffUrl}?page=form` }, style: 'secondary', margin: 'sm' }] : []),
-                ],
-              },
-            }))]);
-          }
-
-          // Reply on Account ② confirming
-          await lineClient.replyMessage(event.replyToken, [buildMessage('flex', JSON.stringify({
-            type: 'bubble',
-            body: { type: 'box', layout: 'vertical', paddingAll: '20px',
-              contents: [
-                { type: 'text', text: 'Account ① にメッセージを送りました', size: 'sm', color: '#06C755', weight: 'bold', align: 'center' },
-                { type: 'text', text: 'Account ① のトーク画面を確認してください', size: 'xs', color: '#64748b', align: 'center', margin: 'md' },
-              ],
-            },
-          }))]);
-          return;
-        }
-      } catch (err) {
-        console.error('Cross-account trigger error:', err);
-      }
-    }
+    // (以前ここにあった「体験を完了する」の別アカウント連動デモは、アカウント別の友だち分離のため廃止)
 
     // 自動返信チェック（このアカウントのルール + グローバルルールのみ）。
     // silent タイプは返信しないが matched=true になり unread / push を抑止する。

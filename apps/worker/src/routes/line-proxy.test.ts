@@ -7,9 +7,12 @@ const lineClientMocks = vi.hoisted(() => ({
   getMessageQuotaConsumption: vi.fn(),
 }));
 
+const mockGetFriend = vi.hoisted(() => vi.fn());
 vi.mock('@line-crm/db', () => ({
   getLineAccounts: vi.fn(),
-  getFriendByLineUserId: vi.fn(),
+  getFriendByLineUserId: mockGetFriend,
+  // アカウント指定でも同じモックを使う(テストは1アカウント前提)
+  getFriendByLineUserIdForAccount: (db: unknown, uid: string) => mockGetFriend(db, uid),
   upsertFriend: vi.fn(),
   getChatByFriendId: vi.fn(),
   createChat: vi.fn(),

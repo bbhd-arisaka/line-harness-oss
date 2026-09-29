@@ -31,6 +31,7 @@ import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { pushImmediateFirstStep } from '../services/immediate-first-step.js';
 import { notifyAffiliateFriendAdd } from '../services/affiliate-notifier.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
+import { findCallerFriend } from '../services/caller-friend.js';
 import { awardActivityMileage } from '../services/activity-mileage.js';
 import { safeRedirectTarget } from '../lib/safe-redirect.js';
 import { isReservedRef } from '../lib/reserved-refs.js';
@@ -706,12 +707,22 @@ liffRoutes.get('/auth/callback', async (c) => {
     // Multi-account: resolve LINE Login credentials from DB
     let loginChannelId = c.env.LINE_LOGIN_CHANNEL_ID;
     let loginChannelSecret = c.env.LINE_LOGIN_CHANNEL_SECRET;
+    // この友だち追加/ログインがどの公式アカウントのものか(同じ人でもアカウントごとに別の友だち行)
+    let callbackAccountId: string | null = null;
     if (accountParam) {
       const account = await getLineAccountByChannelId(c.env.DB, accountParam);
+      if (account) callbackAccountId = account.id;
       if (account?.login_channel_id && account?.login_channel_secret) {
         loginChannelId = account.login_channel_id;
         loginChannelSecret = account.login_channel_secret;
       }
+    }
+    if (!callbackAccountId && loginChannelId) {
+      const byLogin = await c.env.DB
+        .prepare('SELECT id FROM line_accounts WHERE login_channel_id = ?')
+        .bind(loginChannelId)
+        .first<{ id: string }>();
+      callbackAccountId = byLogin?.id ?? null;
     }
 
     // Same guard as /auth/line — never attempt a token exchange with
@@ -789,12 +800,13 @@ liffRoutes.get('/auth/callback', async (c) => {
     // Detect a brand-new friend BEFORE upsertFriend creates the row, so the ASP
     // affiliate friend-add notification fires once per genuinely-new add (a
     // re-touch of an existing friend must not re-notify the affiliate).
-    const preExistingFriend = await getFriendByLineUserId(db, lineUserId);
+    const preExistingFriend = await getFriendByLineUserIdForAccount(db, lineUserId, callbackAccountId);
     const isNewFriend = !preExistingFriend;
 
     // Upsert friend (may not exist yet if webhook hasn't fired)
     const friend = await upsertFriend(db, {
       lineUserId,
+      lineAccountId: callbackAccountId,
       displayName,
       pictureUrl,
       statusMessage: null,
@@ -814,16 +826,8 @@ liffRoutes.get('/auth/callback', async (c) => {
     if (existingUserId) {
       userId = existingUserId;
     } else {
-      // Cross-account linking: if uid is provided, use that existing UUID
-      if (uidParam) {
-        userId = uidParam;
-      }
-
-      // Try to find by email
-      if (!userId && verified.email) {
-        const existingUser = await getUserByEmail(db, verified.email);
-        if (existingUser) userId = existingUser.id;
-      }
+      // 友だちはアカウントごとに別の人として扱うため、uid や email で他アカウントの
+      // user_id に相乗りしない(以前は同じ人の別アカウントの行と結合していた)。
 
       // Create new user only if no existing UUID found
       if (!userId) {
@@ -1155,7 +1159,7 @@ liffRoutes.post('/api/liff/profile', async (c) => {
       return c.json({ success: false, error: 'Unauthorized' }, 401);
     }
 
-    const friend = await getFriendByLineUserId(c.env.DB, lineUserId);
+    const friend = await findCallerFriend(c.env.DB, lineUserId, c.req.header('X-Liff-Id'));
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
@@ -1838,7 +1842,7 @@ liffRoutes.post('/api/liff/send-form-link', async (c) => {
     }
 
     const db = c.env.DB;
-    const friend = await getFriendByLineUserId(db, lineUserId);
+    const friend = await findCallerFriend(db, lineUserId, c.req.header('X-Liff-Id'));
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }

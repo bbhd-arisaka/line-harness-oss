@@ -34,10 +34,7 @@ function mockDb(tables: FakeTables): D1Database {
             const userId = tables.friendUserIds?.[friendId] ?? null;
             const hasTag = [...(tables.friendTags ?? [])].some((entry) => {
               const [taggedFriendId, taggedTagId] = entry.split('|');
-              return taggedTagId === tagId && (
-                taggedFriendId === friendId ||
-                (userId !== null && tables.friendUserIds?.[taggedFriendId] === userId)
-              );
+              return taggedTagId === tagId && taggedFriendId === friendId;
             });
             return hasTag ? ({ 1: 1 } as unknown as T) : null;
           }
@@ -122,12 +119,12 @@ describe('evaluateCondition', () => {
       const db = mockDb({ friendTags: new Set() });
       expect(await evaluateCondition(db, 'f1', { condition_type: 'tag_exists', condition_value: 'tag-A' })).toBe(false);
     });
-    it('returns true when a UUID-linked friend on another account has the tag', async () => {
+    it('別アカウントの友だち(同じUUID)のタグは見ない(アカウントごとに別の友だち)', async () => {
       const db = mockDb({
         friendTags: new Set(['f2|tag-A']),
         friendUserIds: { f1: 'user-1', f2: 'user-1' },
       });
-      expect(await evaluateCondition(db, 'f1', { condition_type: 'tag_exists', condition_value: 'tag-A' })).toBe(true);
+      expect(await evaluateCondition(db, 'f1', { condition_type: 'tag_exists', condition_value: 'tag-A' })).toBe(false);
     });
   });
 
@@ -161,7 +158,7 @@ describe('evaluateCondition', () => {
         }),
       ).toBe(false);
     });
-    it('returns true when UUID-linked metadata on another account matches', async () => {
+    it('別アカウントの友だち(同じUUID)のメタデータは見ない', async () => {
       const db = mockDb({
         friendMetadata: { f1: {}, f2: { purchased: 'true' } },
         friendUserIds: { f1: 'user-1', f2: 'user-1' },
@@ -171,7 +168,7 @@ describe('evaluateCondition', () => {
           condition_type: 'metadata_equals',
           condition_value: JSON.stringify({ key: 'purchased', value: 'true' }),
         }),
-      ).toBe(true);
+      ).toBe(false);
     });
   });
 
@@ -278,7 +275,7 @@ describe('resolveScenarioDeliveryFriend', () => {
     ...overrides,
   });
 
-  it('uses the following UUID-linked friend belonging to the scenario account', async () => {
+  it('同じUUIDの別アカウントの行へは振り替えない(送信しない)', async () => {
     const linked = friend({
       id: 'f-target',
       line_user_id: 'U-target',
@@ -290,7 +287,7 @@ describe('resolveScenarioDeliveryFriend', () => {
       }),
     } as unknown as D1Database;
 
-    await expect(resolveScenarioDeliveryFriend(db, friend({}), 'account-2')).resolves.toEqual(linked);
+    await expect(resolveScenarioDeliveryFriend(db, friend({ user_id: 'user-1', line_account_id: 'account-1' }), 'account-2')).resolves.toBeNull();
   });
 
   it('does not fall back to a friend explicitly belonging to another account', async () => {

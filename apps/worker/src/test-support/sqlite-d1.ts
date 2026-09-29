@@ -3,6 +3,19 @@ import Database from 'better-sqlite3';
 type SQLInputValue = string | number | bigint | Buffer | null;
 export function sqliteD1(path = ':memory:'): { db: D1Database; sqlite: Database.Database } {
   const sqlite = new Database(path);
+  // テスト用の互換: 多くのフィクスチャは friends に line_user_id だけを入れる。本番の内部キー
+  // line_user_key(NOT NULL)を、テストでは未指定なら line_user_id から自動補完する。
+  const rawExec = sqlite.exec.bind(sqlite);
+  sqlite.exec = ((sql: string) => {
+    const patched = sql.replace(/line_user_key[ 	]+TEXT UNIQUE NOT NULL/, 'line_user_key TEXT UNIQUE');
+    const result = rawExec(patched);
+    if (patched !== sql) {
+      rawExec(`CREATE TRIGGER IF NOT EXISTS trg_test_friends_key AFTER INSERT ON friends
+        WHEN NEW.line_user_key IS NULL
+        BEGIN UPDATE friends SET line_user_key = NEW.line_user_id WHERE id = NEW.id; END`);
+    }
+    return result;
+  }) as typeof sqlite.exec;
   function prepare(sql: string, values: SQLInputValue[] = []): D1PreparedStatement {
     return {
       bind(...args: unknown[]) { return prepare(sql, args as SQLInputValue[]); },

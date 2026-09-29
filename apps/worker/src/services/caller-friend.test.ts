@@ -42,9 +42,10 @@ describe('findCallerFriend', () => {
     expect((await findCallerFriend(db, 'U1', 'LIFF-UNKNOWN'))?.id).toBe('friend-any');
   });
 
-  test('そのアカウントの友だちがまだ居なければ、ユーザーIDだけで探す', async () => {
-    fallback.mockResolvedValue({ id: 'friend-other' });
+  test('そのアカウントの友だちがまだ居なければ、他アカウントの友だちにはせず null', async () => {
+    fallback.mockClear();
     const db = fakeDb({ accountByLiff: { 'LIFF-N': 'acc-new' }, friends });
-    expect((await findCallerFriend(db, 'U1', 'LIFF-N'))?.id).toBe('friend-other');
+    expect(await findCallerFriend(db, 'U1', 'LIFF-N')).toBeNull();
+    expect(fallback).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@ import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import {
   getLineAccounts,
-  getFriendByLineUserId,
+  getFriendByLineUserIdForAccount,
   upsertFriend,
   getChatByFriendId,
   createChat,
@@ -216,16 +216,16 @@ async function resolveCaller(c: Context<Env>, token: string): Promise<ResolvedCa
  * counted in IN-clause chunks of ≤100 binds — the D1 parameter cap; a typical
  * multicast of up to 100 recipients is a single SELECT).
  */
-async function countUnknownRecipients(db: D1Database, userIds: string[]): Promise<number> {
+async function countUnknownRecipients(db: D1Database, userIds: string[], lineAccountId: string | null = null): Promise<number> {
   const unique = [...new Set(userIds.filter((u): u is string => typeof u === 'string'))];
   let known = 0;
   for (let i = 0; i < unique.length; i += 100) {
     const chunk = unique.slice(i, i + 100);
     const row = await db
       .prepare(
-        `SELECT COUNT(DISTINCT line_user_id) as count FROM friends WHERE line_user_id IN (${chunk.map(() => '?').join(', ')})`,
+        `SELECT COUNT(DISTINCT line_user_id) as count FROM friends WHERE line_user_id IN (${chunk.map(() => '?').join(', ')})${lineAccountId ? ' AND line_account_id = ?' : ''}`,
       )
-      .bind(...chunk)
+      .bind(...chunk, ...(lineAccountId ? [lineAccountId] : []))
       .first<{ count: number }>();
     known += row?.count ?? 0;
   }
@@ -236,14 +236,15 @@ async function countUnknownRecipients(db: D1Database, userIds: string[]): Promis
 async function getFriendsByLineUserIds(
   db: D1Database,
   userIds: string[],
+  lineAccountId: string | null = null,
 ): Promise<Map<string, Friend>> {
   const found = new Map<string, Friend>();
   for (let i = 0; i < userIds.length; i += LOOKUP_CHUNK) {
     const chunk = userIds.slice(i, i + LOOKUP_CHUNK);
     const placeholders = chunk.map(() => '?').join(',');
     const result = await db
-      .prepare(`SELECT * FROM friends WHERE line_user_id IN (${placeholders})`)
-      .bind(...chunk)
+      .prepare(`SELECT * FROM friends WHERE line_user_id IN (${placeholders})${lineAccountId ? ' AND line_account_id = ?' : ''}`)
+      .bind(...chunk, ...(lineAccountId ? [lineAccountId] : []))
       .all<Friend>();
     for (const row of result.results ?? []) {
       found.set(row.line_user_id, row);
@@ -274,6 +275,7 @@ async function createFriendForRecipient(
 
     const friend = await upsertFriend(db, {
       lineUserId: userId,
+      lineAccountId,
       displayName: profile?.displayName ?? null,
       pictureUrl: profile?.pictureUrl ?? null,
       statusMessage: profile?.statusMessage ?? null,
@@ -372,7 +374,7 @@ async function logProxySend(
         return;
       }
       const friend =
-        (await getFriendByLineUserId(db, parsed.to)) ??
+        (await getFriendByLineUserIdForAccount(db, parsed.to, lineAccountId)) ??
         (await createFriendForRecipient(db, lineClient, parsed.to, lineAccountId));
       if (!friend) return;
       await insertLogRows(db, rowsFor(friend.id, 'push'), source);
@@ -386,7 +388,7 @@ async function logProxySend(
           parsed.to.filter((t): t is string => typeof t === 'string' && LINE_USER_ID_RE.test(t)),
         ),
       ];
-      const known = await getFriendsByLineUserIds(db, userIds);
+      const known = await getFriendsByLineUserIds(db, userIds, lineAccountId);
       const rows: LogRow[] = [];
       let created = 0;
       let skipped = 0;
@@ -745,7 +747,7 @@ function proxyHandler(prefix: string, upstreamBase: string, logSends: boolean) {
           // at most MAX_FRIEND_CREATIONS recipients can never exceed the cap,
           // so they skip the COUNT entirely.
           if (toList && toList.length > MAX_FRIEND_CREATIONS) {
-            const unknown = await countUnknownRecipients(c.env.DB, toList as string[]);
+            const unknown = await countUnknownRecipients(c.env.DB, toList as string[], caller.lineAccountId ?? null);
             if (unknown > MAX_FRIEND_CREATIONS) {
               return c.json(
                 {

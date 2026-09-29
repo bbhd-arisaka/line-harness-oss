@@ -159,10 +159,18 @@ export function filterMigrationsByPolicy(
   return names.filter((name) => !isGrandfatheredMigration(name));
 }
 
+/**
+ * 個別に承認済みの例外 (このリポジトリ専用。ユーザーが明示的に許可した)。
+ * 追加のみ方針に反する操作を含むが、本番データを守る理由が明確なもの。
+ * - 082: 友だちを公式アカウントごとに別行にするための RENAME COLUMN。
+ *   テーブル作り直し(約40テーブルの CASCADE 消失リスク)を避ける代替手段。
+ */
+export const POLICY_EXEMPT_MIGRATIONS = new Set(['082_friends_per_account.sql']);
+
 function listDefaultMigrations(options: { all?: boolean } = {}): string[] {
   const dir = resolve(DEFAULT_MIGRATIONS_DIR);
   const allNames = readdirSync(dir)
-    .filter((f) => f.endsWith('.sql'))
+    .filter((f) => f.endsWith('.sql') && !POLICY_EXEMPT_MIGRATIONS.has(f))
     .sort();
   const names = filterMigrationsByPolicy(allNames, options);
   return names.map((f) => join(dir, f));

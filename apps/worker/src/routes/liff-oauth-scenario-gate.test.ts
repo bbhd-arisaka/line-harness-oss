@@ -26,6 +26,9 @@ const dbMocks = {
   recoverStuckDeliveries: vi.fn(),
   // /auth/callback deps
   getFriendByLineUserId: vi.fn(),
+  // アカウント指定の検索も、同じモックに委譲する(テストは1アカウント前提)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getFriendByLineUserIdForAccount: (...a: any[]) => (dbMocks.getFriendByLineUserId as any)(a[0], a[1]),
   upsertFriend: vi.fn(),
   createUser: vi.fn().mockResolvedValue({ id: 'U-uuid' }),
   getUserByEmail: vi.fn().mockResolvedValue(null),

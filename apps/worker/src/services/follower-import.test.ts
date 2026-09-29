@@ -20,7 +20,7 @@ type StoredFriend = {
 
 function makeDb(initialFriends: StoredFriend[] = []) {
   let setting: string | null = null;
-  const friends = new Map(initialFriends.map((f) => [f.line_user_id, { ...f }]));
+  const friends = new Map(initialFriends.map((f) => [`${f.line_user_id}|${f.line_account_id}`, { ...f }]));
 
   const execute = (sql: string, args: unknown[]) => {
     if (sql.includes('INSERT INTO account_settings')) {
@@ -33,10 +33,13 @@ function makeDb(initialFriends: StoredFriend[] = []) {
       return { meta: { changes: 1 } };
     }
     if (sql.includes('INSERT INTO friends')) {
-      const [id, lineUserId, accountId] = args as [string, string, string];
-      const existing = friends.get(lineUserId);
+      // INSERT: (id, key検査, key検査, アカウント, key, 実ID, アカウント, now, now) — 同じ人でもアカウントごとに別行
+      const id = args[0] as string;
+      const lineUserId = args[5] as string;
+      const accountId = args[6] as string;
+      const existing = friends.get(`${lineUserId}|${accountId}`);
       if (!existing) {
-        friends.set(lineUserId, {
+        friends.set(`${lineUserId}|${accountId}`, {
           id,
           line_user_id: lineUserId,
           line_account_id: accountId,
@@ -77,8 +80,12 @@ function makeDb(initialFriends: StoredFriend[] = []) {
         }),
         all: vi.fn().mockImplementation(async () => {
           if (sql.includes('WHERE line_user_id IN')) {
-            const requested = new Set(args as string[]);
-            return { results: [...friends.values()].filter((f) => requested.has(f.line_user_id)) };
+            const accountId = args[args.length - 1] as string;
+            const requested = new Set(args.slice(0, -1) as string[]);
+            return {
+              results: [...friends.values()].filter((f) =>
+                requested.has(f.line_user_id) && (f.line_account_id === accountId || f.line_account_id === null)),
+            };
           }
           if (sql.includes('AND display_name IS NULL')) {
             const [accountId, afterId, limit] = args as [string, string, number];
@@ -140,11 +147,31 @@ describe('persisted one-time follower import', () => {
     const profiles = await processFollowerImportStep(db, client, 'acc-1');
     expect(profiles.state.phase).toBe('completed');
     expect(profiles.state.profilesUpdated).toBe(1);
-    expect(friends.get(lineUserId)?.display_name).toBe('移行患者');
+    expect(friends.get(`${lineUserId}|acc-1`)?.display_name).toBe('移行患者');
 
     const completed = await startFollowerImport(db, 'acc-1');
     expect(completed.phase).toBe('completed');
     expect(client.getFollowerIds).toHaveBeenCalledTimes(2);
     expect((await getFollowerImportState(db, 'acc-1')).completedAt).not.toBeNull();
+  });
+
+  test('同じ人が別アカウントの友だちでも、このアカウントの友だちとして別に取り込む', async () => {
+    const lineUserId = uid('b');
+    const { db, friends } = makeDb([
+      { id: 'other', line_user_id: lineUserId, line_account_id: 'acc-2', is_following: 1, display_name: 'A店', picture_url: null, status_message: null },
+    ]);
+    const client = {
+      getFollowerIds: vi.fn()
+        .mockResolvedValueOnce({ userIds: [] })
+        .mockResolvedValueOnce({ userIds: [lineUserId] }),
+      getProfile: vi.fn().mockResolvedValue({ displayName: 'B店', pictureUrl: null }),
+    };
+    await detectFollowerImportCapability(db, client, 'acc-1');
+    await startFollowerImport(db, 'acc-1');
+    const ids = await processFollowerImportStep(db, client, 'acc-1');
+    expect(ids.state.imported).toBe(1);
+    expect(ids.state.conflicts).toBe(0);
+    expect(friends.get(`${lineUserId}|acc-1`)?.id).not.toBe('other');
+    expect(friends.get(`${lineUserId}|acc-2`)?.id).toBe('other');
   });
 });

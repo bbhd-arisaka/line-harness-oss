@@ -54,6 +54,8 @@ function apiCall(path: string, options?: RequestInit): Promise<Response> {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      // どの公式アカウントのLIFFから開いたか(アカウントごとに別の友だちとして扱うため)
+      'X-Liff-Id': LIFF_ID,
       ...options?.headers,
     },
   });

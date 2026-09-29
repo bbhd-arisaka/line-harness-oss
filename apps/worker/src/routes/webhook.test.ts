@@ -9,10 +9,13 @@ const lineClientMocks = vi.hoisted(() => ({
 
 // Stub the DB graph — these tests focus on webhook guard behavior and the
 // first-contact friend registration path without touching real D1/LINE.
+const mockGetFriend = vi.hoisted(() => vi.fn());
 vi.mock('@line-crm/db', () => ({
   upsertFriend: vi.fn(),
   updateFriendFollowStatus: vi.fn(),
-  getFriendByLineUserId: vi.fn(),
+  getFriendByLineUserId: mockGetFriend,
+  // アカウント指定でも同じモックを使う(テストは1アカウント前提)
+  getFriendByLineUserIdForAccount: (db: unknown, uid: string) => mockGetFriend(db, uid),
   getScenarios: vi.fn(),
   enrollFriendInScenario: vi.fn(),
   getScenarioSteps: vi.fn(),
@@ -455,6 +458,7 @@ describe('POST /webhook — first-contact existing friends', () => {
     expect(lineClientMocks.getProfile).toHaveBeenCalledWith('U-existing');
     expect(upsertFriend).toHaveBeenCalledWith(db, {
       lineUserId: 'U-existing',
+      lineAccountId: null,
       displayName: 'Existing Friend',
       pictureUrl: 'https://example.com/profile.jpg',
       statusMessage: 'hello',

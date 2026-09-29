@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
-import { getFriendByLineUserId } from '@line-crm/db';
+import { getFriendByLineUserIdForAccount } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
 
 const app = new Hono<Env>();
@@ -25,7 +25,22 @@ app.post('/api/meet-callback', async (c) => {
     return c.json({ success: false, error: 'line_user_id required' }, 400);
   }
 
-  const friend = await getFriendByLineUserId(c.env.DB, body.line_user_id);
+  // 同じ人が複数アカウントの友だちでも取り違えないよう、アカウントを特定する。
+  // 外部から届くのはユーザーIDだけなので、該当が複数アカウントにまたがる場合は
+  // line_account_id の指定を必須にし、曖昧なまま送信しない。
+  const candidates = await c.env.DB
+    .prepare('SELECT id, line_account_id FROM friends WHERE line_user_id = ?')
+    .bind(body.line_user_id)
+    .all<{ id: string; line_account_id: string | null }>();
+  const requestedAccountId = (body as { line_account_id?: string }).line_account_id ?? null;
+  if (!requestedAccountId && (candidates.results ?? []).length > 1) {
+    return c.json({ success: false, error: 'line_account_id required: user belongs to multiple accounts' }, 409);
+  }
+  const friend = await getFriendByLineUserIdForAccount(
+    c.env.DB,
+    body.line_user_id,
+    requestedAccountId ?? (candidates.results?.[0]?.line_account_id ?? null),
+  );
   if (!friend) {
     return c.json({ success: false, error: 'friend not found' }, 404);
   }

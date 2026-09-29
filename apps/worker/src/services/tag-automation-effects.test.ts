@@ -271,7 +271,7 @@ describe('tag automation side effects with real SQLite and mocked LINE transport
     } finally { s.sqlite.close(); }
   });
 
-  it('preserves UUID-linked cross-account scenario delivery through the existing cron resolver', async () => {
+  it('同じUUIDでも、別アカウントの友だち行へは振り替えて配信しない(アカウントごとに別の友だち)', async () => {
     const s = setup();
     try {
       s.sqlite.exec("INSERT INTO users(id,display_name) VALUES('linked-user','Synthetic person'); UPDATE friends SET user_id='linked-user'");
@@ -283,12 +283,11 @@ describe('tag automation side effects with real SQLite and mocked LINE transport
       s.sqlite.exec("UPDATE friend_scenarios SET next_delivery_at='2020-01-01T00:00:00.000+09:00'");
       await processStepDeliveries(s.db, new LineClient('wrong-synthetic-default'));
       const pushes = s.requests.filter(request => request.path.endsWith('/message/push'));
-      expect(pushes).toHaveLength(1);
-      expect(pushes[0]).toMatchObject({ token: 'synthetic-token-b', body: { to: 'line-friend-b' } });
+      expect(pushes).toHaveLength(0);
     } finally { s.sqlite.close(); }
   });
 
-  it('instant tag scenarios use the linked recipient and scenario token while tag automations use the source account', async () => {
+  it('別アカウントのシナリオは即時送信されず、タグ自動化は元のアカウントで実行される', async () => {
     const s = setup();
     try {
       s.sqlite.exec("INSERT INTO users(id,display_name) VALUES('linked-user','Synthetic person'); UPDATE friends SET user_id='linked-user'");
@@ -301,12 +300,9 @@ describe('tag automation side effects with real SQLite and mocked LINE transport
       await attachTagAndFireSideEffects(s.db, 'friend-a', 'tag-a', {
         defaultAccessToken: 'wrong-synthetic-default', accountChannelId: 'channel-a',
       });
-      expect(s.requests).toHaveLength(2);
-      expect(s.requests[0]).toMatchObject({ token: 'synthetic-token-b', body: { to: 'line-friend-b' } });
-      expect(s.requests[1]).toMatchObject({ token: 'synthetic-token-a' });
-      expect(s.requests[1].path).toContain('synthetic-menu-a');
-      expect(s.sqlite.prepare('SELECT friend_id,status FROM friend_scenarios').all())
-        .toEqual([{ friend_id: 'friend-a', status: 'completed' }]);
+      expect(s.requests).toHaveLength(1);
+      expect(s.requests[0]).toMatchObject({ token: 'synthetic-token-a' });
+      expect(s.requests[0].path).toContain('synthetic-menu-a');
     } finally { s.sqlite.close(); }
   });
 

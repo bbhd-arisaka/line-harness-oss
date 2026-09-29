@@ -69,10 +69,27 @@ export function stripSqlComments(sql: string): string {
   return result + sql.slice(start);
 }
 
+/**
+ * 承認済みの例外(このリポジトリ専用): migration 082 の
+ * `ALTER TABLE friends RENAME COLUMN line_user_id TO line_user_key`。
+ * 友だちを公式アカウントごとに別行にするため、テーブル作り直し(約40テーブルの CASCADE
+ * 消失リスク)の代わりに使う。この1文だけを名前まで完全一致で許可し、他の RENAME/DROP は従来どおり拒否する。
+ */
+function isApprovedFriendsKeyRename(tokens: SqlToken[], index: number): boolean {
+  const before = ['ALTER', 'TABLE', 'FRIENDS'];
+  const after = ['RENAME', 'COLUMN', 'LINE_USER_ID', 'TO', 'LINE_USER_KEY'];
+  return (
+    before.every((value, offset) => tokens[index - 3 + offset]?.value === value) &&
+    after.every((value, offset) => tokens[index + offset]?.value === value) &&
+    tokens[index + after.length]?.kind !== 'word'
+  );
+}
+
 function hasDestructiveTokens(tokens: SqlToken[]): boolean {
   return tokens.some((token, index) => {
     const next = tokens[index + 1];
     if (token.kind !== 'word' || next?.kind !== 'word') return false;
+    if (token.value === 'RENAME' && isApprovedFriendsKeyRename(tokens, index)) return false;
     return (token.value === 'DROP' && /^(TABLE|COLUMN)$/.test(next.value)) ||
       (token.value === 'RENAME' && /^(TO|COLUMN)$/.test(next.value));
   });

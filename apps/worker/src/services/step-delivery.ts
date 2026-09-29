@@ -98,19 +98,13 @@ export function expandVariables(
 }
 
 /**
- * Resolve metadata for a friend, merging across all UUID-linked records.
- * Falls back to the friend's own metadata if no user_id.
+ * Resolve metadata for a friend. 友だちはアカウントごとに別の行なので、
+ * 他アカウントの行のメタデータとは統合せず、その友だち自身の値だけを使う。
  */
 export async function resolveMetadata(
-  db: D1Database,
+  _db: D1Database,
   friend: { user_id?: string | null; metadata?: string | null },
 ): Promise<Record<string, unknown>> {
-  // If friend has a UUID, merge metadata from all linked records
-  if (friend.user_id) {
-    const { getMergedMetadataByUserId } = await import('@line-crm/db');
-    return getMergedMetadataByUserId(db, friend.user_id);
-  }
-  // Fallback: parse own metadata
   if (friend.metadata) {
     try { return JSON.parse(friend.metadata); } catch { return {}; }
   }
@@ -217,19 +211,7 @@ export async function resolveScenarioDeliveryFriend(
     return enrolledFriend;
   }
 
-  if (enrolledFriend.user_id) {
-    const linked = await db
-      .prepare(
-        `SELECT * FROM friends
-         WHERE user_id = ? AND line_account_id = ?
-         ORDER BY is_following DESC, updated_at DESC
-         LIMIT 1`,
-      )
-      .bind(enrolledFriend.user_id, scenarioAccountId)
-      .first<Friend>();
-    if (linked) return linked.is_following ? linked : null;
-  }
-
+  // 別アカウントの友だちは、シナリオのアカウントの別行へ振り替えない(アカウントごとに別の友だち)
   return enrolledFriend.line_account_id === null ? enrolledFriend : null;
 }
 
@@ -489,17 +471,10 @@ export async function evaluateCondition(
       const tag = await db
         .prepare(
           `SELECT 1 FROM friend_tags ft
-           INNER JOIN friends tagged_friend ON tagged_friend.id = ft.friend_id
-           WHERE ft.tag_id = ?
-             AND (
-               tagged_friend.id = ?
-               OR tagged_friend.user_id = (
-                 SELECT user_id FROM friends WHERE id = ? AND user_id IS NOT NULL
-               )
-             )
+           WHERE ft.tag_id = ? AND ft.friend_id = ?
            LIMIT 1`,
         )
-        .bind(step.condition_value, friendId, friendId)
+        .bind(step.condition_value, friendId)
         .first();
       return !!tag;
     }
@@ -507,17 +482,10 @@ export async function evaluateCondition(
       const tag = await db
         .prepare(
           `SELECT 1 FROM friend_tags ft
-           INNER JOIN friends tagged_friend ON tagged_friend.id = ft.friend_id
-           WHERE ft.tag_id = ?
-             AND (
-               tagged_friend.id = ?
-               OR tagged_friend.user_id = (
-                 SELECT user_id FROM friends WHERE id = ? AND user_id IS NOT NULL
-               )
-             )
+           WHERE ft.tag_id = ? AND ft.friend_id = ?
            LIMIT 1`,
         )
-        .bind(step.condition_value, friendId, friendId)
+        .bind(step.condition_value, friendId)
         .first();
       return !tag;
     }

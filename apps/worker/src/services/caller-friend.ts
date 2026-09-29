@@ -8,7 +8,7 @@ import type { Friend } from '@line-crm/db';
  * どのアカウントでも同じ。ユーザーIDだけで探すと、別アカウントの友だちに回答が記録されてしまう。
  * そこで、クライアントが送る `X-Liff-Id`(いま開いているLIFFのID。アカウントごとに異なる)から
  * アカウントを特定し、そのアカウントの友だちを優先して返す。
- * 該当が無い場合(古いクライアント等)は、従来どおりユーザーIDだけで探す。
+ * アカウントを特定できない場合(古いクライアント等)だけ、従来どおりユーザーIDだけで探す。
  */
 export async function findCallerFriend(
   db: D1Database,
@@ -21,12 +21,12 @@ export async function findCallerFriend(
       .prepare('SELECT id FROM line_accounts WHERE liff_id = ?')
       .bind(id)
       .first<{ id: string }>();
+    // アカウントが特定できたら、そのアカウントの友だちだけを返す(他アカウントの行にはフォールバックしない)
     if (account) {
-      const scoped = await db
+      return db
         .prepare('SELECT * FROM friends WHERE line_user_id = ? AND line_account_id = ?')
         .bind(lineUserId, account.id)
         .first<Friend>();
-      if (scoped) return scoped;
     }
   }
   return getFriendByLineUserId(db, lineUserId);

@@ -12,6 +12,9 @@ const dbMocks = {
   recoverStalledBroadcasts: vi.fn(),
   recoverStuckDeliveries: vi.fn(),
   getFriendByLineUserId: vi.fn(),
+  // アカウント指定の検索も、同じモックに委譲する(テストは1アカウント前提)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getFriendByLineUserIdForAccount: (...a: any[]) => (dbMocks.getFriendByLineUserId as any)(a[0], a[1]),
   getAffiliateByFriendId: vi.fn(),
   createAffiliate: vi.fn(),
   createAffiliateLink: vi.fn(),

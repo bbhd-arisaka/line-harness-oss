@@ -179,6 +179,8 @@ async function importIdPage(
   const validIds = [...new Set(receivedIds.filter((id) => LINE_USER_ID_PATTERN.test(id)))];
   const invalid = receivedIds.filter((id) => !LINE_USER_ID_PATTERN.test(id)).length;
 
+  // 同じ人が別アカウントの友だちでも、このアカウントの友だちとしては別扱い。
+  // 対象は「このアカウントの行」と「所属未設定の行」だけ。
   const existingById = new Map<string, ExistingFriend>();
   for (const group of chunks(validIds, LOOKUP_CHUNK_SIZE)) {
     const placeholders = group.map(() => '?').join(',');
@@ -186,47 +188,60 @@ async function importIdPage(
       .prepare(
         `SELECT line_user_id, line_account_id, is_following
            FROM friends
-          WHERE line_user_id IN (${placeholders})`,
+          WHERE line_user_id IN (${placeholders})
+            AND (line_account_id = ? OR line_account_id IS NULL)`,
       )
-      .bind(...group)
+      .bind(...group, lineAccountId)
       .all<ExistingFriend>();
     for (const row of rows.results ?? []) existingById.set(row.line_user_id, row);
   }
 
-  const writableIds: string[] = [];
+  const newIds: string[] = [];
+  const claimIds: string[] = [];
+  const reactivateIds: string[] = [];
   for (const lineUserId of validIds) {
     const existing = existingById.get(lineUserId);
     if (!existing) {
       state.imported += 1;
-      writableIds.push(lineUserId);
+      newIds.push(lineUserId);
     } else if (existing.line_account_id === null) {
       state.claimedUnassigned += 1;
-      writableIds.push(lineUserId);
-    } else if (existing.line_account_id !== lineAccountId) {
-      state.conflicts += 1;
+      claimIds.push(lineUserId);
     } else if (existing.is_following === 0) {
       state.reactivated += 1;
-      writableIds.push(lineUserId);
+      reactivateIds.push(lineUserId);
     } else {
       state.alreadyPresent += 1;
     }
   }
 
   const now = jstNow();
-  for (const group of chunks(writableIds, WRITE_CHUNK_SIZE)) {
+  for (const group of chunks(newIds, WRITE_CHUNK_SIZE)) {
     await db.batch(group.map((lineUserId) =>
       db.prepare(
         `INSERT INTO friends
-           (id, line_user_id, display_name, picture_url, status_message,
+           (id, line_user_key, line_user_id, display_name, picture_url, status_message,
             is_following, line_account_id, created_at, updated_at)
-         VALUES (?, ?, NULL, NULL, NULL, 1, ?, ?, ?)
-         ON CONFLICT(line_user_id) DO UPDATE SET
-           line_account_id = COALESCE(friends.line_account_id, excluded.line_account_id),
-           is_following = 1,
-           updated_at = excluded.updated_at
-         WHERE (friends.line_account_id IS NULL OR friends.line_account_id = excluded.line_account_id)
-           AND (friends.line_account_id IS NULL OR friends.is_following != 1)`,
-      ).bind(crypto.randomUUID(), lineUserId, lineAccountId, now, now),
+         VALUES (?,
+                 CASE WHEN EXISTS (SELECT 1 FROM friends WHERE line_user_key = ?) THEN ? || '#' || ? ELSE ? END,
+                 ?, NULL, NULL, NULL, 1, ?, ?, ?)`,
+      ).bind(crypto.randomUUID(), lineUserId, lineUserId, lineAccountId, lineUserId, lineUserId, lineAccountId, now, now),
+    ));
+  }
+  for (const group of chunks(claimIds, WRITE_CHUNK_SIZE)) {
+    await db.batch(group.map((lineUserId) =>
+      db.prepare(
+        `UPDATE friends SET line_account_id = ?, is_following = 1, updated_at = ?
+          WHERE line_user_id = ? AND line_account_id IS NULL`,
+      ).bind(lineAccountId, now, lineUserId),
+    ));
+  }
+  for (const group of chunks(reactivateIds, WRITE_CHUNK_SIZE)) {
+    await db.batch(group.map((lineUserId) =>
+      db.prepare(
+        `UPDATE friends SET is_following = 1, updated_at = ?
+          WHERE line_user_id = ? AND line_account_id = ? AND is_following != 1`,
+      ).bind(now, lineUserId, lineAccountId),
     ));
   }
 
