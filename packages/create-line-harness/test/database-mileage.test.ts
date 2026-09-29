@@ -93,7 +93,7 @@ describe("setup mileage migration transport", () => {
     sqlite.exec(`INSERT INTO mileage_programs VALUES ('default','default','Harnessマイル','active','2026-01-01','2026-01-01');
       INSERT INTO users(id,display_name) VALUES('u','offline');
       INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret) VALUES('a','channel','offline','offline','offline');
-      INSERT INTO friends(id,line_user_id,user_id,line_account_id) VALUES('f','Uf','u','a');
+      INSERT INTO friends(id,line_user_key,line_user_id,user_id,line_account_id) VALUES('f','Uf','Uf','u','a');
       INSERT INTO messages_log(id,friend_id,direction,message_type,content,created_at) VALUES('m','f','incoming','text','offline','${DAY}');
       INSERT INTO webinars(id,account_id,title,slug,duration_seconds,created_at,updated_at) VALUES('w','a','offline','offline',1000,'2026-01-01','2026-01-01');
       INSERT INTO webinar_viewers(id,webinar_id,friend_id,session_start_at,joined_at,last_position_seconds) VALUES('v','w','f',1234,'${DAY}',300);`);
