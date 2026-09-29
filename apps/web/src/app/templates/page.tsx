@@ -1,5 +1,6 @@
 'use client'
 
+import { MessageBodyField } from '@/components/ui/message-body-field'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { FloppyDiskIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react'
@@ -345,15 +346,13 @@ export default function TemplatesPage() {
                 label="テンプレート画像"
               />
             ) : (
-              <InputArea
+              <MessageBodyField
                 label={form.messageType === 'flex' ? 'Flex JSON' : 'メッセージ内容'}
                 required
+                messageType={form.messageType}
                 value={form.messageContent}
-                onValueChange={(value) => setForm((current) => ({ ...current, messageContent: value }))}
-                minRows={form.messageType === 'flex' ? 10 : 4}
-                maxRows={16}
-                autoResize
-                className="font-mono"
+                onChange={(value) => setForm((current) => ({ ...current, messageContent: value }))}
+                rows={form.messageType === 'flex' ? 10 : 4}
                 placeholder={form.messageType === 'flex' ? '{"type":"bubble","body":...}' : 'メッセージ内容'}
               />
             )}
@@ -494,14 +493,12 @@ export default function TemplatesPage() {
                   </div>
                 </section>
 
-                <InputArea
+                <MessageBodyField
                   label="内容 / JSON編集"
+                  messageType={drawerData.messageType}
                   value={editContent ?? drawerData.messageContent}
-                  onValueChange={setEditContent}
-                  minRows={drawerData.messageType === 'flex' ? 12 : 4}
-                  maxRows={18}
-                  autoResize
-                  className="font-mono"
+                  onChange={setEditContent}
+                  rows={drawerData.messageType === 'flex' ? 12 : 4}
                 />
 
                 {editError ? <Banner variant="error" title="保存できません" description={editError} /> : null}

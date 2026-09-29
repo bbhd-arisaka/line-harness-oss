@@ -1,5 +1,6 @@
 'use client'
 
+import { MessageBodyField } from '@/components/ui/message-body-field'
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
@@ -490,12 +491,12 @@ export default function RemindersPage() {
                               </div>
                               <div>
                                 <label className="block text-xs font-medium text-gray-600 mb-1">メッセージ内容 <span className="text-red-500">*</span></label>
-                                <InputArea
+                                <MessageBodyField
                                   label="メッセージ内容"
-                                  minRows={3}
+                                  rows={3}
                                   placeholder="メッセージ内容を入力"
                                   value={stepForm.messageContent}
-                                  onValueChange={(value) => setStepForm({ ...stepForm, messageContent: value })}
+                                  onChange={(value) => setStepForm({ ...stepForm, messageContent: value })}
                                 />
                               </div>
 

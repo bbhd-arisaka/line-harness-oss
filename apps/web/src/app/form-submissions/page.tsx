@@ -1,5 +1,6 @@
 'use client'
 
+import { formTagCode } from '@/lib/form-tags'
 import { useDialogs } from '@/components/ui/dialogs'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
@@ -63,6 +64,7 @@ export default function FormListPage() {
   const [sortMode, setSortMode] = useState<SortMode>('newest')
   const [sortOpen, setSortOpen] = useState(false)
   const [page, setPage] = useState(1)
+  const [copiedTagId, setCopiedTagId] = useState<string | null>(null)
   const [rowMenuId, setRowMenuId] = useState<string | null>(null)
   const [folderMenuOpen, setFolderMenuOpen] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -310,6 +312,18 @@ export default function FormListPage() {
                           {f.formUrl && (
                             <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => { setRowMenuId(null); window.open(f.formUrl!, '_blank', 'noopener') }}>プレビュー</button>
                           )}
+                          <button
+                            type="button"
+                            className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(formTagCode(f.id)).then(() => {
+                                setCopiedTagId(f.id)
+                                setTimeout(() => setCopiedTagId((v) => (v === f.id ? null : v)), 2000)
+                              })
+                            }}
+                          >
+                            {copiedTagId === f.id ? 'コピーしました' : 'タグコードをコピー'}
+                          </button>
                           <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => void duplicate(f)}>コピー</button>
                           <button type="button" className="block w-full px-3 py-1.5 text-left text-[#e5451f] hover:bg-[#f1f1f4]" onClick={() => void remove(f)}>削除</button>
                         </Popover>

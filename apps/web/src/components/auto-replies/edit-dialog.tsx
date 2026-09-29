@@ -1,5 +1,6 @@
 'use client'
 
+import { MessageBodyField } from '@/components/ui/message-body-field'
 import { useState } from 'react'
 import Link from 'next/link'
 import { Banner } from '@cloudflare/kumo/components/banner'
@@ -181,14 +182,12 @@ export default function EditDialog({ draft, templates, onClose, onSaved }: Props
           ) : null}
 
           {mode === 'inline-text' || mode === 'inline-flex' ? (
-            <InputArea
+            <MessageBodyField
               label={mode === 'inline-flex' ? 'Flex JSON' : 'テキスト'}
+              messageType={mode === 'inline-flex' ? 'flex' : 'text'}
               value={responseContent}
-              onValueChange={setResponseContent}
-              minRows={mode === 'inline-flex' ? 8 : 4}
-              maxRows={14}
-              autoResize
-              className="font-mono"
+              onChange={setResponseContent}
+              rows={mode === 'inline-flex' ? 8 : 4}
             />
           ) : null}
 

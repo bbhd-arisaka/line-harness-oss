@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { expandFormLinks } from '../services/form-link.js';
 import {
   getFriends,
   getFriendById,
@@ -669,11 +670,13 @@ friends.post('/api/friends/:id/messages', async (c) => {
     // Auto-wrap URLs with tracking links (text with URLs → Flex with button)
     // trackLinks=false で明示的に短縮 OFF (URL をそのまま送る)
     const sendWorkerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
-    let tracked = { messageType, content: body.content };
+    // フォームのタグコード({{form_url:ID}})を、送信アカウントの LIFF リンクに展開する
+    const sendContent = messageType === 'image' ? body.content : await expandFormLinks(db, body.content, friendAccountId);
+    let tracked = { messageType, content: sendContent };
     if (body.trackLinks !== false) {
       const { autoTrackContent } = await import('../services/auto-track.js');
       tracked = await autoTrackContent(
-        db, messageType, body.content,
+        db, messageType, sendContent,
         sendWorkerUrl,
         { lineAccountId: friendAccountId },
       );

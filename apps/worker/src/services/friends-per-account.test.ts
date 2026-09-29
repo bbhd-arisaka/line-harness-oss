@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { getFriendByLineUserIdForAccount, updateFriendFollowStatus, upsertFriend } from '@line-crm/db';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';

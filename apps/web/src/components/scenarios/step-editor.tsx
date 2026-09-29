@@ -1,5 +1,6 @@
 'use client'
 
+import { MessageBodyField } from '@/components/ui/message-body-field'
 import { useState } from 'react'
 import type { ScenarioStep, MessageType } from '@line-crm/shared'
 import { Banner } from '@cloudflare/kumo/components/banner'
@@ -187,8 +188,9 @@ export default function StepEditor({ step, stepOrder, onSave, onCancel }: StepEd
           )
         })()}
 
-        <InputArea
-          minRows={messageType === 'flex' ? 8 : messageType === 'image' ? 3 : 4}
+        <MessageBodyField
+          messageType={messageType}
+          rows={messageType === 'flex' ? 8 : messageType === 'image' ? 3 : 4}
           placeholder={
             messageType === 'text'
               ? 'メッセージテキストを入力...'
@@ -197,9 +199,7 @@ export default function StepEditor({ step, stepOrder, onSave, onCancel }: StepEd
               : '{"type":"bubble","body":{...}}'
           }
           value={messageContent}
-          onValueChange={setMessageContent}
-          style={{ fontFamily: messageType !== 'text' ? 'monospace' : 'inherit' }}
-          aria-label="メッセージ内容"
+          onChange={setMessageContent}
         />
         {messageType === 'image' && (
           <p className="text-xs text-gray-400 mt-1">上のURLフォームか、直接JSONを編集できます</p>

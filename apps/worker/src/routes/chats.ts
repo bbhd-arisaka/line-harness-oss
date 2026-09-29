@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { expandFormLinks } from '../services/form-link.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
 import type { Message } from '@line-crm/line-sdk';
 import { messageToLogPayload } from '../services/step-delivery.js';
@@ -581,9 +582,11 @@ chats.post('/api/chats/:id/send', async (c) => {
 
     const sendWorkerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
     const { autoTrackContent, appendFriendToTrackedLinks } = await import('../services/auto-track.js');
-    let tracked = { messageType, content: body.content };
+    // フォームのタグコード({{form_url:ID}})を、この友だちのアカウントの LIFF リンクに展開する
+    const sendContent = messageType === 'image' ? body.content : await expandFormLinks(c.env.DB, body.content, lineAccountId);
+    let tracked = { messageType, content: sendContent };
     if (body.trackLinks !== false) {
-      tracked = await autoTrackContent(c.env.DB, messageType, body.content, sendWorkerUrl, { lineAccountId });
+      tracked = await autoTrackContent(c.env.DB, messageType, sendContent, sendWorkerUrl, { lineAccountId });
     }
     // Opt-out disables raw URL wrapping, but existing tracked links still get
     // this 1:1 recipient. Image URLs are media and must remain untouched.

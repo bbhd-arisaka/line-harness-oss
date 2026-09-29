@@ -1,5 +1,7 @@
 'use client'
 
+import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
+import { FormTagPicker } from '@/components/forms/form-tag-picker'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseStickerMessageContent, stickerFallback } from '@line-crm/shared'
 import { api, fetchApi } from '@/lib/api'
@@ -356,7 +358,8 @@ export default function ChatsPage() {
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false)
   const isComposingRef = useRef(false)
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<TagTextEditorHandle>(null)
+  const [showFormPicker, setShowFormPicker] = useState(false)
   // OAM(公式LINEマネージャー)風レイアウト: 添付・設定・メモは折りたたみ、
   // メッセージ表示領域を最大化する
   const [showImagePicker, setShowImagePicker] = useState(false)
@@ -594,14 +597,6 @@ export default function ChatsPage() {
     }
   }, [chatDetail?.id, chatDetail?.messages?.length])
 
-  // Auto-resize textarea as messageContent grows
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [messageContent])
-
   // チャットを開いたら入力欄に自動フォーカスする — 「クリックしてもフォーカスが
   // 入らない」報告への対処で、そもそもクリックを不要にする。モバイルでは
   // ソフトキーボードが勝手に開いてしまうためデスクトップ (lg+) のみ。
@@ -838,7 +833,7 @@ export default function ChatsPage() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     // IME変換確定のEnterでは送信しない
     if (e.nativeEvent.isComposing || isComposingRef.current || e.keyCode === 229) return
     if (e.key !== 'Enter') return
@@ -1244,7 +1239,7 @@ export default function ChatsPage() {
                 className="relative z-30 bg-white flex-shrink-0 px-4 pt-3 pb-5 border-t border-gray-200"
                 onClick={(e) => {
                   const t = e.target as HTMLElement
-                  if (t.closest('button, textarea, input, select, label, a')) return
+                  if (t.closest('button, textarea, input, select, label, a, [role="textbox"]')) return
                   textareaRef.current?.focus()
                 }}
               >
@@ -1293,17 +1288,17 @@ export default function ChatsPage() {
                   className="rounded-2xl border border-gray-300 bg-white cursor-text transition-colors focus-within:border-green-500 focus-within:ring-2 focus-within:ring-green-100"
                   onClick={(e) => {
                     const t = e.target as HTMLElement
-                    if (t.closest('button, textarea, input, select, label, a')) return
+                    if (t.closest('button, textarea, input, select, label, a, [role="textbox"]')) return
                     textareaRef.current?.focus()
                   }}
                 >
-                  <textarea
+                  <TagTextEditor
                     ref={textareaRef}
                     rows={2}
+                    maxHeight={200}
                     value={messageContent}
-                    style={{ maxHeight: '200px', overflowY: 'auto' }}
-                    onChange={(e) => {
-                      const value = e.target.value
+                    aria-label="メッセージ"
+                    onChange={(value) => {
                       setMessageContent(value)
                       if (selectedChatId && isMessageInputFocused && value.trim()) {
                         void triggerLoadingAnimation(selectedChatId)
@@ -1320,7 +1315,7 @@ export default function ChatsPage() {
                     onBlur={() => setIsMessageInputFocused(false)}
                     onKeyDown={handleKeyDown}
                     placeholder="メッセージを入力..."
-                    className="block w-full resize-none border-0 bg-transparent px-4 pt-3 pb-1 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0"
+                    className="block w-full bg-transparent px-4 pt-3 pb-1 text-sm text-gray-900"
                   />
                   <div className="flex items-center gap-0.5 px-2 pb-2">
                     <Button
@@ -1335,6 +1330,16 @@ export default function ChatsPage() {
                       <svg className="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowFormPicker(true)}
+                      title="回答フォームを挿入(送信時にこのトークのアカウント用リンクに変換されます)"
+                      aria-label="回答フォームを挿入"
+                    >
+                      フォーム
                     </Button>
                     <Button
                       type="button"
@@ -1407,6 +1412,11 @@ export default function ChatsPage() {
           送信ボタンに重なってクリックを奪う。xl 以上では友だち詳細サイドバーの上に
           浮くので無害だが、サイドバーが消える xl 未満では入力欄の真上に来てしまい、
           複数行入力で伸びた textarea のクリックを奪う。xl 未満では表示しない。 */}
+      <FormTagPicker
+        open={showFormPicker}
+        onClose={() => setShowFormPicker(false)}
+        onPick={(form) => setTimeout(() => textareaRef.current?.insertFormTag(form.id), 0)}
+      />
       {headerNameFriend && (
         <FriendNameEditDialog
           friend={headerNameFriend}

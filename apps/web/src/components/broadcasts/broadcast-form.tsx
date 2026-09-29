@@ -1,5 +1,6 @@
 'use client'
 
+import { MessageBodyField } from '@/components/ui/message-body-field'
 import { useEffect, useRef, useState } from 'react'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Button } from '@cloudflare/kumo/components/button'
@@ -194,11 +195,11 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
               </p>
             </div>
           )}
-          <InputArea
+          <MessageBodyField
             label="メッセージ内容"
             required
+            messageType={form.messageType}
             description={form.messageType === 'text' ? undefined : 'JSON形式で指定します。'}
-            className={form.messageType !== 'text' ? 'font-mono' : undefined}
             rows={form.messageType === 'flex' ? 8 : form.messageType === 'image' ? 3 : 4}
             placeholder={
               form.messageType === 'text'
@@ -208,7 +209,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
                 : '{"type":"bubble","body":{...}}'
             }
             value={form.messageContent}
-            onValueChange={(value) => setForm({ ...form, messageContent: value })}
+            onChange={(value) => setForm({ ...form, messageContent: value })}
           />
           {form.messageType === 'image' && (
             <p className="text-xs text-gray-400 mt-1">上のURLフォームか、直接JSONを編集できます</p>

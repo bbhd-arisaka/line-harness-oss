@@ -1,4 +1,5 @@
 import { BroadcastDeliveryError, BROADCAST_RECORDING_ERROR, broadcastDeliveryFailure, isDefiniteLineRejection } from './broadcast-delivery-error.js';
+import { expandFormLinks } from './form-link.js';
 import { BroadcastSenderError, resolveBroadcastSender } from './broadcast-sender.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
 import {
@@ -266,10 +267,14 @@ export async function processBroadcastSend(
   // track_links=0 の broadcast は明示的に短縮 OFF (URL をそのまま送る)。
   const broadcastAccountId = (broadcast as unknown as Record<string, unknown>).line_account_id as string | null;
   let finalType: string = broadcast.message_type;
-  let finalContent = broadcast.message_content;
+  // フォームのタグコード({{form_url:ID}})を、配信アカウントの LIFF リンクに展開する
+  const formExpanded = broadcast.message_type === 'image'
+    ? broadcast.message_content
+    : await expandFormLinks(db, broadcast.message_content, broadcastAccountId);
+  let finalContent = formExpanded;
   if (workerUrl && broadcast.track_links !== 0) {
     const { autoTrackContent } = await import('./auto-track.js');
-    const tracked = await autoTrackContent(db, broadcast.message_type, broadcast.message_content, workerUrl, {
+    const tracked = await autoTrackContent(db, broadcast.message_type, formExpanded, workerUrl, {
       lineAccountId: broadcastAccountId,
     });
     finalType = tracked.messageType;
@@ -617,12 +622,16 @@ async function processQueuedBroadcastBatches(
   // 継続 tick では再実行しない (初回に変換結果を message_content へ persist 済みなので、
   // 継続 tick はそれを使う)。
   let finalType: string = broadcast.message_type;
-  let finalContent = broadcast.message_content;
+  // フォームのタグコード({{form_url:ID}})を、配信アカウントの LIFF リンクに展開する
+  const queuedFormExpanded = broadcast.message_type === 'image'
+    ? broadcast.message_content
+    : await expandFormLinks(db, broadcast.message_content, (raw.line_account_id as string | null) ?? null);
+  let finalContent = queuedFormExpanded;
   if (workerUrl && batchOffset === 0 && !isDedupContinuation && broadcast.track_links !== 0) {
     const { autoTrackContent } = await import('./auto-track.js');
     // dedup broadcast は複数アカウントから送るためリンクの所有アカウントを一意に
     // 決められない → line_account_id は null のまま (env.LIFF_URL フォールバック)。
-    const tracked = await autoTrackContent(db, broadcast.message_type, broadcast.message_content, workerUrl, {
+    const tracked = await autoTrackContent(db, broadcast.message_type, queuedFormExpanded, workerUrl, {
       lineAccountId: (raw.line_account_id as string | null) ?? null,
     });
     finalType = tracked.messageType;

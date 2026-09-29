@@ -7,6 +7,7 @@ import { extractFlexAltText } from '../utils/flex-alt-text.js';
  * まだ配信されていないステップを配信する
  */
 
+import { expandFormLinks } from './form-link.js';
 import {
   getDueReminderDeliveries,
   completeReminderIfDone,
@@ -49,7 +50,10 @@ export async function processReminderDeliveries(
       }
 
       for (const step of fr.steps) {
-        const message = buildMessage(step.message_type, step.message_content);
+        const stepContent = step.message_type === 'image'
+          ? step.message_content
+          : await expandFormLinks(db, step.message_content, friendAccountId ?? null);
+        const message = buildMessage(step.message_type, stepContent);
         await deliveryClient.pushMessage(friend.line_user_id, [message]);
 
         // Mark as delivered AFTER successful send.
