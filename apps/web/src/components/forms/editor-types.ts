@@ -363,6 +363,7 @@ export interface LstepOptions {
   startsAt?: string | null
   backgroundImageOpacity?: number
   thanksText?: string
+  answerMessage?: { mode: 'none' | 'summary' | 'custom'; title?: string }
 }
 
 export interface FormDraft {
@@ -378,6 +379,8 @@ export interface FormDraft {
   onSubmitScenarioId: string
   onSubmitStopScenarios: boolean
   thanksUrl: string
+  onSubmitMessageType: string
+  onSubmitMessageContent: string
   restorePreviousAnswer: boolean
   expiresAt: string
   capacityLimit: string
@@ -411,6 +414,8 @@ export function emptyDraft(folderId: string): FormDraft {
     onSubmitScenarioId: '',
     onSubmitStopScenarios: false,
     thanksUrl: '',
+    onSubmitMessageType: '',
+    onSubmitMessageContent: '',
     restorePreviousAnswer: false,
     expiresAt: '',
     capacityLimit: '',
@@ -452,6 +457,8 @@ export function draftFromApi(form: Record<string, unknown>): FormDraft {
     onSubmitScenarioId: str(form.onSubmitScenarioId),
     onSubmitStopScenarios: Boolean(form.onSubmitStopScenarios),
     thanksUrl: str(form.thanksUrl),
+    onSubmitMessageType: str(form.onSubmitMessageType),
+    onSubmitMessageContent: str(form.onSubmitMessageContent),
     restorePreviousAnswer: Boolean(form.restorePreviousAnswer),
     expiresAt: expires ? expires.slice(0, 16) : '',
     capacityLimit: form.capacityLimit != null ? String(form.capacityLimit) : '',
@@ -486,6 +493,10 @@ export function draftToPayload(d: FormDraft) {
     onSubmitScenarioId: d.onSubmitScenarioId || null,
     onSubmitStopScenarios: d.onSubmitStopScenarios,
     thanksUrl: nz(d.thanksUrl),
+    // 回答後メッセージ: 「自分の文章」のときだけ文章を保存する(Flex等の既存設定は、種類ごとそのまま維持)
+    ...(d.lstep.answerMessage?.mode === 'custom' && d.onSubmitMessageType !== 'flex'
+      ? { onSubmitMessageType: 'text' as const, onSubmitMessageContent: nz(d.onSubmitMessageContent) }
+      : {}),
     restorePreviousAnswer: d.restorePreviousAnswer,
     expiresAt: d.expiresAt ? `${d.expiresAt}:00` : null,
     capacityLimit: d.capacityLimit.trim() ? Number(d.capacityLimit) : null,

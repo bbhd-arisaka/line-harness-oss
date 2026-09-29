@@ -162,6 +162,54 @@ export function OptionModal({
           />
           <p className="text-[11px] text-[#757578]">※サンクスページURLを設定しない場合の文章を設定します</p>
         </Sub>
+        <Sub label="回答後メッセージ">
+          {(() => {
+            const mode = l.answerMessage?.mode ?? (d.onSubmitMessageContent ? 'custom' : 'none')
+            const setMode = (m: 'none' | 'summary' | 'custom') => setL({ answerMessage: { ...l.answerMessage, mode: m } })
+            const isFlex = d.onSubmitMessageType === 'flex'
+            return (
+              <div className="space-y-2">
+                {([
+                  ['none', '送らない', '回答してもお客様への自動メッセージは送りません(通常はこちら)'],
+                  ['summary', '回答内容のまとめを送る', 'お客様の回答を一覧にしたカードを、トークに自動で送ります'],
+                  ['custom', '自分で書いた文章を送る', '「ご予約ありがとうございます」など、決まった文章を送ります'],
+                ] as const).map(([value, label, help]) => (
+                  <label key={value} className="flex items-start gap-2 text-sm">
+                    <input type="radio" name="answerMessageMode" className="mt-1" checked={mode === value} onChange={() => setMode(value)} />
+                    <span>
+                      <span className="font-bold">{label}</span>
+                      <span className="block text-[11px] text-[#757578]">{help}</span>
+                    </span>
+                  </label>
+                ))}
+                {mode === 'summary' && (
+                  <input
+                    className={input}
+                    placeholder="カードの見出し(例: ご回答内容)"
+                    value={l.answerMessage?.title ?? ''}
+                    onChange={(e) => setL({ answerMessage: { mode: 'summary', title: e.target.value } })}
+                  />
+                )}
+                {mode === 'custom' && (isFlex ? (
+                  <p className="rounded bg-[#fff8e6] p-2 text-[11px] text-[#8a6d1d]">
+                    このフォームには、詳細な形式(Flexメッセージ)のメッセージが設定済みです。ここでは編集できませんが、そのまま送信されます。
+                  </p>
+                ) : (
+                  <div>
+                    <textarea
+                      rows={4}
+                      className="w-full rounded border border-[#cacace] px-3 py-2 text-sm outline-none focus:border-[#069e04]"
+                      placeholder={'{{name}}さん、ご回答ありがとうございました!'}
+                      value={d.onSubmitMessageContent}
+                      onChange={(e) => set({ onSubmitMessageContent: e.target.value })}
+                    />
+                    <p className="mt-1 text-[11px] text-[#757578]">{'{{name}} と入力すると、お客様の名前に置き換わります。'}</p>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </Sub>
         <Sub label="2回目以降の回答">
           <label className={check}>
             <input type="checkbox" checked={d.restorePreviousAnswer} onChange={(e) => set({ restorePreviousAnswer: e.target.checked })} />

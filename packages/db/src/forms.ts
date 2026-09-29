@@ -70,6 +70,13 @@ export interface FormLstepOptions {
   confirmDialog?: boolean;
   startsAt?: string | null;
   backgroundImageOpacity?: number;
+  /**
+   * 回答後にお客様へ自動で送るメッセージ。
+   * - none    : 送らない(既定)
+   * - summary : 回答内容のまとめ(「診断結果」風のカード)を送る
+   * - custom  : 自分で書いた文章を送る(forms.on_submit_message_* を使用)
+   */
+  answerMessage?: { mode: 'none' | 'summary' | 'custom'; title?: string };
 }
 
 export function parseFormLstepOptions(raw: string | null | undefined): FormLstepOptions {

@@ -269,7 +269,7 @@ async function computeFormAvailability(
       const counts = countOptionSelections(subs, capped);
       for (const f of capped) {
         for (const [opt, limit] of Object.entries(f.optionCapacity ?? {})) {
-          if ((counts[`${f.name} ${opt}`] ?? 0) >= limit) (fullOptions[f.name] ??= []).push(opt);
+          if ((counts[`${f.name}\u0000${opt}`] ?? 0) >= limit) (fullOptions[f.name] ??= []).push(opt);
         }
       }
     }
@@ -1182,7 +1182,13 @@ forms.post('/api/forms/:id/submit', async (c) => {
             metadata: resolvedMeta,
           };
 
-          // Build diagnostic result Flex card showing their answers
+          // 回答後メッセージの種類(フォームごとに設定)。未設定のフォームは「送らない」。
+          // 以前は未設定でも、宣伝文入りの「診断結果」カードを自動で送っていた(お客様向けには不適切)。
+          const answerMessage = parseFormLstepOptions(form.lstep_options).answerMessage;
+          const answerMode: 'none' | 'summary' | 'custom' =
+            answerMessage?.mode ?? (form.on_submit_message_type && form.on_submit_message_content ? 'custom' : 'none');
+
+          // Build the answer-summary Flex card showing their answers
           const entries = Object.entries(submissionData as Record<string, unknown>);
           const answerRows = entries.map(([key, value]) => {
             const field = form.fields ? (JSON.parse(form.fields) as Array<{ name: string; label: string }>).find((f: { name: string }) => f.name === key) : null;
@@ -1202,7 +1208,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
             header: {
               type: 'box', layout: 'vertical',
               contents: [
-                { type: 'text', text: '診断結果', size: 'lg', weight: 'bold', color: '#1e293b' },
+                { type: 'text', text: answerMessage?.title?.trim() || 'ご回答内容', size: 'lg', weight: 'bold', color: '#1e293b' },
                 { type: 'text', text: `${friend.display_name || ''}さんの回答`, size: 'xs', color: '#64748b', margin: 'sm' },
               ],
               paddingAll: '20px', backgroundColor: '#f0fdf4',
@@ -1211,8 +1217,6 @@ forms.post('/api/forms/:id/submit', async (c) => {
               type: 'box', layout: 'vertical',
               contents: [
                 ...answerRows,
-                { type: 'separator', margin: 'lg' },
-                { type: 'text', text: '他社サービスでは、フォームの回答内容に合わせたリアルタイム返信はできません。L Harnessだからこそ可能な体験です。', size: 'xs', color: '#06C755', weight: 'bold', wrap: true, margin: 'lg' },
               ],
               paddingAll: '20px',
             },
@@ -1226,17 +1230,19 @@ forms.post('/api/forms/:id/submit', async (c) => {
           if (rewardFromTrackedLink) {
             // Tracked-link reward template overrides everything (per-campaign reward)
             messages.push(rewardFromTrackedLink as ReturnType<typeof buildMessage>);
-          } else if (form.on_submit_message_type && form.on_submit_message_content) {
-            // Custom form message replaces default diagnostic result
+          } else if (answerMode === 'custom' && form.on_submit_message_type && form.on_submit_message_content) {
+            // 自分で書いた回答後メッセージ
             const expanded = expandVariables(form.on_submit_message_content, friendData, apiOrigin, form.on_submit_message_type);
             // 1:1 push → /t リンクに f=<friendId> を焼き込み (LIFF 識別ホップ回避)
             const { appendFriendToTrackedLinks } = await import('../services/auto-track.js');
             const decorated = await appendFriendToTrackedLinks(db, expanded, apiOrigin, friend.id);
             messages.push(buildMessage(form.on_submit_message_type, decorated));
-          } else {
-            // Default: send diagnostic result Flex
+          } else if (answerMode === 'summary') {
             messages.push(buildMessage('flex', JSON.stringify(resultFlex)));
           }
+
+          // 「送らない」設定(既定)のときは、何も送信しない
+          if (messages.length === 0) return;
 
           // プロキシが LINE 送信と messages_log 記録を一体で行う。
           await pushViaHarnessProxy(
