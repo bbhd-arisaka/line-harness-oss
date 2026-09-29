@@ -443,7 +443,7 @@ CREATE TABLE IF NOT EXISTS friend_field_definitions (
   display_order INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-);
+, is_favorite INTEGER NOT NULL DEFAULT 0, option_colors TEXT);
 
 CREATE TABLE IF NOT EXISTS friend_field_folders (
   id           TEXT PRIMARY KEY,

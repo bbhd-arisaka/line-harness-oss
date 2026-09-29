@@ -84,7 +84,8 @@
     "076_friends_real_name_memo.sql",
     "077_form_theme_colors.sql",
     "078_form_folders.sql",
-    "079_friends_system_display_name.sql"
+    "079_friends_system_display_name.sql",
+    "080_friend_fields_lstep.sql"
   ],
-  "migrationCount": 85
+  "migrationCount": 86
 }

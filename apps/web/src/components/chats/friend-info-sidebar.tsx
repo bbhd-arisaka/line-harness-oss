@@ -73,7 +73,7 @@ const METADATA_LABELS: Record<string, string> = {
 interface FieldDef {
   fieldKey: string
   label: string
-  fieldType: 'text' | 'textarea' | 'number' | 'date' | 'select' | 'radio' | 'checkbox'
+  fieldType: 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'image' | 'pdf' | 'select' | 'radio' | 'checkbox'
   options: string[]
 }
 
@@ -567,7 +567,7 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
                           <Input
                             className="min-w-0 flex-1 text-xs"
                             aria-label="値"
-                            type={def?.fieldType === 'number' ? 'number' : def?.fieldType === 'date' ? 'date' : 'text'}
+                            type={def?.fieldType === 'number' ? 'number' : def?.fieldType === 'date' ? 'date' : def?.fieldType === 'datetime' ? 'datetime-local' : 'text'}
                             placeholder="値"
                             value={row.value}
                             onValueChange={setValue}

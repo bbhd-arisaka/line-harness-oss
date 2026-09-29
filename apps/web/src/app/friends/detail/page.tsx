@@ -30,7 +30,7 @@ interface FriendFieldDefinition {
   folderId: string | null
   fieldKey: string
   label: string
-  fieldType: 'text' | 'textarea' | 'number' | 'date' | 'select' | 'radio' | 'checkbox'
+  fieldType: 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'image' | 'pdf' | 'select' | 'radio' | 'checkbox'
   options: string[]
   displayOrder: number
 }
@@ -409,7 +409,7 @@ export default function FriendDetailPage() {
                       ) : (
                         <Input
                           aria-label={def.label}
-                          type={def.fieldType === 'number' ? 'number' : def.fieldType === 'date' ? 'date' : 'text'}
+                          type={def.fieldType === 'number' ? 'number' : def.fieldType === 'date' ? 'date' : def.fieldType === 'datetime' ? 'datetime-local' : 'text'}
                           value={value}
                           onValueChange={setValue}
                         />

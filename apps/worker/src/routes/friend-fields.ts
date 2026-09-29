@@ -9,6 +9,9 @@ import {
   createFriendFieldDefinition,
   updateFriendFieldDefinition,
   deleteFriendFieldDefinition,
+  countFriendsByFieldKey,
+  reorderFriendFieldDefinitions,
+  reorderFriendFieldFolders,
 } from '@line-crm/db';
 import type {
   FriendFieldFolder as DbFolder,
@@ -36,6 +39,8 @@ function serializeDefinition(row: DbDefinition) {
     label: row.label,
     fieldType: row.field_type,
     options: row.options ? (JSON.parse(row.options) as string[]) : [],
+    optionColors: row.option_colors ? (JSON.parse(row.option_colors) as string[]) : [],
+    isFavorite: Boolean(row.is_favorite),
     defaultValue: row.default_value,
     displayOrder: row.display_order,
     createdAt: row.created_at,
@@ -99,7 +104,16 @@ friendFields.delete('/api/friend-fields/folders/:id', async (c) => {
 friendFields.get('/api/friend-fields/definitions', async (c) => {
   try {
     const items = await getFriendFieldDefinitions(c.env.DB);
-    return c.json({ success: true, data: items.map(serializeDefinition) });
+    const counts = c.req.query('withCounts') === 'true'
+      ? await countFriendsByFieldKey(c.env.DB, items.map((d) => d.field_key))
+      : null;
+    return c.json({
+      success: true,
+      data: items.map((d) => ({
+        ...serializeDefinition(d),
+        ...(counts ? { friendCount: counts[d.field_key] ?? 0 } : {}),
+      })),
+    });
   } catch (err) {
     console.error('GET /api/friend-fields/definitions error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -114,22 +128,26 @@ friendFields.post('/api/friend-fields/definitions', async (c) => {
       label: string;
       fieldType?: DbDefinition['field_type'];
       options?: string[];
+      optionColors?: string[];
       defaultValue?: string | null;
       displayOrder?: number;
     }>();
-    if (!body.fieldKey?.trim() || !body.label?.trim()) {
-      return c.json({ success: false, error: 'fieldKey and label are required' }, 400);
+    if (!body.label?.trim()) {
+      return c.json({ success: false, error: '友だち情報欄名を入力してください' }, 400);
     }
-    const existing = await getFriendFieldDefinitionByKey(c.env.DB, body.fieldKey.trim());
+    // Lステップの登録画面には「キー」入力が無いので、未指定なら自動採番する
+    const fieldKey = body.fieldKey?.trim() || `ff_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const existing = await getFriendFieldDefinitionByKey(c.env.DB, fieldKey);
     if (existing) {
       return c.json({ success: false, error: 'この項目キーは既に使われています' }, 400);
     }
     const definition = await createFriendFieldDefinition(c.env.DB, {
       folderId: body.folderId ?? null,
-      fieldKey: body.fieldKey.trim(),
+      fieldKey,
       label: body.label.trim(),
       fieldType: body.fieldType,
       options: body.options,
+      optionColors: body.optionColors,
       defaultValue: body.defaultValue,
       displayOrder: body.displayOrder,
     });
@@ -147,6 +165,8 @@ friendFields.put('/api/friend-fields/definitions/:id', async (c) => {
       label?: string;
       fieldType?: DbDefinition['field_type'];
       options?: string[];
+      optionColors?: string[];
+      isFavorite?: boolean;
       defaultValue?: string | null;
       displayOrder?: number;
     }>();
@@ -165,6 +185,52 @@ friendFields.delete('/api/friend-fields/definitions/:id', async (c) => {
     return c.json({ success: true, data: null });
   } catch (err) {
     console.error('DELETE /api/friend-fields/definitions/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// 並び替え(ドラッグ&ドロップ): 渡した ID の順に display_order を振り直す
+friendFields.post('/api/friend-fields/definitions/reorder', async (c) => {
+  try {
+    const body = await c.req.json<{ ids: string[] }>();
+    await reorderFriendFieldDefinitions(c.env.DB, Array.isArray(body.ids) ? body.ids : []);
+    return c.json({ success: true, data: null });
+  } catch (err) {
+    console.error('POST /api/friend-fields/definitions/reorder error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+friendFields.post('/api/friend-fields/folders/reorder', async (c) => {
+  try {
+    const body = await c.req.json<{ ids: string[] }>();
+    await reorderFriendFieldFolders(c.env.DB, Array.isArray(body.ids) ? body.ids : []);
+    return c.json({ success: true, data: null });
+  } catch (err) {
+    console.error('POST /api/friend-fields/folders/reorder error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// コピー(⋮メニュー): 名前に「のコピー」を付けて、キーは新規採番。友だちの値はコピーしない
+friendFields.post('/api/friend-fields/definitions/:id/copy', async (c) => {
+  try {
+    const defs = await getFriendFieldDefinitions(c.env.DB);
+    const src = defs.find((d) => d.id === c.req.param('id'));
+    if (!src) return c.json({ success: false, error: 'Not found' }, 404);
+    const copy = await createFriendFieldDefinition(c.env.DB, {
+      folderId: src.folder_id,
+      fieldKey: `ff_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
+      label: `${src.label}のコピー`,
+      fieldType: src.field_type,
+      options: src.options ? (JSON.parse(src.options) as string[]) : null,
+      optionColors: src.option_colors ? (JSON.parse(src.option_colors) as string[]) : null,
+      defaultValue: src.default_value,
+      displayOrder: src.display_order + 1,
+    });
+    return c.json({ success: true, data: serializeDefinition(copy) }, 201);
+  } catch (err) {
+    console.error('POST /api/friend-fields/definitions/:id/copy error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

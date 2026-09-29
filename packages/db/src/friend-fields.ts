@@ -16,10 +16,14 @@ export interface FriendFieldDefinition {
   folder_id: string | null;
   field_key: string;
   label: string;
-  field_type: 'text' | 'textarea' | 'number' | 'date' | 'select' | 'radio' | 'checkbox';
+  field_type: 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'image' | 'pdf' | 'select' | 'radio' | 'checkbox';
   options: string | null; // JSON配列文字列。select/radio/checkboxのときのみ使う
   default_value: string | null;
   display_order: number;
+  /** ★お気に入り(0/1)。Lステップの友だち情報欄一覧の星と同じ */
+  is_favorite: number;
+  /** 選択肢ごとの色。options と同じ並びの JSON 配列文字列 */
+  option_colors: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -124,6 +128,7 @@ export interface CreateFriendFieldDefinitionInput {
   label: string;
   fieldType?: FriendFieldDefinition['field_type'];
   options?: string[] | null;
+  optionColors?: string[] | null;
   defaultValue?: string | null;
   displayOrder?: number;
 }
@@ -137,8 +142,8 @@ export async function createFriendFieldDefinition(
   await db
     .prepare(
       `INSERT INTO friend_field_definitions
-         (id, folder_id, field_key, label, field_type, options, default_value, display_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, folder_id, field_key, label, field_type, options, option_colors, default_value, display_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -147,6 +152,7 @@ export async function createFriendFieldDefinition(
       input.label,
       input.fieldType ?? 'text',
       input.options ? JSON.stringify(input.options) : null,
+      input.optionColors ? JSON.stringify(input.optionColors) : null,
       input.defaultValue ?? null,
       input.displayOrder ?? 0,
       now,
@@ -164,6 +170,8 @@ export interface UpdateFriendFieldDefinitionInput {
   label?: string;
   fieldType?: FriendFieldDefinition['field_type'];
   options?: string[] | null;
+  optionColors?: string[] | null;
+  isFavorite?: boolean;
   defaultValue?: string | null;
   displayOrder?: number;
 }
@@ -183,7 +191,7 @@ export async function updateFriendFieldDefinition(
   await db
     .prepare(
       `UPDATE friend_field_definitions
-       SET folder_id = ?, label = ?, field_type = ?, options = ?, default_value = ?, display_order = ?, updated_at = ?
+       SET folder_id = ?, label = ?, field_type = ?, options = ?, option_colors = ?, is_favorite = ?, default_value = ?, display_order = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
@@ -191,6 +199,8 @@ export async function updateFriendFieldDefinition(
       input.label ?? existing.label,
       input.fieldType ?? existing.field_type,
       'options' in input ? (input.options ? JSON.stringify(input.options) : null) : existing.options,
+      'optionColors' in input ? (input.optionColors ? JSON.stringify(input.optionColors) : null) : existing.option_colors,
+      'isFavorite' in input ? (input.isFavorite ? 1 : 0) : existing.is_favorite,
       'defaultValue' in input ? (input.defaultValue ?? null) : existing.default_value,
       input.displayOrder ?? existing.display_order,
       now,
@@ -205,4 +215,41 @@ export async function updateFriendFieldDefinition(
 
 export async function deleteFriendFieldDefinition(db: D1Database, id: string): Promise<void> {
   await db.prepare(`DELETE FROM friend_field_definitions WHERE id = ?`).bind(id).run();
+}
+
+/**
+ * 定義ごとの「友だち人数」(その項目に値が入っている友だちの数)。
+ * friends.metadata の JSON キーが空でない友だちを数える。
+ */
+export async function countFriendsByFieldKey(
+  db: D1Database,
+  fieldKeys: string[],
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  if (fieldKeys.length === 0) return counts;
+  // D1 は1クエリあたりのバインド数に上限があるため、項目ごとに1文へ分けて batch 実行する
+  const sql = `SELECT COUNT(*) AS n FROM friends
+     WHERE json_extract(metadata, '$.' || ?) IS NOT NULL
+       AND CAST(json_extract(metadata, '$.' || ?) AS TEXT) != ''`;
+  const stmts = fieldKeys.map((key) => db.prepare(sql).bind(key, key));
+  const results = await db.batch<{ n: number }>(stmts);
+  results.forEach((r, i) => {
+    counts[fieldKeys[i]] = r.results[0]?.n ?? 0;
+  });
+  return counts;
+}
+
+/** 手動並び替え: 渡された ID の順に display_order を振り直す。 */
+export async function reorderFriendFieldDefinitions(db: D1Database, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db.batch(
+    ids.map((id, i) => db.prepare(`UPDATE friend_field_definitions SET display_order = ? WHERE id = ?`).bind(i, id)),
+  );
+}
+
+export async function reorderFriendFieldFolders(db: D1Database, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db.batch(
+    ids.map((id, i) => db.prepare(`UPDATE friend_field_folders SET display_order = ? WHERE id = ?`).bind(i, id)),
+  );
 }
