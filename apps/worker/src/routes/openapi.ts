@@ -605,6 +605,34 @@ const spec = {
     '/api/forms/{id}/submissions': {
       get: { tags: ['Forms'], summary: '回答一覧', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Submissions' } } },
     },
+    '/api/forms/{id}/duplicate': {
+      post: {
+        tags: ['Forms'],
+        summary: 'フォームを複製',
+        description: 'Lステップの回答フォーム一覧の「コピー」相当。名前に「のコピー」を付けた新規フォームを作成する。',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '201': { description: 'Created' }, '404': { description: 'Form not found' } },
+      },
+    },
+    '/api/forms/folders': {
+      get: { tags: ['Forms'], summary: 'フォームフォルダ一覧', responses: { '200': { description: 'Folders' } } },
+      post: {
+        tags: ['Forms'],
+        summary: 'フォームフォルダ作成',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, displayOrder: { type: 'integer' } }, required: ['name'] } } } },
+        responses: { '201': { description: 'Created' }, '400': { description: 'name is required' } },
+      },
+    },
+    '/api/forms/folders/{id}': {
+      put: { tags: ['Forms'], summary: 'フォームフォルダ更新', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated' } } },
+      delete: {
+        tags: ['Forms'],
+        summary: 'フォームフォルダ削除',
+        description: '所属していたフォームは自動的に未分類(folderId=null)へ移動する。フォーム自体は削除されない。',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Deleted' } },
+      },
+    },
     '/api/forms/{id}/submit': {
       post: { tags: ['Forms'], summary: '回答送信（公開）', description: 'LIFF の回答画面から呼ばれる。', security: [], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Submitted' } } },
     },

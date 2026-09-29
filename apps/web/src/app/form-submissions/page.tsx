@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import { XIcon } from '@phosphor-icons/react'
+import { XIcon, PencilSimpleIcon, TrashIcon, CopyIcon, ArrowSquareOutIcon } from '@phosphor-icons/react'
 import { fetchApi } from '@/lib/api'
 import { countryFlag } from '@/lib/country-flag'
 import Header from '@/components/layout/header'
@@ -16,6 +16,7 @@ import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { LayerCard } from '@cloudflare/kumo/components/layer-card'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { Select } from '@cloudflare/kumo/components/select'
+import { Switch } from '@cloudflare/kumo/components/switch'
 import { Table } from '@cloudflare/kumo/components/table'
 
 type FieldType =
@@ -123,10 +124,20 @@ interface FormField {
   buttonUrl?: string
 }
 
+interface FormFolder {
+  id: string
+  name: string
+  displayOrder: number
+}
+
+const UNASSIGNED_FOLDER_ID = '__unassigned__'
+
 interface Form {
   id: string
   name: string
   description: string | null
+  folderId: string | null
+  formUrl?: string | null
   fields: FormField[]
   saveToMetadata?: boolean
   isActive: boolean
@@ -215,12 +226,110 @@ export default function FormSubmissionsPage() {
   const [query, setQuery] = useState('')
   const [formFilter, setFormFilter] = useState<FormFilter>('all')
 
+  // フォルダ(Lステップの回答フォーム一覧のフォルダ分け相当)
+  const [folders, setFolders] = useState<FormFolder[]>([])
+  const [selectedFolderId, setSelectedFolderId] = useState<string>('all')
+  const [newFolderName, setNewFolderName] = useState('')
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
+  const [renamingFolderName, setRenamingFolderName] = useState('')
+  const [folderDeleteTarget, setFolderDeleteTarget] = useState<FormFolder | null>(null)
+  const [deletingFolder, setDeletingFolder] = useState(false)
+  const [formDeleteTarget, setFormDeleteTarget] = useState<Form | null>(null)
+  const [deletingForm, setDeletingForm] = useState(false)
+  const [duplicatingFormId, setDuplicatingFormId] = useState<string | null>(null)
+  const [togglingActiveFormId, setTogglingActiveFormId] = useState<string | null>(null)
+
+  const loadFolders = useCallback(async () => {
+    try {
+      const res = await fetchApi<{ success: boolean; data: FormFolder[] }>('/api/forms/folders')
+      if (res.success) setFolders(res.data)
+    } catch { /* silent */ }
+  }, [])
+
+  useEffect(() => { loadFolders() }, [loadFolders])
+
+  const createFolder = async () => {
+    const name = newFolderName.trim()
+    if (!name || creatingFolder) return
+    setCreatingFolder(true)
+    try {
+      await fetchApi('/api/forms/folders', { method: 'POST', body: JSON.stringify({ name }) })
+      setNewFolderName('')
+      await loadFolders()
+    } finally {
+      setCreatingFolder(false)
+    }
+  }
+
+  const saveRenameFolder = async () => {
+    if (!renamingFolderId) return
+    const name = renamingFolderName.trim()
+    if (!name) return
+    await fetchApi(`/api/forms/folders/${renamingFolderId}`, { method: 'PUT', body: JSON.stringify({ name }) })
+    setRenamingFolderId(null)
+    await loadFolders()
+  }
+
+  const handleDeleteFolder = async () => {
+    if (!folderDeleteTarget) return
+    setDeletingFolder(true)
+    try {
+      await fetchApi(`/api/forms/folders/${folderDeleteTarget.id}`, { method: 'DELETE' })
+      if (selectedFolderId === folderDeleteTarget.id) setSelectedFolderId('all')
+      setFolderDeleteTarget(null)
+      await Promise.all([loadFolders(), loadForms()])
+    } finally {
+      setDeletingFolder(false)
+    }
+  }
+
+  const handleDuplicateForm = async (form: Form) => {
+    setDuplicatingFormId(form.id)
+    try {
+      await fetchApi(`/api/forms/${form.id}/duplicate`, { method: 'POST' })
+      await loadForms()
+    } finally {
+      setDuplicatingFormId(null)
+    }
+  }
+
+  const handleToggleActive = async (form: Form) => {
+    setTogglingActiveFormId(form.id)
+    try {
+      await fetchApi(`/api/forms/${form.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive: !form.isActive }),
+      })
+      await loadForms()
+    } finally {
+      setTogglingActiveFormId(null)
+    }
+  }
+
+  const handleDeleteForm = async () => {
+    if (!formDeleteTarget) return
+    setDeletingForm(true)
+    try {
+      await fetchApi(`/api/forms/${formDeleteTarget.id}`, { method: 'DELETE' })
+      if (selectedFormId === formDeleteTarget.id) {
+        setSelectedFormId(null)
+        setSubmissions([])
+      }
+      setFormDeleteTarget(null)
+      await loadForms()
+    } finally {
+      setDeletingForm(false)
+    }
+  }
+
   // 作成・編集ダイアログ。editingFormId=null なら新規作成。
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingFormId, setEditingFormId] = useState<string | null>(null)
   const [editingUsedByAccounts, setEditingUsedByAccounts] = useState<UsedByAccount[]>([])
   const [draftName, setDraftName] = useState('')
   const [draftDescription, setDraftDescription] = useState('')
+  const [draftFolderId, setDraftFolderId] = useState<string>('')
   const [draftSaveToMetadata, setDraftSaveToMetadata] = useState(false)
   const [draftFields, setDraftFields] = useState<FieldDraft[]>([])
   const [friendFieldDefs, setFriendFieldDefs] = useState<Array<{ fieldKey: string; label: string }>>([])
@@ -331,6 +440,7 @@ const openCreateForm = () => {
     setEditingUsedByAccounts([])
     setDraftName('')
     setDraftDescription('')
+    setDraftFolderId(selectedFolderId !== 'all' && selectedFolderId !== UNASSIGNED_FOLDER_ID ? selectedFolderId : '')
     setDraftSaveToMetadata(false)
     setDraftFields([])
     setDraftExpiresAt('')
@@ -366,6 +476,7 @@ const openCreateForm = () => {
     setEditingUsedByAccounts(form.usedByAccounts)
     setDraftName(displayFormName(form.name))
     setDraftDescription(form.description ?? '')
+    setDraftFolderId(form.folderId ?? '')
     setDraftSaveToMetadata(Boolean(form.saveToMetadata))
     setDraftFields(
       form.fields.map((f) => ({
@@ -457,6 +568,7 @@ const openCreateForm = () => {
       const payload = {
         name: displayFormName(name),
         description: draftDescription.trim() || null,
+        folderId: draftFolderId || null,
         saveToMetadata: draftSaveToMetadata,
         fields,
         // datetime-local(YYYY-MM-DDTHH:MM) → サーバーの秒精度ISO文字列に揃える
@@ -508,9 +620,19 @@ const openCreateForm = () => {
     () => forms.filter((form) => form.lastSubmittedAt !== null).length,
     [forms],
   )
+  const formCountByFolder = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const form of forms) {
+      const key = form.folderId ?? UNASSIGNED_FOLDER_ID
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return counts
+  }, [forms])
   const filteredForms = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('ja-JP')
     return sortedForms.filter((form) => {
+      if (selectedFolderId === UNASSIGNED_FOLDER_ID && form.folderId !== null) return false
+      if (selectedFolderId !== 'all' && selectedFolderId !== UNASSIGNED_FOLDER_ID && form.folderId !== selectedFolderId) return false
       if (formFilter === 'answered' && !form.lastSubmittedAt) return false
       if (formFilter === 'unanswered' && form.lastSubmittedAt) return false
       if (!normalizedQuery) return true
@@ -519,7 +641,7 @@ const openCreateForm = () => {
         || form.usedByAccounts.some((account) => account.name.toLocaleLowerCase('ja-JP').includes(normalizedQuery))
       )
     })
-  }, [formFilter, query, sortedForms])
+  }, [formFilter, query, sortedForms, selectedFolderId])
   const duplicateNameCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const form of forms) {
@@ -554,30 +676,115 @@ const openCreateForm = () => {
         </Button>
       </div>
 
-      {/* Form cards */}
-      <section className="mb-6">
-        {!loading && forms.length > 0 && (
-          <div className="mb-4 space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap gap-2">
-                {([
-                  ['all', `すべて ${forms.length}`],
-                  ['answered', `回答あり ${answeredCount}`],
-                  ['unanswered', `未回答 ${forms.length - answeredCount}`],
-                ] as Array<[FormFilter, string]>).map(([value, label]) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    onClick={() => setFormFilter(value)}
-                    size="xs"
-                    variant={formFilter === value ? 'primary' : 'secondary'}
-                  >
-                    {label}
-                  </Button>
-                ))}
+      {/* フォーム一覧・管理画面(Lステップの「回答フォーム」トップ画面相当:
+          左にフォルダ、右にフォーム一覧のテーブル) */}
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row">
+        <LayerCard className="w-full flex-none p-3 lg:w-56">
+          <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-kumo-subtle">フォルダ</p>
+          <div className="space-y-0.5">
+            <Button
+              type="button"
+              variant={selectedFolderId === 'all' ? 'primary' : 'ghost'}
+              className="h-auto w-full justify-between px-2 py-1.5 text-left"
+              onClick={() => setSelectedFolderId('all')}
+            >
+              <span>すべて</span>
+              <span className="tabular-nums">{forms.length}</span>
+            </Button>
+            {folders.map((folder) => (
+              <div key={folder.id} className="group relative">
+                {renamingFolderId === folder.id ? (
+                  <div className="flex items-center gap-1 px-1 py-1">
+                    <Input
+                      aria-label="フォルダ名"
+                      autoFocus
+                      value={renamingFolderName}
+                      onValueChange={setRenamingFolderName}
+                      className="min-w-0 flex-1"
+                    />
+                    <Button type="button" size="xs" variant="primary" onClick={() => void saveRenameFolder()}>保存</Button>
+                    <Button type="button" size="xs" variant="ghost" onClick={() => setRenamingFolderId(null)}>取消</Button>
+                  </div>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant={selectedFolderId === folder.id ? 'primary' : 'ghost'}
+                      className="h-auto w-full justify-between px-2 py-1.5 pr-14 text-left"
+                      onClick={() => setSelectedFolderId(folder.id)}
+                    >
+                      <span className="truncate">{folder.name}</span>
+                      <span className="tabular-nums">{formCountByFolder.get(folder.id) ?? 0}</span>
+                    </Button>
+                    <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5 opacity-0 group-hover:opacity-100">
+                      <Button
+                        type="button"
+                        size="xs"
+                        shape="square"
+                        variant="ghost"
+                        icon={PencilSimpleIcon}
+                        aria-label={`${folder.name}の名前を変更`}
+                        onClick={(e) => { e.stopPropagation(); setRenamingFolderId(folder.id); setRenamingFolderName(folder.name) }}
+                      />
+                      <Button
+                        type="button"
+                        size="xs"
+                        shape="square"
+                        variant="ghost"
+                        icon={TrashIcon}
+                        aria-label={`${folder.name}を削除`}
+                        onClick={(e) => { e.stopPropagation(); setFolderDeleteTarget(folder) }}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="hidden text-[11px] text-gray-400 md:inline">最新回答順</span>
+            ))}
+            <Button
+              type="button"
+              variant={selectedFolderId === UNASSIGNED_FOLDER_ID ? 'primary' : 'ghost'}
+              className="h-auto w-full justify-between px-2 py-1.5 text-left"
+              onClick={() => setSelectedFolderId(UNASSIGNED_FOLDER_ID)}
+            >
+              <span>未分類</span>
+              <span className="tabular-nums">{formCountByFolder.get(UNASSIGNED_FOLDER_ID) ?? 0}</span>
+            </Button>
+          </div>
+          <div className="mt-3 flex items-center gap-1.5 border-t border-kumo-line pt-3">
+            <Input
+              aria-label="新しいフォルダ名"
+              placeholder="新しいフォルダ"
+              value={newFolderName}
+              onValueChange={setNewFolderName}
+              className="min-w-0 flex-1"
+            />
+            <Button type="button" size="sm" variant="secondary" loading={creatingFolder} disabled={!newFolderName.trim()} onClick={() => void createFolder()}>
+              追加
+            </Button>
+          </div>
+        </LayerCard>
+
+        <div className="min-w-0 flex-1">
+          {!loading && forms.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ['all', `すべて ${forms.length}`],
+                    ['answered', `回答あり ${answeredCount}`],
+                    ['unanswered', `未回答 ${forms.length - answeredCount}`],
+                  ] as Array<[FormFilter, string]>).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      onClick={() => setFormFilter(value)}
+                      size="xs"
+                      variant={formFilter === value ? 'primary' : 'secondary'}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
                 <Input
                   aria-label="フォーム名・アカウントで検索"
                   type="search"
@@ -587,113 +794,137 @@ const openCreateForm = () => {
                   className="w-full sm:w-64"
                 />
               </div>
+              {query && (
+                <p className="text-xs text-gray-400">{filteredForms.length}件見つかりました</p>
+              )}
             </div>
-            {query && (
-              <p className="text-xs text-gray-400">{filteredForms.length}件見つかりました</p>
-            )}
-          </div>
-        )}
-        {loading ? (
-          <Loader />
-        ) : forms.length === 0 ? (
-          <Empty
-            title="フォームがまだありません"
-            description="フォームが作成されると回答を確認できます。"
-            contents={<Button type="button" variant="primary" onClick={openCreateForm}>+ フォームを新規作成</Button>}
-          />
-        ) : (
-          filteredForms.length === 0 ? (
+          )}
+
+          {loading ? (
+            <LayerCard className="p-8"><Loader className="mx-auto" /></LayerCard>
+          ) : forms.length === 0 ? (
+            <Empty
+              title="フォームがまだありません"
+              description="フォームが作成されると回答を確認できます。"
+              contents={<Button type="button" variant="primary" onClick={openCreateForm}>+ フォームを新規作成</Button>}
+            />
+          ) : filteredForms.length === 0 ? (
             <Empty title="条件に合うフォームがありません" description="検索条件を変更してください。" />
           ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredForms.map((form) => {
-              const isSelected = selectedFormId === form.id
-              const totalCount = form.usedByAccounts.reduce((sum, a) => sum + a.count, 0)
-              const displayCount = form.submitCount ?? totalCount
-              const normalizedName = displayFormName(form.name)
-              const isDuplicate = (duplicateNameCounts.get(normalizedName.toLocaleLowerCase('ja-JP')) ?? 0) > 1
-              return (
-                <article
-                  key={form.id}
-                  className="group relative"
-                >
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => handleSelectForm(form.id)}
-                    aria-pressed={isSelected}
-                    className={`h-auto w-full cursor-pointer justify-start p-4 text-left ${
-                      isSelected
-                        ? 'ring-2 ring-kumo-brand bg-kumo-control'
-                        : ''
-                    }`}
-                  >
-                  <div className="mb-2 flex items-start gap-2 pr-7">
-                    <h3 className={`text-sm font-semibold leading-snug ${isSelected ? 'text-kumo-brand' : 'text-gray-900'}`}>
-                      {normalizedName}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-baseline gap-1 mb-3">
-                    <span className="text-2xl font-bold text-gray-900 tabular-nums">{displayCount}</span>
-                    <span className="text-xs text-gray-400">件の回答</span>
-                  </div>
-
-                  {form.usedByAccounts.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {form.usedByAccounts.map((acc) => {
-                        const flag = countryFlag(acc.country)
-                        return (
-                          <span
-                            key={acc.id}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-100 text-[11px] text-gray-700"
-                            title={`${acc.name}: ${acc.count}件`}
+            <LayerCard className="overflow-x-auto p-0">
+              <Table className="min-w-[760px]">
+                <Table.Header>
+                  <Table.Row>
+                    <Table.Head>フォーム名</Table.Head>
+                    <Table.Head>回答状態</Table.Head>
+                    <Table.Head>登録日</Table.Head>
+                    <Table.Head>公開状態</Table.Head>
+                    <Table.Head>操作</Table.Head>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {filteredForms.map((form) => {
+                    const isSelected = selectedFormId === form.id
+                    const totalCount = form.usedByAccounts.reduce((sum, a) => sum + a.count, 0)
+                    const displayCount = form.submitCount ?? totalCount
+                    const normalizedName = displayFormName(form.name)
+                    const isDuplicate = (duplicateNameCounts.get(normalizedName.toLocaleLowerCase('ja-JP')) ?? 0) > 1
+                    return (
+                      <Table.Row key={form.id} className={isSelected ? 'bg-kumo-control' : undefined}>
+                        <Table.Cell className="max-w-[280px]">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => handleSelectForm(form.id)}
+                            className="h-auto w-full justify-start truncate p-0 text-left text-sm font-medium text-kumo-link hover:underline"
                           >
-                            {flag && <span>{flag}</span>}
-                            <span className="font-medium">{acc.name}</span>
-                            <span className="text-gray-400 tabular-nums">{acc.count}</span>
-                          </span>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-[11px] text-gray-300">回答元アカウントなし</div>
-                  )}
+                            {normalizedName}
+                          </Button>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {form.usedByAccounts.map((acc) => {
+                              const flag = countryFlag(acc.country)
+                              return (
+                                <span key={acc.id} className="inline-flex items-center gap-1 rounded-full border border-gray-100 bg-gray-50 px-2 py-0.5 text-[10px] text-gray-600" title={`${acc.name}: ${acc.count}件`}>
+                                  {flag && <span>{flag}</span>}
+                                  {acc.name}
+                                </span>
+                              )
+                            })}
+                            {isDuplicate && (
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">同名あり</span>
+                            )}
+                          </div>
+                        </Table.Cell>
+                        <Table.Cell className="whitespace-nowrap text-xs text-kumo-subtle">
+                          <span className="font-medium text-kumo-strong">{displayCount}件</span>
+                          <br />
+                          {form.lastSubmittedAt ? `最終 ${formatRelative(form.lastSubmittedAt)}` : '回答はまだありません'}
+                        </Table.Cell>
+                        <Table.Cell className="whitespace-nowrap text-xs text-kumo-subtle">
+                          {new Date(form.createdAt).toLocaleDateString('ja-JP')}
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Switch
+                            size="sm"
+                            checked={form.isActive}
+                            disabled={togglingActiveFormId === form.id}
+                            onCheckedChange={() => void handleToggleActive(form)}
+                            aria-label={`${normalizedName}を${form.isActive ? '停止' : '公開'}`}
+                          />
+                        </Table.Cell>
+                        <Table.Cell>
+                          <div className="flex items-center gap-1">
+                            {form.formUrl && (
+                              <Button type="button" size="xs" shape="square" variant="ghost" icon={ArrowSquareOutIcon} aria-label="プレビュー" title="プレビュー" onClick={() => window.open(form.formUrl!, '_blank', 'noopener')} />
+                            )}
+                            <Button type="button" size="xs" shape="square" variant="ghost" icon={PencilSimpleIcon} aria-label="編集" title="編集" onClick={() => openEditForm(form)} />
+                            <Button type="button" size="xs" shape="square" variant="ghost" icon={CopyIcon} aria-label="コピー" title="コピー" loading={duplicatingFormId === form.id} onClick={() => void handleDuplicateForm(form)} />
+                            <Button type="button" size="xs" shape="square" variant="ghost" icon={TrashIcon} aria-label="削除" title="削除" onClick={() => setFormDeleteTarget(form)} />
+                          </div>
+                        </Table.Cell>
+                      </Table.Row>
+                    )
+                  })}
+                </Table.Body>
+              </Table>
+            </LayerCard>
+          )}
+        </div>
+      </div>
 
-                  <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-2 text-[11px] text-gray-400">
-                    <span>{form.lastSubmittedAt ? `最終回答 ${formatRelative(form.lastSubmittedAt)}` : '回答はまだありません'}</span>
-                    {!form.isActive && (
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-500">停止中</span>
-                    )}
-                    {isDuplicate && (
-                      <span className="ml-auto" title={`フォームID: ${form.id}`}>
-                        同名あり・{form.fields.length}項目・作成 {new Date(form.createdAt).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })}
-                      </span>
-                    )}
-                  </div>
-                  </Button>
-
-                  <Button
-                    type="button"
-                    size="xs"
-                    shape="square"
-                    variant="ghost"
-                    onClick={() => openEditForm(form)}
-                    className="absolute right-3 top-3 opacity-60 group-hover:opacity-100"
-                    aria-label={`${normalizedName}を編集`}
-                    title="フォームを編集"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931ZM19.5 7.125 16.875 4.5M18 13.5V19.125A1.875 1.875 0 0 1 16.125 21H4.875A1.875 1.875 0 0 1 3 19.125V7.875A1.875 1.875 0 0 1 4.875 6H10.5" />
-                    </svg>
-                  </Button>
-                </article>
-              )
-            })}
+      <Dialog.Root
+        role="alertdialog"
+        open={folderDeleteTarget !== null}
+        onOpenChange={(open) => { if (!open && !deletingFolder) setFolderDeleteTarget(null) }}
+      >
+        <Dialog size="base" className="p-6">
+          <Dialog.Title className="text-lg font-semibold text-kumo-strong">フォルダを削除しますか？</Dialog.Title>
+          <Dialog.Description className="mt-2 text-sm leading-6 text-kumo-subtle">
+            「{folderDeleteTarget?.name}」を削除します。中のフォームは削除されず、未分類に移動します。
+          </Dialog.Description>
+          <div className="mt-6 flex justify-end gap-2">
+            <Dialog.Close render={(props) => <Button {...props} type="button" variant="secondary" disabled={deletingFolder}>キャンセル</Button>} />
+            <Button type="button" variant="destructive" loading={deletingFolder} onClick={() => void handleDeleteFolder()}>削除する</Button>
           </div>
-          )
-        )}
-      </section>
+        </Dialog>
+      </Dialog.Root>
+
+      <Dialog.Root
+        role="alertdialog"
+        open={formDeleteTarget !== null}
+        onOpenChange={(open) => { if (!open && !deletingForm) setFormDeleteTarget(null) }}
+      >
+        <Dialog size="base" className="p-6">
+          <Dialog.Title className="text-lg font-semibold text-kumo-strong">フォームを削除しますか？</Dialog.Title>
+          <Dialog.Description className="mt-2 text-sm leading-6 text-kumo-subtle">
+            「{formDeleteTarget ? displayFormName(formDeleteTarget.name) : ''}」を削除します。回答データも合わせて削除され、元に戻せません。
+          </Dialog.Description>
+          <div className="mt-6 flex justify-end gap-2">
+            <Dialog.Close render={(props) => <Button {...props} type="button" variant="secondary" disabled={deletingForm}>キャンセル</Button>} />
+            <Button type="button" variant="destructive" loading={deletingForm} onClick={() => void handleDeleteForm()}>削除する</Button>
+          </div>
+        </Dialog>
+      </Dialog.Root>
 
       {/* Submissions table */}
       {selectedForm && (
@@ -899,6 +1130,13 @@ const openCreateForm = () => {
               onChange={(event) => setDraftDescription(event.target.value)}
               className="mt-3"
               rows={2}
+            />
+            <Select
+              label="フォルダ"
+              className="mt-3"
+              value={draftFolderId}
+              onValueChange={(v) => setDraftFolderId(v ?? '')}
+              items={[{ value: '', label: '未分類' }, ...folders.map((f) => ({ value: f.id, label: f.name }))]}
             />
             <Checkbox
               className="mt-3"

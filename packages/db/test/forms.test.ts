@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createForm, updateForm, getFormById } from '../src/forms.js';
+import { createForm, updateForm, getFormById, createFormFolder } from '../src/forms.js';
 
 // createForm/updateForm build their INSERT/UPDATE column lists and VALUES
 // placeholders by hand, in two separate places that must stay in sync as
@@ -27,6 +27,7 @@ const FORMS_MIGRATIONS = [
   '074_form_design_settings.sql',
   '075_form_google_sheets.sql',
   '077_form_theme_colors.sql',
+  '078_form_folders.sql',
 ];
 
 /** D1Database の `.prepare(sql).bind(...args).run()/.first()/.all()` を
@@ -76,9 +77,11 @@ function testDb(): D1Database {
 describe('forms.ts createForm/updateForm — カラム数とプレースホルダ数の整合性', () => {
   it('createForm: 全カラム省略なしで作成できる(INSERT列数とVALUESプレースホルダ数が一致している)', async () => {
     const db = testDb();
+    const folder = await createFormFolder(db, { name: 'カウンセリング' });
     const form = await createForm(db, {
       name: 'テストフォーム',
       fields: '[]',
+      folderId: folder.id,
       customDesignEnabled: true,
       backgroundColor: '#fff',
       googleSheetsEnabled: true,
@@ -90,19 +93,23 @@ describe('forms.ts createForm/updateForm — カラム数とプレースホル�
       themeFont: 'ゴシック',
     });
     expect(form.name).toBe('テストフォーム');
+    expect(form.folder_id).toBe(folder.id);
     expect(form.custom_design_enabled).toBe(1);
     expect(form.theme_main_color).toBe('#111');
   });
 
   it('updateForm: 全カラム省略なしで更新できる(SET句とbind引数の数が一致している)', async () => {
     const db = testDb();
+    const folder = await createFormFolder(db, { name: '予約' });
     const created = await createForm(db, { name: '元の名前', fields: '[]' });
     const updated = await updateForm(db, created.id, {
       name: '更新後の名前',
+      folderId: folder.id,
       themeFont: 'セリフ',
       googleSheetsEnabled: true,
     });
     expect(updated?.name).toBe('更新後の名前');
+    expect(updated?.folder_id).toBe(folder.id);
     expect(updated?.theme_font).toBe('セリフ');
     expect(updated?.google_sheets_enabled).toBe(1);
 

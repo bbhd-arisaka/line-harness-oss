@@ -82,7 +82,8 @@
     "074_form_design_settings.sql",
     "075_form_google_sheets.sql",
     "076_friends_real_name_memo.sql",
-    "077_form_theme_colors.sql"
+    "077_form_theme_colors.sql",
+    "078_form_folders.sql"
   ],
-  "migrationCount": 83
+  "migrationCount": 84
 }

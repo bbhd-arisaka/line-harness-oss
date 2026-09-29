@@ -3,10 +3,19 @@ import { jstNow } from './utils.js';
 // Forms — Survey / questionnaire system (L社 回答フォーム equivalent)
 // =============================================================================
 
+export interface FormFolder {
+  id: string;
+  name: string;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Form {
   id: string;
   name: string;
   description: string | null;
+  folder_id: string | null;
   fields: string; // JSON string of FormField[]
   on_submit_tag_id: string | null;
   on_submit_scenario_id: string | null;
@@ -59,6 +68,71 @@ export interface FormSubmission {
 export interface FriendFormSubmission extends FormSubmission {
   form_name: string;
   form_fields: string;
+}
+
+// ── Folders ──────────────────────────────────────────────────────────────────
+
+export async function getFormFolders(db: D1Database): Promise<FormFolder[]> {
+  const result = await db
+    .prepare(`SELECT * FROM form_folders ORDER BY display_order ASC, created_at ASC`)
+    .all<FormFolder>();
+  return result.results;
+}
+
+export interface CreateFormFolderInput {
+  name: string;
+  displayOrder?: number;
+}
+
+export async function createFormFolder(
+  db: D1Database,
+  input: CreateFormFolderInput,
+): Promise<FormFolder> {
+  const id = crypto.randomUUID();
+  const now = jstNow();
+  await db
+    .prepare(
+      `INSERT INTO form_folders (id, name, display_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .bind(id, input.name, input.displayOrder ?? 0, now, now)
+    .run();
+  return (await db
+    .prepare(`SELECT * FROM form_folders WHERE id = ?`)
+    .bind(id)
+    .first<FormFolder>())!;
+}
+
+export interface UpdateFormFolderInput {
+  name?: string;
+  displayOrder?: number;
+}
+
+export async function updateFormFolder(
+  db: D1Database,
+  id: string,
+  input: UpdateFormFolderInput,
+): Promise<FormFolder | null> {
+  const existing = await db
+    .prepare(`SELECT * FROM form_folders WHERE id = ?`)
+    .bind(id)
+    .first<FormFolder>();
+  if (!existing) return null;
+
+  const now = jstNow();
+  await db
+    .prepare(`UPDATE form_folders SET name = ?, display_order = ?, updated_at = ? WHERE id = ?`)
+    .bind(input.name ?? existing.name, input.displayOrder ?? existing.display_order, now, id)
+    .run();
+  return db.prepare(`SELECT * FROM form_folders WHERE id = ?`).bind(id).first<FormFolder>();
+}
+
+export async function deleteFormFolder(db: D1Database, id: string): Promise<void> {
+  // フォルダを削除しても中のフォームは消さない。未分類扱いに戻すだけ。
+  await db.batch([
+    db.prepare(`UPDATE forms SET folder_id = NULL WHERE folder_id = ?`).bind(id),
+    db.prepare(`DELETE FROM form_folders WHERE id = ?`).bind(id),
+  ]);
 }
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
@@ -141,6 +215,7 @@ export async function getFormById(db: D1Database, id: string): Promise<Form | nu
 export interface CreateFormInput {
   name: string;
   description?: string | null;
+  folderId?: string | null;
   fields: string; // JSON string
   onSubmitTagId?: string | null;
   onSubmitScenarioId?: string | null;
@@ -185,7 +260,7 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
   await db
     .prepare(
       `INSERT INTO forms
-         (id, name, description, fields, on_submit_tag_id, on_submit_scenario_id,
+         (id, name, description, folder_id, fields, on_submit_tag_id, on_submit_scenario_id,
           on_submit_message_type, on_submit_message_content,
           on_submit_webhook_url, on_submit_webhook_headers, on_submit_webhook_fail_message,
           save_to_metadata, is_active, submit_count,
@@ -198,12 +273,13 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
           google_sheets_enabled, google_sheet_url, google_sheet_name,
           theme_main_color, theme_sub_color, theme_error_color, theme_text_color, theme_font,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
       input.name,
       input.description ?? null,
+      input.folderId ?? null,
       input.fields,
       input.onSubmitTagId ?? null,
       input.onSubmitScenarioId ?? null,
@@ -250,6 +326,7 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
 export interface UpdateFormInput {
   name?: string;
   description?: string | null;
+  folderId?: string | null;
   fields?: string;
   onSubmitTagId?: string | null;
   onSubmitScenarioId?: string | null;
@@ -303,6 +380,7 @@ export async function updateForm(
       `UPDATE forms
        SET name = ?,
            description = ?,
+           folder_id = ?,
            fields = ?,
            on_submit_tag_id = ?,
            on_submit_scenario_id = ?,
@@ -345,6 +423,7 @@ export async function updateForm(
     .bind(
       input.name ?? existing.name,
       'description' in input ? (input.description ?? null) : existing.description,
+      'folderId' in input ? (input.folderId ?? null) : existing.folder_id,
       input.fields ?? existing.fields,
       'onSubmitTagId' in input ? (input.onSubmitTagId ?? null) : existing.on_submit_tag_id,
       'onSubmitScenarioId' in input
@@ -417,6 +496,56 @@ export async function updateForm(
     .run();
 
   return getFormById(db, id);
+}
+
+/**
+ * フォームを複製する(Lステップの「コピー」相当)。createForm をそのまま
+ * 経由することで、INSERT の列リストを二重管理してカラム数がずれる
+ * (このファイルで繰り返し起きたバグ)のを避ける。
+ */
+export async function duplicateForm(db: D1Database, id: string): Promise<Form | null> {
+  const existing = await getFormById(db, id);
+  if (!existing) return null;
+  return createForm(db, {
+    name: `${existing.name}のコピー`,
+    description: existing.description,
+    folderId: existing.folder_id,
+    fields: existing.fields,
+    onSubmitTagId: existing.on_submit_tag_id,
+    onSubmitScenarioId: existing.on_submit_scenario_id,
+    onSubmitMessageType: existing.on_submit_message_type,
+    onSubmitMessageContent: existing.on_submit_message_content,
+    onSubmitWebhookUrl: existing.on_submit_webhook_url,
+    onSubmitWebhookHeaders: existing.on_submit_webhook_headers,
+    onSubmitWebhookFailMessage: existing.on_submit_webhook_fail_message,
+    saveToMetadata: existing.save_to_metadata === 1,
+    ogTitle: existing.og_title,
+    ogDescription: existing.og_description,
+    ogImageUrl: existing.og_image_url,
+    expiresAt: existing.expires_at,
+    capacityLimit: existing.capacity_limit,
+    answerLimitPerFriend: existing.answer_limit_per_friend,
+    restorePreviousAnswer: existing.restore_previous_answer === 1,
+    thanksUrl: existing.thanks_url,
+    primaryColor: existing.primary_color,
+    onSubmitStopScenarios: existing.on_submit_stop_scenarios === 1,
+    customDesignEnabled: existing.custom_design_enabled === 1,
+    backgroundColor: existing.background_color,
+    formBackgroundColor: existing.form_background_color,
+    headerImageUrl: existing.header_image_url,
+    backgroundImageUrl: existing.background_image_url,
+    hideHeaderIcon: existing.hide_header_icon === 1,
+    customCssEnabled: existing.custom_css_enabled === 1,
+    customCss: existing.custom_css,
+    googleSheetsEnabled: existing.google_sheets_enabled === 1,
+    googleSheetUrl: existing.google_sheet_url,
+    googleSheetName: existing.google_sheet_name,
+    themeMainColor: existing.theme_main_color,
+    themeSubColor: existing.theme_sub_color,
+    themeErrorColor: existing.theme_error_color,
+    themeTextColor: existing.theme_text_color,
+    themeFont: existing.theme_font,
+  });
 }
 
 export async function deleteForm(db: D1Database, id: string): Promise<void> {

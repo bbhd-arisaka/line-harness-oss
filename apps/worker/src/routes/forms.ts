@@ -6,6 +6,11 @@ import {
   createForm,
   updateForm,
   deleteForm,
+  duplicateForm,
+  getFormFolders,
+  createFormFolder,
+  updateFormFolder,
+  deleteFormFolder,
   getFormSubmissions,
   createFormSubmission,
   countFormSubmissions,
@@ -26,6 +31,7 @@ import { pushViaHarnessProxy } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import type {
   Form as DbForm,
+  FormFolder as DbFormFolder,
   FormSubmission as DbFormSubmission,
   FormUsedByAccount,
   Friend as DbFriend,
@@ -82,6 +88,7 @@ function serializeForm(
     formUrl: formPublicUrl(extra?.liffId, row.id),
     name: row.name,
     description: row.description,
+    folderId: row.folder_id,
     fields: JSON.parse(row.fields || '[]') as unknown[],
     onSubmitTagId: row.on_submit_tag_id,
     onSubmitScenarioId: row.on_submit_scenario_id,
@@ -257,6 +264,67 @@ forms.get('/api/forms/integrations/google-sheets', async (c) => {
   });
 });
 
+function serializeFormFolder(row: DbFormFolder) {
+  return {
+    id: row.id,
+    name: row.name,
+    displayOrder: row.display_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ── フォルダ(Lステップの回答フォーム一覧画面のフォルダ分け相当) ──────────────
+
+forms.get('/api/forms/folders', async (c) => {
+  try {
+    const items = await getFormFolders(c.env.DB);
+    return c.json({ success: true, data: items.map(serializeFormFolder) });
+  } catch (err) {
+    console.error('GET /api/forms/folders error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+forms.post('/api/forms/folders', async (c) => {
+  try {
+    const body = await c.req.json<{ name: string; displayOrder?: number }>();
+    if (!body.name) {
+      return c.json({ success: false, error: 'name is required' }, 400);
+    }
+    const folder = await createFormFolder(c.env.DB, { name: body.name, displayOrder: body.displayOrder });
+    return c.json({ success: true, data: serializeFormFolder(folder) }, 201);
+  } catch (err) {
+    console.error('POST /api/forms/folders error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+forms.put('/api/forms/folders/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json<{ name?: string; displayOrder?: number }>();
+    const updated = await updateFormFolder(c.env.DB, id, body);
+    if (!updated) {
+      return c.json({ success: false, error: 'Folder not found' }, 404);
+    }
+    return c.json({ success: true, data: serializeFormFolder(updated) });
+  } catch (err) {
+    console.error('PUT /api/forms/folders/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+forms.delete('/api/forms/folders/:id', async (c) => {
+  try {
+    await deleteFormFolder(c.env.DB, c.req.param('id'));
+    return c.json({ success: true, data: null });
+  } catch (err) {
+    console.error('DELETE /api/forms/folders/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // GET /api/forms — list all forms (with submission stats + delivering accounts)
 forms.get('/api/forms', async (c) => {
   try {
@@ -323,6 +391,7 @@ forms.post('/api/forms', async (c) => {
     const body = await c.req.json<{
       name: string;
       description?: string | null;
+      folderId?: string | null;
       fields?: unknown[];
       onSubmitTagId?: string | null;
       onSubmitScenarioId?: string | null;
@@ -367,6 +436,7 @@ forms.post('/api/forms', async (c) => {
     const form = await createForm(c.env.DB, {
       name: body.name,
       description: body.description ?? null,
+      folderId: body.folderId ?? null,
       fields: JSON.stringify(body.fields ?? []),
       onSubmitTagId: body.onSubmitTagId ?? null,
       onSubmitScenarioId: body.onSubmitScenarioId ?? null,
@@ -412,6 +482,21 @@ forms.post('/api/forms', async (c) => {
   }
 });
 
+// POST /api/forms/:id/duplicate — フォームを複製(Lステップの「コピー」相当)
+forms.post('/api/forms/:id/duplicate', async (c) => {
+  try {
+    const copy = await duplicateForm(c.env.DB, c.req.param('id'));
+    if (!copy) {
+      return c.json({ success: false, error: 'Form not found' }, 404);
+    }
+    const liffId = (await resolveDefaultLineAccount(c.env.DB))?.liff_id ?? null;
+    return c.json({ success: true, data: serializeForm(copy, { liffId }) }, 201);
+  } catch (err) {
+    console.error('POST /api/forms/:id/duplicate error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // PUT /api/forms/:id — update form
 forms.put('/api/forms/:id', async (c) => {
   try {
@@ -419,6 +504,7 @@ forms.put('/api/forms/:id', async (c) => {
     const body = await c.req.json<{
       name?: string;
       description?: string | null;
+      folderId?: string | null;
       fields?: unknown[];
       onSubmitTagId?: string | null;
       onSubmitScenarioId?: string | null;
@@ -461,6 +547,7 @@ forms.put('/api/forms/:id', async (c) => {
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.description !== undefined) updates.description = body.description;
+    if (body.folderId !== undefined) updates.folderId = body.folderId;
     if (body.fields !== undefined) updates.fields = JSON.stringify(body.fields);
     if (body.onSubmitTagId !== undefined) updates.onSubmitTagId = body.onSubmitTagId;
     if (body.onSubmitScenarioId !== undefined) updates.onSubmitScenarioId = body.onSubmitScenarioId;
