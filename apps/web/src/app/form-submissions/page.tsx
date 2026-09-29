@@ -183,7 +183,7 @@ export default function FormListPage() {
   }
 
   const newHref = `/form-submissions/edit?group=${selectedFolderId === UNASSIGNED ? '' : selectedFolderId}`
-  const cols = 'grid-cols-[1fr_9rem_10rem_8rem_6rem_3rem]'
+  const cols = 'grid-cols-[1fr_11rem_9rem_10rem_8rem_6rem_3rem]'
 
   return (
     <div>
@@ -276,6 +276,7 @@ export default function FormListPage() {
           <div className="mt-3">
             <div className={`grid ${cols} items-center bg-[#f1f1f4] px-4 text-xs text-[#757578]`} style={{ height: 40 }}>
               <span>フォーム名</span>
+              <span>タグコード</span>
               <span className="leading-tight">スプレッドシート<br />連携</span>
               <span>回答状態</span>
               <span>登録日</span>
@@ -296,6 +297,21 @@ export default function FormListPage() {
                     <Link href={`/form-submissions/edit?id=${f.id}`} className="py-2 pr-3 font-bold text-[#2b7bb9] underline">
                       {displayFormName(f.name)}
                     </Link>
+                    <span>
+                      <button
+                        type="button"
+                        title={`${formTagCode(f.id)}(クリックでコピー)`}
+                        className="max-w-full truncate rounded border border-[#2b7bb9] bg-[#eef6ff] px-1.5 py-0.5 text-left font-mono text-[11px] text-[#1d5f92]"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(formTagCode(f.id)).then(() => {
+                            setCopiedTagId(f.id)
+                            setTimeout(() => setCopiedTagId((v) => (v === f.id ? null : v)), 2000)
+                          })
+                        }}
+                      >
+                        {copiedTagId === f.id ? 'コピーしました' : `{{form_url:${f.id.slice(0, 6)}…}}`}
+                      </button>
+                    </span>
                     <span className="text-xs">{f.googleSheetsEnabled ? '連携中' : '-'}</span>
                     <span className="text-xs">
                       {total > 0 ? (

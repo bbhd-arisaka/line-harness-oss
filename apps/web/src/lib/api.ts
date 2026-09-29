@@ -156,11 +156,14 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
  */
 export class ApiError extends Error {
   readonly status: number
+  /** サーバーが返した、利用者向けの理由(あれば) */
+  readonly serverMessage: string | null
 
-  constructor(status: number) {
+  constructor(status: number, serverMessage: string | null = null) {
     super(`API error: ${status}`)
     this.name = 'ApiError'
     this.status = status
+    this.serverMessage = serverMessage
   }
 }
 
@@ -181,7 +184,10 @@ export async function fetchApi<T>(path: string, options?: RequestInit): Promise<
       ...options?.headers,
     },
   })
-  if (!res.ok) throw new ApiError(res.status)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: unknown } | null
+    throw new ApiError(res.status, typeof body?.error === 'string' ? body.error : null)
+  }
   if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }

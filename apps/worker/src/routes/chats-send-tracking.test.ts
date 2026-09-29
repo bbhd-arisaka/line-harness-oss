@@ -51,6 +51,25 @@ describe('chat reply tracking and delivery logs', () => {
     }, { DB: fixture.db, LINE_CHANNEL_ACCESS_TOKEN: 'synthetic-unrelated-default', ...(workerUrl === undefined ? {} : { WORKER_URL: workerUrl }) });
   }
 
+  it('フォームのタグコードは、送信先の友だちのアカウントのLIFFリンクに変換して送る', async () => {
+    fixture.sqlite.exec("UPDATE line_accounts SET liff_id='LIFF-A' WHERE id='account-a'; UPDATE line_accounts SET liff_id='LIFF-B' WHERE id='account-b'");
+    expect((await send({ content: '記入をお願いします {{form_url:form-1}}', trackLinks: false }, 'chat-a', WORKER)).status).toBe(200);
+    expect((await send({ content: '{{form_url:form-1}}', trackLinks: false }, 'chat-b', WORKER)).status).toBe(200);
+    const texts = requests.map((r) => ({ token: r.token, text: (r.messages[0] as { text: string }).text }));
+    expect(texts).toEqual([
+      { token: 'synthetic-token-a', text: '記入をお願いします https://liff.line.me/LIFF-A?page=form&id=form-1' },
+      { token: 'synthetic-token-b', text: 'https://liff.line.me/LIFF-B?page=form&id=form-1' },
+    ]);
+  });
+
+  it('LIFFが無いアカウントでは、タグコードのまま友だちに送らず、理由を返す', async () => {
+    const res = await send({ content: '{{form_url:form-1}}', trackLinks: false }, 'chat-a', WORKER);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('LIFF');
+    expect(requests).toHaveLength(0);
+    expect(fixture.sqlite.prepare('SELECT COUNT(*) c FROM messages_log').get()).toEqual({ c: 0 });
+  });
+
   function links() {
     return fixture.sqlite.prepare('SELECT original_url,line_account_id,short_code FROM tracked_links ORDER BY line_account_id').all() as Array<{
       original_url: string; line_account_id: string | null; short_code: string;

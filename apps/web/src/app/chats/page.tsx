@@ -1,10 +1,11 @@
 'use client'
 
+import { TaggedText } from '@/components/forms/tagged-text'
 import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
 import { FormTagPicker } from '@/components/forms/form-tag-picker'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseStickerMessageContent, stickerFallback } from '@line-crm/shared'
-import { api, fetchApi } from '@/lib/api'
+import { api, fetchApi, ApiError } from '@/lib/api'
 import { FriendNameEditDialog, NameEditPencil, type FriendNameFields } from '@/components/friends/friend-name-edit-dialog'
 import { UNANSWERED_REFRESH_EVENT } from '@/lib/events'
 import { useAccount } from '@/contexts/account-context'
@@ -779,8 +780,10 @@ export default function ChatsPage() {
       }
       // 手動返信で未対応が 1 件減るので、サイドバーのバッジを即時更新させる
       window.dispatchEvent(new Event(UNANSWERED_REFRESH_EVENT))
-    } catch {
-      setError('メッセージの送信に失敗しました。')
+    } catch (err) {
+      // サーバーが理由を返しているとき(フォームのリンクを作れない等)は、そのまま表示する
+      const reason = err instanceof ApiError && err.status === 400 ? (err.serverMessage ?? '') : ''
+      setError(reason ? `メッセージを送信できませんでした: ${reason}` : 'メッセージの送信に失敗しました。')
     } finally {
       setSending(false)
       sendLockRef.current = false
@@ -1151,7 +1154,7 @@ export default function ChatsPage() {
                     } else if (msg.messageType === 'sticker') {
                       bubbleContent = <StickerMessageImage content={msg.content} />
                     } else {
-                      bubbleContent = <span>{msg.content}</span>
+                      bubbleContent = <span><TaggedText text={msg.content} /></span>
                     }
 
                     return (

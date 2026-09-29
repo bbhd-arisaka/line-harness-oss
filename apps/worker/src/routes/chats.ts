@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { expandFormLinks } from '../services/form-link.js';
+import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
 import type { Message } from '@line-crm/line-sdk';
 import { messageToLogPayload } from '../services/step-delivery.js';
@@ -584,6 +584,9 @@ chats.post('/api/chats/:id/send', async (c) => {
     const { autoTrackContent, appendFriendToTrackedLinks } = await import('../services/auto-track.js');
     // フォームのタグコード({{form_url:ID}})を、この友だちのアカウントの LIFF リンクに展開する
     const sendContent = messageType === 'image' ? body.content : await expandFormLinks(c.env.DB, body.content, lineAccountId);
+    if (messageType !== 'image' && hasFormTag(sendContent)) {
+      return c.json({ success: false, error: FORM_LINK_UNAVAILABLE_MESSAGE }, 400);
+    }
     let tracked = { messageType, content: sendContent };
     if (body.trackLinks !== false) {
       tracked = await autoTrackContent(c.env.DB, messageType, sendContent, sendWorkerUrl, { lineAccountId });

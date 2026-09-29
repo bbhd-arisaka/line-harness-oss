@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { expandFormLinks } from '../services/form-link.js';
+import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
 import {
   getFriends,
   getFriendById,
@@ -672,6 +672,9 @@ friends.post('/api/friends/:id/messages', async (c) => {
     const sendWorkerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
     // フォームのタグコード({{form_url:ID}})を、送信アカウントの LIFF リンクに展開する
     const sendContent = messageType === 'image' ? body.content : await expandFormLinks(db, body.content, friendAccountId);
+    if (messageType !== 'image' && hasFormTag(sendContent)) {
+      return c.json({ success: false, error: FORM_LINK_UNAVAILABLE_MESSAGE }, 400);
+    }
     let tracked = { messageType, content: sendContent };
     if (body.trackLinks !== false) {
       const { autoTrackContent } = await import('../services/auto-track.js');

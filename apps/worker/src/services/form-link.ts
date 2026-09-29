@@ -7,6 +7,10 @@ export function hasFormTag(content: string): boolean {
   return content.includes('{{form_url:');
 }
 
+/** 展開後もタグコードが残っている = そのアカウントに LIFF が無い。タグコードのまま友だちに送らないための判定。 */
+export const FORM_LINK_UNAVAILABLE_MESSAGE =
+  'このトークのアカウントにはLIFFが設定されていないため、フォームのリンクを作れません。アカウント設定でLINEログインチャネルを登録してください(LIFFは自動で作られます)。';
+
 /**
  * 本文中のフォームのタグコードを、送信アカウントの LIFF で組み立てた URL に置き換える。
  * LIFF ID はアカウントごとに違うため、必ず「実際に送るアカウント」のものを使う。
