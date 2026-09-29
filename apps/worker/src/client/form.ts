@@ -29,11 +29,16 @@ interface FormField {
   type:
     | 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
     // Lステップ互換で追加: 都道府県プルダウン・ファイル添付・表示専用の見出し2種
-    | 'prefecture' | 'file' | 'heading' | 'subheading' | 'paragraph';
+    | 'prefecture' | 'file' | 'heading' | 'subheading' | 'paragraph'
+    // Lステップ新形式のブロック。どちらも回答データを持たない表示専用。
+    | 'image' | 'button';
   required?: boolean;
   options?: string[];
   placeholder?: string;
   columns?: number;
+  imageUrl?: string;
+  buttonLabel?: string;
+  buttonUrl?: string;
 }
 
 const PREFECTURES = [
@@ -47,7 +52,7 @@ const PREFECTURES = [
 ];
 
 /** 表示専用(見出し)で、回答データを持たない項目タイプ。 */
-const DISPLAY_ONLY_TYPES: FormField['type'][] = ['heading', 'subheading', 'paragraph'];
+const DISPLAY_ONLY_TYPES: FormField['type'][] = ['heading', 'subheading', 'paragraph', 'image', 'button'];
 
 interface FormDef {
   id: string;
@@ -184,6 +189,16 @@ function renderField(field: FormField, previousValue?: unknown): string {
   if (field.type === 'paragraph') {
     const html = escapeHtml(field.label).replace(/\n/g, '<br>');
     return `<p class="form-paragraph">${html}</p>`;
+  }
+  // Lステップ新形式の「画像」「ボタン」ブロック。どちらも回答データを持たない。
+  if (field.type === 'image') {
+    const src = safeHttpsUrl(field.imageUrl);
+    return src ? `<img class="form-block-image" src="${escapeHtml(src)}" alt="${escapeHtml(field.label)}" />` : '';
+  }
+  if (field.type === 'button') {
+    const href = safeHttpsUrl(field.buttonUrl);
+    if (!href) return '';
+    return `<a class="form-block-button" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(field.buttonLabel || field.label)}</a>`;
   }
 
   const required = field.required ? ' required' : '';
@@ -351,6 +366,13 @@ function injectStyles(): void {
     .form-paragraph {
       margin: 8px 0; font-size: 13px; line-height: 1.7; color: #555; white-space: pre-wrap;
     }
+    .form-block-image { display: block; width: 100%; border-radius: 10px; margin: 12px 0; }
+    .form-block-button {
+      display: block; width: 100%; box-sizing: border-box; margin: 12px 0; padding: 13px 16px;
+      border-radius: 999px; background: var(--form-accent); color: #fff; text-align: center;
+      text-decoration: none; font-size: 15px; font-weight: 700;
+    }
+    .form-block-button:active { opacity: 0.85; }
     .form-page { max-width: 480px; margin: 0 auto; padding: 16px; }
     .form-header { text-align: center; margin-bottom: 24px; }
     .form-header h1 { font-size: 20px; color: #333; margin-bottom: 8px; }

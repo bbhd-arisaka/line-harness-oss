@@ -19,12 +19,14 @@ import { Table } from '@cloudflare/kumo/components/table'
 
 type FieldType =
   | 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
-  | 'prefecture' | 'file' | 'heading' | 'subheading' | 'paragraph'
+  | 'prefecture' | 'file' | 'heading' | 'subheading' | 'paragraph' | 'image' | 'button'
 
 const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
   { value: 'heading', label: '見出し(中見出し)' },
   { value: 'subheading', label: '小見出し' },
   { value: 'paragraph', label: '説明文(同意書等の長文)' },
+  { value: 'image', label: '画像' },
+  { value: 'button', label: 'ボタン' },
   { value: 'text', label: '1行テキスト' },
   { value: 'textarea', label: '複数行テキスト' },
   { value: 'email', label: 'メールアドレス' },
@@ -42,7 +44,13 @@ const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
 const OPTION_TYPES: FieldType[] = ['select', 'radio', 'checkbox']
 
 /** 見出し類。回答データを持たないので必須指定・ラベル欄の扱いを変える。 */
-const DISPLAY_ONLY_TYPES: FieldType[] = ['heading', 'subheading', 'paragraph']
+const DISPLAY_ONLY_TYPES: FieldType[] = ['heading', 'subheading', 'paragraph', 'image', 'button']
+
+/** 画像URL入力欄を出す項目タイプ。 */
+const IMAGE_TYPES: FieldType[] = ['image']
+
+/** ボタンURL入力欄を出す項目タイプ。 */
+const BUTTON_TYPES: FieldType[] = ['button']
 
 /** ラベル欄を複数行(InputArea)にする項目タイプ。同意書等の長文向け。 */
 const MULTILINE_LABEL_TYPES: FieldType[] = ['paragraph']
@@ -77,6 +85,8 @@ interface FieldDraft {
   friendFieldKey: string // 友だち情報に登録する先(選択肢共通・空なら未設定)
   optionTagIds: Record<string, string[]> // 選択肢の値 -> 追加するタグID
   optionFriendFieldValues: Record<string, string> // 選択肢の値 -> friendFieldKeyへ書き込む値(空なら選択肢の値をそのまま使う)
+  imageUrl: string // type: image
+  buttonUrl: string // type: button
 }
 
 /** ラベルから項目キー(name)を機械的に作る。英数字以外は捨て、空なら連番。 */
@@ -107,6 +117,9 @@ interface FormField {
   friendFieldKey?: string
   optionTags?: Record<string, string[]>
   optionFriendFieldValues?: Record<string, string>
+  imageUrl?: string
+  buttonLabel?: string
+  buttonUrl?: string
 }
 
 interface Form {
@@ -349,6 +362,8 @@ const openCreateForm = () => {
         friendFieldKey: f.friendFieldKey ?? '',
         optionTagIds: f.optionTags ?? {},
         optionFriendFieldValues: f.optionFriendFieldValues ?? {},
+        imageUrl: f.imageUrl ?? '',
+        buttonUrl: f.buttonUrl ?? '',
       })),
     )
     // ISO文字列(YYYY-MM-DDTHH:MM:SS...) → datetime-local入力用(YYYY-MM-DDTHH:MM)
@@ -381,6 +396,7 @@ const openCreateForm = () => {
       {
         rowId: fieldRowSeq++, name: '', label: '', type: 'text', required: false, optionsText: '',
         registrationTargets: [], friendFieldKey: '', optionTagIds: {}, optionFriendFieldValues: {},
+        imageUrl: '', buttonUrl: '',
       },
     ])
   }
@@ -413,6 +429,8 @@ const openCreateForm = () => {
               ...(Object.keys(f.optionFriendFieldValues).length > 0 ? { optionFriendFieldValues: f.optionFriendFieldValues } : {}),
             }
           : {}),
+        ...(IMAGE_TYPES.includes(f.type) ? { imageUrl: f.imageUrl.trim() || undefined } : {}),
+        ...(BUTTON_TYPES.includes(f.type) ? { buttonLabel: f.label.trim(), buttonUrl: f.buttonUrl.trim() || undefined } : {}),
       }))
       const payload = {
         name: displayFormName(name),
@@ -907,6 +925,24 @@ const openCreateForm = () => {
                           placeholder="選択肢をカンマ区切りで (例: 20代, 30代, 40代以上)"
                           value={field.optionsText}
                           onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, optionsText: v } : r)))}
+                        />
+                      )}
+                      {IMAGE_TYPES.includes(field.type) && (
+                        <Input
+                          className="mt-2"
+                          aria-label="画像URL"
+                          placeholder="https://example.com/image.jpg"
+                          value={field.imageUrl}
+                          onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, imageUrl: v } : r)))}
+                        />
+                      )}
+                      {BUTTON_TYPES.includes(field.type) && (
+                        <Input
+                          className="mt-2"
+                          aria-label="ボタンのリンク先URL"
+                          placeholder="https://example.com (ボタン文言は左上のラベル欄)"
+                          value={field.buttonUrl}
+                          onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, buttonUrl: v } : r)))}
                         />
                       )}
                       {REGISTRATION_TARGET_TYPES.includes(field.type) && (
