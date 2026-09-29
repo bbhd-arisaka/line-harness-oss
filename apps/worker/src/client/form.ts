@@ -240,8 +240,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
   const required = field.required ? ' required' : '';
   const maxLen = field.maxLength && field.maxLength > 0 ? ` maxlength="${field.maxLength}"` : '';
   const descriptionHtml = field.description
-    ? `<p class="form-field-description">${escapeHtml(field.description).replace(/
-/g, '<br>')}</p>`
+    ? `<p class="form-field-description">${escapeHtml(field.description).replace(/\n/g, '<br>')}</p>`
     : '';
   const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
   const requiredMark = field.required ? '<span class="required-mark">*</span>' : '';
@@ -992,8 +991,7 @@ function renderSuccess(): void {
       <div class="success-card">
         <div class="success-icon">✓</div>
         <h2>送信完了！</h2>
-        <p class="success-message">${escapeHtml(state.formDef?.lstepOptions?.thanksText?.trim() || 'ご回答ありがとうございました。').replace(/
-/g, '<br>')}</p>
+        <p class="success-message">${escapeHtml(state.formDef?.lstepOptions?.thanksText?.trim() || 'ご回答ありがとうございました。').replace(/\n/g, '<br>')}</p>
         <button class="close-btn" id="closeBtn">閉じる</button>
       </div>
     </div>
