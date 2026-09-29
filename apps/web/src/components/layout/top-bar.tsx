@@ -102,7 +102,7 @@ async function logout() {
 const ROLE_LABEL: Record<string, string> = { owner: 'オーナー', admin: '管理者', staff: 'スタッフ' }
 
 /** 画面最上部の緑グラデーションのバー(Lステップ準拠)。 */
-export default function TopBar({ onToggleMenu }: { onToggleMenu: () => void }) {
+export default function TopBar({ onToggleMenu, collapsed = false }: { onToggleMenu: () => void; collapsed?: boolean }) {
   const [staffName] = useState(() => (typeof window === 'undefined' ? null : localStorage.getItem('lh_staff_name')))
   const [staffRole] = useState(() => (typeof window === 'undefined' ? null : localStorage.getItem('lh_staff_role')))
 
@@ -118,7 +118,7 @@ export default function TopBar({ onToggleMenu }: { onToggleMenu: () => void }) {
           aria-label="メニューの開閉"
           className="flex h-12 w-12 items-center justify-center hover:bg-white/10"
         >
-          <CaretDoubleLeftIcon size={16} weight="bold" className="max-lg:hidden" />
+          <CaretDoubleLeftIcon size={16} weight="bold" className={`max-lg:hidden transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} />
           <ListIcon size={20} weight="bold" className="lg:hidden" />
         </button>
         <span className="text-[22px] font-black italic tracking-tight" style={{ textShadow: '0 1px 0 rgba(0,0,0,.15)' }}>

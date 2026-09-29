@@ -328,7 +328,7 @@ export default function FriendFieldsPage() {
                   onDragStart={() => { dragDefId.current = d.id }}
                   onDragOver={(e) => { if (dragEnabled) e.preventDefault() }}
                   onDrop={() => void dropDefinition(d.id)}
-                  className="grid grid-cols-[2.5rem_2rem_1fr_7rem_10rem_7rem_5.5rem] items-center border-b border-[#e3e3e6] bg-white px-2 text-sm hover:bg-[#fafafb]"
+                  className="item-enter grid grid-cols-[2.5rem_2rem_1fr_7rem_10rem_7rem_5.5rem] items-center border-b border-[#e3e3e6] bg-white px-2 text-sm transition-colors duration-150 hover:bg-[#fafafb]"
                   style={{ height: 47 }}
                 >
                   <span className="pl-1">{dragEnabled ? <DragHandle /> : null}</span>

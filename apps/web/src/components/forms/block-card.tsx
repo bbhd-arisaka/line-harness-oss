@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { FriendFieldPicker, type PickerField, type PickerFolder } from './friend-field-picker'
 import { OptionActionDialog, OptionSettingsDialog } from './option-dialogs'
 import { MediaPickerModal } from '@/components/media/media-picker'
+import { Collapse } from '@/components/ui/collapse'
 import {
   BLOCK_TYPE_LABEL,
   CHOICE_TYPES,
@@ -137,7 +138,7 @@ export function BlockCard({
     <div
       id={`block-card-${block.rowId}`}
       onClick={onSelect}
-      className={`flex gap-4 rounded bg-white p-4 transition-shadow ${selected ? 'border-2 border-[#069e04] shadow-md' : 'border border-[#dcdce0]'}`}
+      className={`item-enter flex gap-4 rounded bg-white p-4 transition-shadow duration-200 ${selected ? 'border-2 border-[#069e04] shadow-md' : 'border border-[#dcdce0]'}`}
     >
       <div className="flex w-16 flex-shrink-0 flex-col items-center justify-center text-center">
         <span className="mb-1 flex h-6 w-6 items-center justify-center rounded-sm bg-[#069e04] text-xs font-bold text-white">{number}</span>
@@ -501,21 +502,25 @@ export function BlockCard({
                 />
               </div>
             )}
-            <div className="mt-2 space-y-2">
-              {block.open.description && (
-                <textarea rows={2} className="w-full rounded border border-[#cacace] px-3 py-2 text-sm outline-none focus:border-[#069e04]" placeholder="説明文" value={block.description} onChange={(e) => onChange({ description: e.target.value })} />
-              )}
-              {isText && block.open.defaultValue && (
-                <input className={input} placeholder="初期値" value={block.defaultValue} onChange={(e) => onChange({ defaultValue: e.target.value })} />
-              )}
-              {isText && block.open.placeholder && (
-                <input className={input} placeholder="プレースホルダ(入力例)" value={block.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />
-              )}
-              {isText && block.open.maxLength && (
-                <div className="flex items-center gap-2 text-sm">
-                  <input type="number" min={1} className={`${input} max-w-[8rem]`} value={block.maxLength} onChange={(e) => onChange({ maxLength: e.target.value })} />
-                  文字まで
-                </div>
+            <div className="mt-1">
+              <Collapse open={block.open.description}>
+                <textarea rows={2} className="mt-2 w-full rounded border border-[#cacace] px-3 py-2 text-sm outline-none focus:border-[#069e04]" placeholder="説明文" value={block.description} onChange={(e) => onChange({ description: e.target.value })} />
+              </Collapse>
+              {isText && (
+                <>
+                  <Collapse open={block.open.defaultValue}>
+                    <input className={`${input} mt-2`} placeholder="初期値" value={block.defaultValue} onChange={(e) => onChange({ defaultValue: e.target.value })} />
+                  </Collapse>
+                  <Collapse open={block.open.placeholder}>
+                    <input className={`${input} mt-2`} placeholder="プレースホルダ(入力例)" value={block.placeholder} onChange={(e) => onChange({ placeholder: e.target.value })} />
+                  </Collapse>
+                  <Collapse open={block.open.maxLength}>
+                    <div className="mt-2 flex items-center gap-2 text-sm">
+                      <input type="number" min={1} className={`${input} max-w-[8rem]`} value={block.maxLength} onChange={(e) => onChange({ maxLength: e.target.value })} />
+                      文字まで
+                    </div>
+                  </Collapse>
+                </>
               )}
             </div>
           </div>
@@ -589,7 +594,7 @@ function DatePanels({
   const weekdays = rule.weekdays ?? []
   return (
     <div className="mt-3 space-y-3">
-      {block.reminderOn && (
+      <Collapse open={block.reminderOn}>
         <div className="flex flex-wrap items-center gap-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
           <span className="text-xs font-bold">リマインダを設定</span>
           <select className={`${selectCls} min-w-[14rem]`} value={block.reminderId} onChange={(e) => onChange({ reminderId: e.target.value })}>
@@ -600,8 +605,8 @@ function DatePanels({
           <input type="time" className={`${selectCls} w-28`} value={block.reminderTime} onChange={(e) => onChange({ reminderTime: e.target.value })} />
           {reminders.length === 0 && <span className="text-[11px] text-[#e5451f]">リマインダ配信が未作成です(先に「リマインダ配信」で作成してください)</span>}
         </div>
-      )}
-      {block.dateLimitOn && (
+      </Collapse>
+      <Collapse open={block.dateLimitOn}>
         <div className="space-y-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
           <span className="text-xs font-bold">入力制限</span>
           <BoundEditor label="開始日" value={rule.start} onChange={(b) => setRule({ start: b })} />
@@ -634,7 +639,7 @@ function DatePanels({
             </select>
           </div>
         </div>
-      )}
+      </Collapse>
     </div>
   )
 }

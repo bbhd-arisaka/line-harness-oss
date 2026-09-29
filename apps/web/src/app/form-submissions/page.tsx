@@ -290,7 +290,7 @@ export default function FormListPage() {
               pageItems.map((f) => {
                 const total = f.submitCount ?? f.usedByAccounts.reduce((s, a) => s + a.count, 0)
                 return (
-                  <div key={f.id} className={`grid ${cols} items-center border-b border-[#e3e3e6] bg-white px-4 text-sm hover:bg-[#fafafb]`} style={{ minHeight: 54 }}>
+                  <div key={f.id} className={`item-enter grid ${cols} items-center border-b border-[#e3e3e6] bg-white px-4 text-sm transition-colors duration-150 hover:bg-[#fafafb]`} style={{ minHeight: 54 }}>
                     <Link href={`/form-submissions/edit?id=${f.id}`} className="py-2 pr-3 font-bold text-[#2b7bb9] underline">
                       {displayFormName(f.name)}
                     </Link>

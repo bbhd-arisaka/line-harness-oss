@@ -132,7 +132,7 @@ export function FolderRow({
       onDragOver={(e) => { if (draggable) e.preventDefault() }}
       onDrop={onDrop}
       onClick={onSelect}
-      className={`flex min-h-10 cursor-pointer items-center gap-2 px-3 py-1.5 ${selected ? 'bg-[#ffeccb]' : 'hover:bg-[#e8e8ec]'}`}
+      className={`flex min-h-10 cursor-pointer items-center gap-2 px-3 py-1.5 transition-colors duration-200 ${selected ? 'bg-[#ffeccb]' : 'hover:bg-[#e8e8ec]'}`}
     >
       {draggable ? <DragHandle /> : <span className="w-[10px] flex-shrink-0" />}
       <FolderIcon open={selected} className={selected ? 'text-[#f2a100]' : 'text-[#9a9a9e]'} />

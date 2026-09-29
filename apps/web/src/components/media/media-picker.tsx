@@ -89,7 +89,7 @@ function Grid({
       {items.map((m) => (
         <div
           key={m.key}
-          className={`group relative overflow-hidden rounded border bg-white ${selectedUrl === m.url ? 'border-2 border-[#069e04]' : 'border-[#dcdce0]'}`}
+          className={`item-enter group relative overflow-hidden rounded border bg-white transition-shadow duration-200 hover:shadow-md ${selectedUrl === m.url ? 'border-2 border-[#069e04]' : 'border-[#dcdce0]'}`}
         >
           <button type="button" onClick={() => onPick?.(m)} className="block w-full" title={m.name}>
             <span className="flex h-32 items-center justify-center bg-[#f4f4f4]">

@@ -209,12 +209,17 @@ export default function Sidebar({
         {nav}
       </aside>
 
-      {/* デスクトップ: 常時表示(トップバーの « で折りたたみ) */}
-      {!collapsed && (
-        <aside className="hidden lg:flex w-60 flex-shrink-0 flex-col bg-[#414143]">
+      {/* デスクトップ: 常時表示(トップバーの « で、幅がなめらかに縮んで折りたたまれる) */}
+      <aside
+        aria-hidden={collapsed}
+        className={`hidden flex-shrink-0 overflow-hidden bg-[#414143] transition-[width] duration-300 ease-in-out lg:flex ${
+          collapsed ? 'w-0' : 'w-60'
+        }`}
+      >
+        <div className={`flex w-60 flex-shrink-0 flex-col transition-opacity duration-200 ${collapsed ? 'opacity-0' : 'opacity-100'}`}>
           {nav}
-        </aside>
-      )}
+        </div>
+      </aside>
     </>
   )
 }

@@ -39,6 +39,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           <UpdateBanner />
           <QuotaBanner />
           <TopBar
+            collapsed={menuCollapsed}
             onToggleMenu={() => {
               if (window.matchMedia('(min-width: 1024px)').matches) setMenuCollapsed((v) => !v)
               else setMobileMenuOpen((v) => !v)
@@ -55,10 +56,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                 isFullBleed ? 'min-w-0 min-h-0 flex flex-col overflow-hidden' : 'overflow-auto'
               }`}
             >
+              {/* 画面を切り替えるたびに、ふわっと表示する(チャットは高さ計算があるため透明度だけ) */}
               {isFullBleed ? (
-                children
+                <div key={normalizedPath} className="page-enter-fade flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                  {children}
+                </div>
               ) : (
-                <div className="px-4 py-6 sm:px-6 lg:px-8 lg:pb-8">
+                <div key={normalizedPath} className="page-enter px-4 py-6 sm:px-6 lg:px-8 lg:pb-8">
                   {children}
                 </div>
               )}

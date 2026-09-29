@@ -462,6 +462,7 @@ export default function FormEditPage() {
               {section === 0 && (
                 <p className="text-[11px] text-[#757578]">共通ヘッダのブロックは、すべてのセクションの先頭に表示されます(画像・見出し・テキスト・ボタンなど)。</p>
               )}
+              <div key={section} className="page-enter space-y-3">
               {sectionBlocks.length === 0 ? (
                 <p className="flex h-full min-h-[10rem] items-center justify-center text-base font-bold text-[#757578]">
                   「ブロックを追加」から作成してください
@@ -484,6 +485,7 @@ export default function FormEditPage() {
                   />
                 ))
               )}
+              </div>
             </div>
           </div>
           {/* 右: プレビュー */}
