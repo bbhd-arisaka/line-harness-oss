@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { TagIcon } from '@phosphor-icons/react'
 import { Badge } from '@cloudflare/kumo/components/badge'
 import { Button } from '@cloudflare/kumo/components/button'
@@ -72,7 +73,16 @@ export default function FriendListRow({ friend, onTagEditClick }: Props) {
           </div>
         )}
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-kumo-strong">{friend.displayName}</p>
+          {/* Lステップの友だちリストは名前がそのまま詳細画面へのリンクになっている。
+              行全体のクリックはチャットへの近道として残しつつ、名前だけは
+              stopPropagation で詳細画面へ独立してリンクさせる。 */}
+          <Link
+            href={`/friends/detail?id=${friend.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="truncate text-sm font-medium text-kumo-link hover:underline"
+          >
+            {friend.displayName}
+          </Link>
           <p className="mt-0.5 text-[10px] text-kumo-subtle">登録: {formatJstDate(friend.createdAt)}</p>
           {!isFollowing && (
             <p className="mt-0.5 text-[10px] text-kumo-danger">ブロック / 退会</p>

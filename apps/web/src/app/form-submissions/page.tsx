@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
+import { XIcon } from '@phosphor-icons/react'
 import { fetchApi } from '@/lib/api'
 import { countryFlag } from '@/lib/country-flag'
 import Header from '@/components/layout/header'
@@ -935,14 +936,15 @@ const openCreateForm = () => {
                           onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, type: v as FieldType } : r)))}
                           items={FIELD_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
                         />
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="mt-1 flex-none"
+                          icon={XIcon}
                           aria-label="この項目を削除"
-                          className="mt-2 flex-none text-gray-400 hover:text-red-600"
                           onClick={() => setDraftFields((rows) => rows.filter((_, ri) => ri !== i))}
-                        >
-                          ×
-                        </button>
+                        />
                       </div>
                       {OPTION_TYPES.includes(field.type) && (
                         <Input
@@ -1045,10 +1047,11 @@ const openCreateForm = () => {
                                       {tags.map((tag) => {
                                         const checked = (field.optionTagIds[opt] ?? []).includes(tag.id)
                                         return (
-                                          <button
+                                          <Button
                                             key={tag.id}
                                             type="button"
-                                            className={`rounded-full border px-2 py-0.5 text-[11px] ${checked ? 'border-kumo-brand bg-kumo-control text-kumo-brand' : 'border-gray-200 text-gray-500'}`}
+                                            size="xs"
+                                            variant={checked ? 'primary' : 'secondary'}
                                             onClick={() => setDraftFields((rows) => rows.map((r, ri) => {
                                               if (ri !== i) return r
                                               const current = r.optionTagIds[opt] ?? []
@@ -1059,7 +1062,7 @@ const openCreateForm = () => {
                                             }))}
                                           >
                                             {tag.name}
-                                          </button>
+                                          </Button>
                                         )
                                       })}
                                       {tags.length === 0 && <span className="text-[11px] text-gray-400">(タグ未作成)</span>}
@@ -1111,24 +1114,24 @@ const openCreateForm = () => {
             </div>
 
             <div className="mt-5">
-              <button
+              <Button
                 type="button"
-                className="text-xs font-semibold text-gray-600 underline decoration-gray-300 underline-offset-2"
+                variant="ghost"
+                size="xs"
                 onClick={() => setShowAdvanced((v) => !v)}
               >
                 {showAdvanced ? '▾ 詳細設定を閉じる' : '▸ 詳細設定(回答期限・人数制限・デザイン等)'}
-              </button>
+              </Button>
 
               {showAdvanced && (
                 <div className="mt-3 space-y-3 rounded-lg border border-gray-200 p-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="mb-1 block text-xs text-gray-500">回答期限(任意)</label>
-                      <input
+                      <Input
                         type="datetime-local"
                         value={draftExpiresAt}
                         onChange={(e) => setDraftExpiresAt(e.target.value)}
-                        className="h-9 w-full rounded-lg border border-gray-300 px-2 text-sm"
                       />
                     </div>
                     <div>
@@ -1187,7 +1190,7 @@ const openCreateForm = () => {
                           {([
                             { label: 'メイン', value: draftThemeMainColor, set: setDraftThemeMainColor, placeholder: '#1a231c' },
                             { label: 'サブ', value: draftThemeSubColor, set: setDraftThemeSubColor, placeholder: '#5c665d' },
-                            { label: 'アクセント(ボタン等)', value: draftPrimaryColor, set: setDraftPrimaryColor, placeholder: '#06C755' },
+                            { label: 'アクセント(ボタン等)', value: draftPrimaryColor, set: setDraftPrimaryColor, placeholder: '#2e8b57' },
                             { label: 'エラー', value: draftThemeErrorColor, set: setDraftThemeErrorColor, placeholder: '#e53e3e' },
                             { label: 'テキスト', value: draftThemeTextColor, set: setDraftThemeTextColor, placeholder: '#333333' },
                           ]).map((c) => (

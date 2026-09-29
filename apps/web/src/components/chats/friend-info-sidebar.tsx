@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { XIcon } from '@phosphor-icons/react'
 import { api, fetchApi, type MileageHistoryItem, type MileageSummary } from '@/lib/api'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input, InputArea } from '@cloudflare/kumo/components/input'
@@ -303,13 +304,14 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
               <div className="flex items-center justify-between mb-1.5">
                 <h4 className="text-[11px] font-medium text-gray-500">本名</h4>
                 {!editingRealName && (
-                  <button
+                  <Button
                     type="button"
-                    className="text-[11px] text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
+                    variant="ghost"
+                    size="xs"
                     onClick={() => startEditingRealName(friend.realName)}
                   >
                     編集
-                  </button>
+                  </Button>
                 )}
               </div>
               {editingRealName ? (
@@ -473,13 +475,14 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-[11px] font-medium text-gray-500">友だち情報</h4>
                 {!editingMetadata && (
-                  <button
+                  <Button
                     type="button"
-                    className="text-[11px] text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
+                    variant="ghost"
+                    size="xs"
                     onClick={() => startEditingMetadata(friend.metadata ?? {})}
                   >
                     編集
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -518,12 +521,11 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
                             {def.options.map((o) => {
                               const selected = row.value.split(',').map((v) => v.trim()).filter(Boolean).includes(o)
                               return (
-                                <button
+                                <Button
                                   key={o}
                                   type="button"
-                                  className={`rounded-full border px-2 py-0.5 text-[11px] ${
-                                    selected ? 'border-kumo-brand bg-kumo-control text-kumo-brand' : 'border-gray-200 text-gray-500'
-                                  }`}
+                                  size="xs"
+                                  variant={selected ? 'primary' : 'secondary'}
                                   onClick={() => {
                                     const current = row.value.split(',').map((v) => v.trim()).filter(Boolean)
                                     const next = selected ? current.filter((v) => v !== o) : [...current, o]
@@ -531,7 +533,7 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
                                   }}
                                 >
                                   {o}
-                                </button>
+                                </Button>
                               )
                             })}
                           </div>
@@ -553,14 +555,15 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
                             onValueChange={setValue}
                           />
                         )}
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="xs"
+                          className="mt-1 flex-none"
+                          icon={XIcon}
                           aria-label="この項目を削除"
-                          className="mt-1.5 flex-none text-gray-400 hover:text-red-600"
                           onClick={() => setMetadataRows((rows) => rows.filter((_, ri) => ri !== i))}
-                        >
-                          ×
-                        </button>
+                        />
                       </div>
                     )
                   })}
