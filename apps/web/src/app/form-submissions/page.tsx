@@ -151,6 +151,11 @@ interface Form {
   googleSheetsEnabled?: boolean
   googleSheetUrl?: string | null
   googleSheetName?: string | null
+  themeMainColor?: string | null
+  themeSubColor?: string | null
+  themeErrorColor?: string | null
+  themeTextColor?: string | null
+  themeFont?: string | null
 }
 
 type FormDetail = Form
@@ -248,6 +253,12 @@ export default function FormSubmissionsPage() {
   const [draftHideHeaderIcon, setDraftHideHeaderIcon] = useState(false)
   const [draftCustomCssEnabled, setDraftCustomCssEnabled] = useState(false)
   const [draftCustomCss, setDraftCustomCss] = useState('')
+  // Lステップ新形式の5色テーマ(メイン/サブ/アクセント[=primaryColor]/エラー/テキスト)+フォント
+  const [draftThemeMainColor, setDraftThemeMainColor] = useState('')
+  const [draftThemeSubColor, setDraftThemeSubColor] = useState('')
+  const [draftThemeErrorColor, setDraftThemeErrorColor] = useState('')
+  const [draftThemeTextColor, setDraftThemeTextColor] = useState('')
+  const [draftThemeFont, setDraftThemeFont] = useState('')
   // Lステップ「Googleスプレッドシート連携 β版」相当
   const [draftGoogleSheetsEnabled, setDraftGoogleSheetsEnabled] = useState(false)
   const [draftGoogleSheetUrl, setDraftGoogleSheetUrl] = useState('')
@@ -339,6 +350,11 @@ const openCreateForm = () => {
     setDraftGoogleSheetsEnabled(false)
     setDraftGoogleSheetUrl('')
     setDraftGoogleSheetName('')
+    setDraftThemeMainColor('')
+    setDraftThemeSubColor('')
+    setDraftThemeErrorColor('')
+    setDraftThemeTextColor('')
+    setDraftThemeFont('')
     setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
@@ -385,6 +401,11 @@ const openCreateForm = () => {
     setDraftGoogleSheetsEnabled(Boolean(form.googleSheetsEnabled))
     setDraftGoogleSheetUrl(form.googleSheetUrl ?? '')
     setDraftGoogleSheetName(form.googleSheetName ?? '')
+    setDraftThemeMainColor(form.themeMainColor ?? '')
+    setDraftThemeSubColor(form.themeSubColor ?? '')
+    setDraftThemeErrorColor(form.themeErrorColor ?? '')
+    setDraftThemeTextColor(form.themeTextColor ?? '')
+    setDraftThemeFont(form.themeFont ?? '')
     setShowAdvanced(false)
     setFormError('')
     setEditorOpen(true)
@@ -456,6 +477,11 @@ const openCreateForm = () => {
         googleSheetsEnabled: draftGoogleSheetsEnabled,
         googleSheetUrl: draftGoogleSheetUrl.trim() || null,
         googleSheetName: draftGoogleSheetName.trim() || null,
+        themeMainColor: draftThemeMainColor.trim() || null,
+        themeSubColor: draftThemeSubColor.trim() || null,
+        themeErrorColor: draftThemeErrorColor.trim() || null,
+        themeTextColor: draftThemeTextColor.trim() || null,
+        themeFont: draftThemeFont.trim() || null,
       }
       const res = editingFormId
         ? await fetchApi<{ success: boolean; data: Form }>(`/api/forms/${editingFormId}`, {
@@ -1156,19 +1182,37 @@ const openCreateForm = () => {
 
                     {draftCustomDesignEnabled && (
                       <div className="mt-3 space-y-3 pl-1">
+                        <p className="text-[11px] font-medium text-gray-500">テーマカラー(5色)</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {([
+                            { label: 'メイン', value: draftThemeMainColor, set: setDraftThemeMainColor, placeholder: '#1a231c' },
+                            { label: 'サブ', value: draftThemeSubColor, set: setDraftThemeSubColor, placeholder: '#5c665d' },
+                            { label: 'アクセント(ボタン等)', value: draftPrimaryColor, set: setDraftPrimaryColor, placeholder: '#06C755' },
+                            { label: 'エラー', value: draftThemeErrorColor, set: setDraftThemeErrorColor, placeholder: '#e53e3e' },
+                            { label: 'テキスト', value: draftThemeTextColor, set: setDraftThemeTextColor, placeholder: '#333333' },
+                          ]).map((c) => (
+                            <div key={c.label}>
+                              <label className="mb-1 block text-xs text-gray-500">{c.label}</label>
+                              <div className="flex items-center gap-2">
+                                <Input placeholder={c.placeholder} value={c.value} onValueChange={c.set} className="flex-1" />
+                                {c.value && <span className="h-8 w-8 flex-none rounded border border-gray-300" style={{ backgroundColor: c.value }} />}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
                         <div>
-                          <label className="mb-1 block text-xs text-gray-500">ボタンカラー(16進、例 #d97786)</label>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              placeholder="#06C755"
-                              value={draftPrimaryColor}
-                              onValueChange={setDraftPrimaryColor}
-                              className="flex-1"
-                            />
-                            {draftPrimaryColor && (
-                              <span className="h-8 w-8 flex-none rounded border border-gray-300" style={{ backgroundColor: draftPrimaryColor }} />
-                            )}
-                          </div>
+                          <label className="mb-1 block text-xs text-gray-500">フォント</label>
+                          <Select
+                            value={draftThemeFont || '__default__'}
+                            onValueChange={(v) => setDraftThemeFont(v === '__default__' ? '' : (v ?? ''))}
+                            items={[
+                              { value: '__default__', label: '(標準)' },
+                              { value: 'ゴシック', label: 'ゴシック' },
+                              { value: '明朝', label: '明朝' },
+                              { value: '丸ゴシック', label: '丸ゴシック' },
+                            ]}
+                          />
                         </div>
 
                         <div>

@@ -39,6 +39,11 @@ export interface Form {
   google_sheets_enabled: number;
   google_sheet_url: string | null;
   google_sheet_name: string | null;
+  theme_main_color: string | null;
+  theme_sub_color: string | null;
+  theme_error_color: string | null;
+  theme_text_color: string | null;
+  theme_font: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -166,6 +171,11 @@ export interface CreateFormInput {
   googleSheetsEnabled?: boolean;
   googleSheetUrl?: string | null;
   googleSheetName?: string | null;
+  themeMainColor?: string | null;
+  themeSubColor?: string | null;
+  themeErrorColor?: string | null;
+  themeTextColor?: string | null;
+  themeFont?: string | null;
 }
 
 export async function createForm(db: D1Database, input: CreateFormInput): Promise<Form> {
@@ -186,8 +196,9 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
           header_image_url, background_image_url, hide_header_icon,
           custom_css_enabled, custom_css,
           google_sheets_enabled, google_sheet_url, google_sheet_name,
+          theme_main_color, theme_sub_color, theme_error_color, theme_text_color, theme_font,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -223,6 +234,11 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
       input.googleSheetsEnabled ? 1 : 0,
       input.googleSheetUrl ?? null,
       input.googleSheetName ?? null,
+      input.themeMainColor ?? null,
+      input.themeSubColor ?? null,
+      input.themeErrorColor ?? null,
+      input.themeTextColor ?? null,
+      input.themeFont ?? null,
       now,
       now,
     )
@@ -265,6 +281,11 @@ export interface UpdateFormInput {
   googleSheetsEnabled?: boolean;
   googleSheetUrl?: string | null;
   googleSheetName?: string | null;
+  themeMainColor?: string | null;
+  themeSubColor?: string | null;
+  themeErrorColor?: string | null;
+  themeTextColor?: string | null;
+  themeFont?: string | null;
 }
 
 export async function updateForm(
@@ -313,6 +334,11 @@ export async function updateForm(
            google_sheets_enabled = ?,
            google_sheet_url = ?,
            google_sheet_name = ?,
+           theme_main_color = ?,
+           theme_sub_color = ?,
+           theme_error_color = ?,
+           theme_text_color = ?,
+           theme_font = ?,
            updated_at = ?
        WHERE id = ?`,
     )
@@ -380,6 +406,11 @@ export async function updateForm(
         : existing.google_sheets_enabled,
       'googleSheetUrl' in input ? (input.googleSheetUrl ?? null) : existing.google_sheet_url,
       'googleSheetName' in input ? (input.googleSheetName ?? null) : existing.google_sheet_name,
+      'themeMainColor' in input ? (input.themeMainColor ?? null) : existing.theme_main_color,
+      'themeSubColor' in input ? (input.themeSubColor ?? null) : existing.theme_sub_color,
+      'themeErrorColor' in input ? (input.themeErrorColor ?? null) : existing.theme_error_color,
+      'themeTextColor' in input ? (input.themeTextColor ?? null) : existing.theme_text_color,
+      'themeFont' in input ? (input.themeFont ?? null) : existing.theme_font,
       now,
       id,
     )

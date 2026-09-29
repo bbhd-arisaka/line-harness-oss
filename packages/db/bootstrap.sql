@@ -421,7 +421,29 @@ CREATE TABLE IF NOT EXISTS forms (
   submit_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-, on_submit_message_type TEXT CHECK (on_submit_message_type IN ('text', 'flex')) DEFAULT NULL, on_submit_message_content TEXT DEFAULT NULL, on_submit_webhook_url TEXT, on_submit_webhook_headers TEXT, on_submit_webhook_fail_message TEXT, og_title TEXT, og_description TEXT, og_image_url TEXT);
+, on_submit_message_type TEXT CHECK (on_submit_message_type IN ('text', 'flex')) DEFAULT NULL, on_submit_message_content TEXT DEFAULT NULL, on_submit_webhook_url TEXT, on_submit_webhook_headers TEXT, on_submit_webhook_fail_message TEXT, og_title TEXT, og_description TEXT, og_image_url TEXT, expires_at TEXT, capacity_limit INTEGER, answer_limit_per_friend TEXT NOT NULL DEFAULT 'unlimited', restore_previous_answer INTEGER NOT NULL DEFAULT 0, thanks_url TEXT, primary_color TEXT, on_submit_stop_scenarios INTEGER NOT NULL DEFAULT 0, custom_design_enabled INTEGER NOT NULL DEFAULT 0, background_color TEXT, form_background_color TEXT, header_image_url TEXT, background_image_url TEXT, hide_header_icon INTEGER NOT NULL DEFAULT 0, custom_css_enabled INTEGER NOT NULL DEFAULT 0, custom_css TEXT, google_sheets_enabled INTEGER NOT NULL DEFAULT 0, google_sheet_url TEXT, google_sheet_name TEXT, theme_main_color TEXT, theme_sub_color TEXT, theme_error_color TEXT, theme_text_color TEXT, theme_font TEXT);
+
+CREATE TABLE IF NOT EXISTS friend_field_definitions (
+  id            TEXT PRIMARY KEY,
+  folder_id     TEXT REFERENCES friend_field_folders(id) ON DELETE SET NULL,
+  -- friends.metadata の実際のJSONキー。作成後の変更は移行が要るため慎重に。
+  field_key     TEXT NOT NULL UNIQUE,
+  label         TEXT NOT NULL,
+  field_type    TEXT NOT NULL DEFAULT 'text', -- text/textarea/number/date/select/radio/checkbox
+  options       TEXT, -- JSON配列。select/radio/checkboxのときのみ使う
+  default_value TEXT,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE TABLE IF NOT EXISTS friend_field_folders (
+  id           TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
 
 CREATE TABLE IF NOT EXISTS friend_reminder_deliveries (
   id                TEXT PRIMARY KEY,
@@ -487,7 +509,7 @@ CREATE TABLE IF NOT EXISTS friends (
   unfollow_count   INTEGER NOT NULL DEFAULT 0,
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-, ref_code TEXT, metadata TEXT NOT NULL DEFAULT '{}', line_account_id TEXT REFERENCES line_accounts(id), first_tracked_link_id TEXT REFERENCES tracked_links (id) ON DELETE SET NULL);
+, ref_code TEXT, metadata TEXT NOT NULL DEFAULT '{}', line_account_id TEXT REFERENCES line_accounts(id), first_tracked_link_id TEXT REFERENCES tracked_links (id) ON DELETE SET NULL, real_name TEXT, memo TEXT);
 
 CREATE TABLE IF NOT EXISTS google_calendar_connections (
   id            TEXT PRIMARY KEY,
@@ -1244,6 +1266,8 @@ CREATE INDEX IF NOT EXISTS idx_form_opens_form ON form_opens (form_id, opened_at
 CREATE INDEX IF NOT EXISTS idx_form_submissions_form ON form_submissions (form_id);
 
 CREATE INDEX IF NOT EXISTS idx_form_submissions_friend ON form_submissions (friend_id);
+
+CREATE INDEX IF NOT EXISTS idx_friend_field_definitions_folder ON friend_field_definitions (folder_id);
 
 CREATE INDEX IF NOT EXISTS idx_friend_reminders_friend ON friend_reminders (friend_id);
 

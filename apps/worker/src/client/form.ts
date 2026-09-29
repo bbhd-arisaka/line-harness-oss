@@ -77,6 +77,13 @@ interface FormDef {
   backgroundImageUrl?: string | null;
   hideHeaderIcon?: boolean;
   customCss?: string | null;
+  // Lステップ新形式の5色テーマ(メイン/サブ/アクセント/エラー/テキスト)+フォント。
+  // primaryColor が「アクセント」に相当する。
+  themeMainColor?: string | null;
+  themeSubColor?: string | null;
+  themeErrorColor?: string | null;
+  themeTextColor?: string | null;
+  themeFont?: string | null;
   // Lステップの「回答復元」相当。restorePreviousAnswer が OFF、または前回の
   // 回答が無ければ null。
   previousAnswer?: Record<string, unknown> | null;
@@ -344,7 +351,14 @@ function injectStyles(): void {
       --form-page-bg: transparent;
       --form-page-bg-image: none;
       --form-card-bg: #fff;
+      /* Lステップ新形式の5色テーマ(メイン/サブ/エラー/テキスト)。アクセントは--form-accent。 */
+      --form-main: #333;
+      --form-sub: #666;
+      --form-error: #e53e3e;
+      --form-text: #333;
+      --form-font: inherit;
     }
+    .form-page { font-family: var(--form-font); }
     .form-page {
       background-color: var(--form-page-bg);
       background-image: var(--form-page-bg-image);
@@ -375,15 +389,15 @@ function injectStyles(): void {
     .form-block-button:active { opacity: 0.85; }
     .form-page { max-width: 480px; margin: 0 auto; padding: 16px; }
     .form-header { text-align: center; margin-bottom: 24px; }
-    .form-header h1 { font-size: 20px; color: #333; margin-bottom: 8px; }
-    .form-description { font-size: 14px; color: #999; }
+    .form-header h1 { font-size: 20px; color: var(--form-main); margin-bottom: 8px; }
+    .form-description { font-size: 14px; color: var(--form-sub); }
     .form-profile { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
     .form-profile img { width: 36px; height: 36px; border-radius: 50%; }
     .form-profile span { font-size: 14px; font-weight: 600; }
     .form-body { background: var(--form-card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .form-field { margin-bottom: 20px; }
-    .form-label { display: block; font-size: 14px; font-weight: 600; color: #333; margin-bottom: 6px; }
-    .required-mark { color: #e53e3e; margin-left: 2px; }
+    .form-label { display: block; font-size: 14px; font-weight: 600; color: var(--form-text); margin-bottom: 6px; }
+    .required-mark { color: var(--form-error); margin-left: 2px; }
     .form-input, .form-textarea, .form-select {
       width: 100%; padding: 12px; border: 1.5px solid #e0e0e0; border-radius: 8px;
       font-size: 16px; font-family: inherit; background: #fafafa;
@@ -415,7 +429,8 @@ function injectStyles(): void {
     }
     .submit-btn:active { opacity: 0.85; }
     .submit-btn:disabled { background: #bbb; cursor: not-allowed; }
-    .form-error { color: #e53e3e; font-size: 12px; margin-top: 4px; }
+    .form-error { color: var(--form-error); font-size: 12px; margin-top: 4px; }
+    .form-error-msg { color: var(--form-error); font-size: 14px; margin: 8px 0; text-align: center; }
     .x-loading-spinner {
       width: 28px; height: 28px; border: 3px solid #333; border-top-color: #1D9BF0;
       border-radius: 50%; animation: x-spin 0.8s linear infinite;
@@ -521,7 +536,7 @@ function injectStyles(): void {
     .form-success { text-align: center; padding: 40px 20px; }
     .form-success .check { width: 64px; height: 64px; border-radius: 50%; background: var(--form-accent); color: #fff; font-size: 32px; line-height: 64px; margin: 0 auto 16px; }
     .form-success h2 { font-size: 20px; color: var(--form-accent); margin-bottom: 12px; }
-    .form-success p { font-size: 14px; color: #666; line-height: 1.6; }
+    .form-success p { font-size: 14px; color: var(--form-sub); line-height: 1.6; }
     .consultation-card { background:#fff; border-radius:16px; padding:20px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
     .consultation-head { text-align:center; margin-bottom:20px; }
     .consultation-head .calendar-icon { font-size:32px; line-height:1; }
@@ -570,6 +585,26 @@ function render(): void {
   const safeBgImageUrl = safeHttpsUrl(formDef.backgroundImageUrl);
   if (safeBgImageUrl) {
     document.documentElement.style.setProperty('--form-page-bg-image', `url("${safeBgImageUrl}")`);
+  }
+  if (formDef.themeMainColor) {
+    document.documentElement.style.setProperty('--form-main', formDef.themeMainColor);
+  }
+  if (formDef.themeSubColor) {
+    document.documentElement.style.setProperty('--form-sub', formDef.themeSubColor);
+  }
+  if (formDef.themeErrorColor) {
+    document.documentElement.style.setProperty('--form-error', formDef.themeErrorColor);
+  }
+  if (formDef.themeTextColor) {
+    document.documentElement.style.setProperty('--form-text', formDef.themeTextColor);
+  }
+  if (formDef.themeFont) {
+    const FONT_STACKS: Record<string, string> = {
+      'ゴシック': '"Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif',
+      '明朝': '"Hiragino Mincho ProN", "Noto Serif JP", serif',
+      '丸ゴシック': '"Hiragino Maru Gothic ProN", "Rounded Mplus 1c", sans-serif',
+    };
+    document.documentElement.style.setProperty('--form-font', FONT_STACKS[formDef.themeFont] ?? formDef.themeFont);
   }
   if (formDef.customCss) {
     let customStyleEl = document.getElementById('form-custom-css') as HTMLStyleElement | null;
@@ -1051,7 +1086,7 @@ function renderFormError(message: string): void {
   app.innerHTML = `
     <div class="form-page">
       <div class="card">
-        <h2 style="color: #e53e3e;">エラー</h2>
+        <h2 style="color: var(--form-error);">エラー</h2>
         <p class="error">${escapeHtml(message)}</p>
       </div>
     </div>
@@ -1063,7 +1098,6 @@ function showFieldError(message: string): void {
   if (existing) existing.remove();
   const errEl = document.createElement('p');
   errEl.className = 'form-error-msg';
-  errEl.style.cssText = 'color:#e53e3e;font-size:14px;margin:8px 0;text-align:center;';
   errEl.textContent = message;
   const btn = document.getElementById('nextBtn') || document.getElementById('submitBtn');
   btn?.parentElement?.insertBefore(errEl, btn);
@@ -1150,7 +1184,6 @@ async function submitForm(): Promise<void> {
     if (existing) existing.remove();
     const errEl = document.createElement('p');
     errEl.className = 'form-error-msg';
-    errEl.style.cssText = 'color:#e53e3e;font-size:14px;margin:8px 0;text-align:center;';
     errEl.textContent = validationError;
     const submitBtn = document.getElementById('submitBtn');
     submitBtn?.parentElement?.insertBefore(errEl, submitBtn);
@@ -1179,7 +1212,6 @@ async function submitForm(): Promise<void> {
         if (existing) existing.remove();
         const errEl = document.createElement('p');
         errEl.className = 'form-error-msg';
-        errEl.style.cssText = 'color:#e53e3e;font-size:14px;margin:8px 0;text-align:center;';
         errEl.textContent = !xField
           ? 'X IDを入力してください'
           : 'X IDを入力後、入力欄の外をタップして確認してください';
@@ -1260,7 +1292,6 @@ async function submitForm(): Promise<void> {
     if (existing) existing.remove();
     const errEl = document.createElement('p');
     errEl.className = 'form-error-msg';
-    errEl.style.cssText = 'color:#e53e3e;font-size:14px;margin:8px 0;text-align:center;';
     errEl.textContent = err instanceof Error ? err.message : '送信に失敗しました';
     const btn = document.getElementById('submitBtn');
     btn?.parentElement?.insertBefore(errEl, btn);

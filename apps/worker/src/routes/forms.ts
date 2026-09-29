@@ -114,6 +114,11 @@ function serializeForm(
     googleSheetsEnabled: Boolean(row.google_sheets_enabled),
     googleSheetUrl: row.google_sheet_url,
     googleSheetName: row.google_sheet_name,
+    themeMainColor: row.theme_main_color,
+    themeSubColor: row.theme_sub_color,
+    themeErrorColor: row.theme_error_color,
+    themeTextColor: row.theme_text_color,
+    themeFont: row.theme_font,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastSubmittedAt: extra?.lastSubmittedAt ?? null,
@@ -176,6 +181,11 @@ function serializePublicForm(
           backgroundImageUrl: row.background_image_url,
           hideHeaderIcon: Boolean(row.hide_header_icon),
           customCss: row.custom_css_enabled ? row.custom_css : null,
+          themeMainColor: row.theme_main_color,
+          themeSubColor: row.theme_sub_color,
+          themeErrorColor: row.theme_error_color,
+          themeTextColor: row.theme_text_color,
+          themeFont: row.theme_font,
         }
       : {}),
     // When this form belongs to an active webinar consultation funnel, the
@@ -343,6 +353,11 @@ forms.post('/api/forms', async (c) => {
       googleSheetsEnabled?: boolean;
       googleSheetUrl?: string | null;
       googleSheetName?: string | null;
+      themeMainColor?: string | null;
+      themeSubColor?: string | null;
+      themeErrorColor?: string | null;
+      themeTextColor?: string | null;
+      themeFont?: string | null;
     }>();
 
     if (!body.name) {
@@ -382,6 +397,11 @@ forms.post('/api/forms', async (c) => {
       googleSheetsEnabled: body.googleSheetsEnabled,
       googleSheetUrl: body.googleSheetUrl ?? null,
       googleSheetName: body.googleSheetName ?? null,
+      themeMainColor: body.themeMainColor ?? null,
+      themeSubColor: body.themeSubColor ?? null,
+      themeErrorColor: body.themeErrorColor ?? null,
+      themeTextColor: body.themeTextColor ?? null,
+      themeFont: body.themeFont ?? null,
     });
 
     const liffId = (await resolveDefaultLineAccount(c.env.DB))?.liff_id ?? null;
@@ -430,6 +450,11 @@ forms.put('/api/forms/:id', async (c) => {
       googleSheetsEnabled?: boolean;
       googleSheetUrl?: string | null;
       googleSheetName?: string | null;
+      themeMainColor?: string | null;
+      themeSubColor?: string | null;
+      themeErrorColor?: string | null;
+      themeTextColor?: string | null;
+      themeFont?: string | null;
     }>();
 
     // Only include fields that were explicitly sent (avoid undefined → null conversion)
@@ -467,6 +492,11 @@ forms.put('/api/forms/:id', async (c) => {
     if (body.googleSheetsEnabled !== undefined) updates.googleSheetsEnabled = body.googleSheetsEnabled;
     if (body.googleSheetUrl !== undefined) updates.googleSheetUrl = body.googleSheetUrl;
     if (body.googleSheetName !== undefined) updates.googleSheetName = body.googleSheetName;
+    if (body.themeMainColor !== undefined) updates.themeMainColor = body.themeMainColor;
+    if (body.themeSubColor !== undefined) updates.themeSubColor = body.themeSubColor;
+    if (body.themeErrorColor !== undefined) updates.themeErrorColor = body.themeErrorColor;
+    if (body.themeTextColor !== undefined) updates.themeTextColor = body.themeTextColor;
+    if (body.themeFont !== undefined) updates.themeFont = body.themeFont;
 
     const updated = await updateForm(c.env.DB, id, updates as any);
 
