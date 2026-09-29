@@ -33,7 +33,7 @@ export function PreviewPane({
   }
 
   return (
-    <div className="h-full overflow-y-auto p-3" style={{ background: '#5b9a98' }}>
+    <div id="preview-scroll" className="h-full overflow-y-auto p-3" style={{ background: '#5b9a98' }}>
       <div className="mx-auto min-h-full max-w-[320px] rounded" style={{ background: pageBg, color: text }}>
         {draft.headerImageUrl && <img src={draft.headerImageUrl} alt="" className="w-full rounded-t object-cover" />}
         <div className="space-y-3 p-3" style={{ background: cardBg }}>

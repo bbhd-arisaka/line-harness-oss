@@ -26,6 +26,26 @@ import {
 interface Folder { id: string; name: string }
 interface Snapshot { blocks: BlockDraft[]; sectionCount: number }
 
+/** 指定した入れ物の「中だけ」をスムーズにスクロールして、要素を見える位置へ動かす(画面全体は動かさない)。 */
+function scrollWithin(containerId: string, elementId: string, align: 'center' | 'nearest') {
+  const container = document.getElementById(containerId)
+  const el = document.getElementById(elementId)
+  if (!container || !el) return
+  const c = container.getBoundingClientRect()
+  const e = el.getBoundingClientRect()
+  let top = container.scrollTop + (e.top - c.top)
+  if (align === 'center') {
+    top -= (c.height - e.height) / 2
+  } else if (e.top >= c.top && e.bottom <= c.bottom) {
+    return // すでに見えている
+  } else if (e.bottom > c.bottom) {
+    top = container.scrollTop + (e.bottom - c.bottom) + 12
+  } else {
+    top = container.scrollTop + (e.top - c.top) - 12
+  }
+  container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+}
+
 const toolBtn = 'px-2 py-1 text-xs font-bold text-[#069e04] disabled:text-[#9fd49d] disabled:cursor-not-allowed'
 
 export default function FormEditPage() {
@@ -148,13 +168,13 @@ export default function FormEditPage() {
   // 編集カードを選んだら、プレビュー側の該当項目も見える位置へ(こちらもスムーズスクロール)
   useEffect(() => {
     if (selectedRowId === null) return
-    document.getElementById(`preview-block-${selectedRowId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    scrollWithin('preview-scroll', `preview-block-${selectedRowId}`, 'nearest')
   }, [selectedRowId])
 
   useEffect(() => {
     if (pendingScroll === null) return
     const id = requestAnimationFrame(() => {
-      document.getElementById(`block-card-${pendingScroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      scrollWithin('block-list-scroll', `block-card-${pendingScroll}`, 'center')
       setPendingScroll(null)
     })
     return () => cancelAnimationFrame(id)
@@ -391,7 +411,7 @@ export default function FormEditPage() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f4f4f4] p-4">
+            <div id="block-list-scroll" className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f4f4f4] p-4">
               {section === 0 && (
                 <p className="text-[11px] text-[#757578]">共通ヘッダのブロックは、すべてのセクションの先頭に表示されます(画像・見出し・テキスト・ボタンなど)。</p>
               )}
