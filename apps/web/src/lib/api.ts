@@ -210,6 +210,11 @@ export type FriendListParams = {
   fieldKey?: string
 }
 
+/** LIFF 自動作成の結果(アカウントの登録・更新・自動作成ボタンの応答に付く) */
+export type LiffSetupOutcome =
+  | { status: 'created' | 'reused'; liffId: string }
+  | { status: 'failed'; error: string }
+
 export type FriendWithTags = Friend & { tags: Tag[] }
 export type FollowerImportState = {
   version: 1
@@ -717,6 +722,9 @@ export const api = {
         body: JSON.stringify(data),
       })
     },
+    /** LIFF を自動作成して割り当てる(LINEログインチャネルのID・シークレット登録済みのアカウント向け) */
+    setupLiff: (id: string) =>
+      fetchApi<ApiResponse<LineAccount> & { liffSetup?: LiffSetupOutcome }>(`/api/line-accounts/${id}/setup-liff`, { method: 'POST' }),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/line-accounts/${id}`, { method: 'DELETE' }),
     updateOrder: (ordered: Array<{ id: string; displayOrder: number }>) =>

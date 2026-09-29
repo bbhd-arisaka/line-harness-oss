@@ -12,7 +12,7 @@ import { Input } from '@cloudflare/kumo/components/input'
 import { LayerCard } from '@cloudflare/kumo/components/layer-card'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { Switch } from '@cloudflare/kumo/components/switch'
-import { api } from '@/lib/api'
+import { api, type LiffSetupOutcome } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
@@ -85,7 +85,9 @@ export default function AccountsPage() {
   const [form, setForm] = useState<AccountFormState>(emptyAccountFormState)
   const [createError, setCreateError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [justCreated, setJustCreated] = useState<{ liffId: string | null } | null>(null)
+  const [justCreated, setJustCreated] = useState<{ liffId: string | null; liffSetup?: LiffSetupOutcome } | null>(null)
+  const [liffBusyId, setLiffBusyId] = useState<string | null>(null)
+  const [liffMessage, setLiffMessage] = useState<{ ok: boolean; text: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -125,7 +127,7 @@ export default function AccountsPage() {
     }
     setSubmitting(true)
     try {
-      const response = await api.lineAccounts.create({
+      const response = (await api.lineAccounts.create({
         channelId: form.channelId.trim(),
         name: form.name.trim(),
         channelAccessToken: form.channelAccessToken.trim(),
@@ -136,12 +138,13 @@ export default function AccountsPage() {
         ogSiteName: form.ogSiteName?.trim() || null,
         ogDefaultImageUrl: form.ogDefaultImageUrl?.trim() || null,
         ogDefaultDescription: form.ogDefaultDescription?.trim() || null,
-      })
+      })) as Awaited<ReturnType<typeof api.lineAccounts.create>> & { liffSetup?: LiffSetupOutcome }
       if (!response.success) {
         setCreateError(response.error || '登録に失敗しました')
         return
       }
-      setJustCreated({ liffId: form.liffId.trim() || null })
+      const created = response.data as { liffId?: string | null }
+      setJustCreated({ liffId: created.liffId ?? (form.liffId.trim() || null), liffSetup: response.liffSetup })
       closeCreate()
       await reloadAccounts()
     } catch {
@@ -245,12 +248,26 @@ export default function AccountsPage() {
         <Banner className="mb-6" variant="alert" title="操作するアカウントを選んでください" description="下のカードから対象アカウントを選択すると、サイドバーにも反映されます。" />
       ) : null}
 
+      {liffMessage ? (
+        <Banner
+          className="mb-6"
+          variant={liffMessage.ok ? 'default' : 'error'}
+          title={liffMessage.ok ? 'LIFFを設定しました' : 'LIFFを自動作成できませんでした'}
+          description={liffMessage.text}
+        />
+      ) : null}
+
       {justCreated ? (
         <LayerCard className="mb-6 bg-kumo-success-tint p-4">
           <div className="mb-3 flex items-center gap-2">
             <CheckCircleIcon className="text-kumo-success" size={20} weight="fill" />
             <p className="text-sm font-semibold text-kumo-strong">アカウントを登録しました</p>
           </div>
+          {justCreated.liffSetup?.status === 'created' || justCreated.liffSetup?.status === 'reused' ? (
+            <p className="mb-3 text-xs text-kumo-success">LIFFを自動で作成し、割り当てました(LIFF ID: {justCreated.liffSetup.liffId})。LIFFの手作業は不要です。</p>
+          ) : justCreated.liffSetup?.status === 'failed' ? (
+            <Banner className="mb-3" variant="error" title="LIFFの自動作成に失敗しました" description={`${justCreated.liffSetup.error}(アカウントは登録済みです。直したあと、下のアカウントの「LIFFを自動作成」ボタンで再実行できます)`} />
+          ) : null}
           <p className="mb-3 text-xs text-kumo-subtle">次にLINE Developers Consoleへ以下のURLを登録してください。</p>
           <AccountSetupUrls liffId={justCreated.liffId} heading="登録するURL" />
           <Button type="button" size="xs" variant="ghost" className="mt-3" onClick={() => setJustCreated(null)}>閉じる</Button>
@@ -351,6 +368,33 @@ export default function AccountsPage() {
                 <div className="mb-3 flex flex-wrap gap-2">
                   <Badge variant={account.loginChannelId ? 'info' : 'neutral'}>Login: {account.loginChannelId ? '設定済み' : '未設定'}</Badge>
                   <Badge variant={account.liffId ? 'info' : 'neutral'}>LIFF: {account.liffId ? '設定済み' : '未設定'}</Badge>
+                  {account.loginChannelId && !account.liffId ? (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="primary"
+                      loading={liffBusyId === account.id}
+                      onClick={async () => {
+                        setLiffBusyId(account.id)
+                        setLiffMessage(null)
+                        try {
+                          const res = await api.lineAccounts.setupLiff(account.id)
+                          if (res.success) {
+                            setLiffMessage({ ok: true, text: `「${account.name}」のLIFFを自動で作成・割り当てしました。` })
+                            await reloadAccounts()
+                          } else {
+                            setLiffMessage({ ok: false, text: res.error || 'LIFFの自動作成に失敗しました' })
+                          }
+                        } catch {
+                          setLiffMessage({ ok: false, text: 'LIFFの自動作成に失敗しました。時間をおいてもう一度お試しください。' })
+                        } finally {
+                          setLiffBusyId(null)
+                        }
+                      }}
+                    >
+                      LIFFを自動作成
+                    </Button>
+                  ) : null}
                 </div>
 
                 <AccountSettingsSection

@@ -21,8 +21,62 @@ import type { FollowerImportClient } from '../services/follower-import.js';
 import type { Env } from '../index.js';
 import { countAccountMonthlyMessages, jstYyyyMmDd } from '../services/quota.js';
 import { countDeliverableAudience } from '../services/quota-alert.js';
+import { ensureLiffApp, LiffSetupError } from '../services/liff-setup.js';
 
 const lineAccounts = new Hono<Env>();
+
+
+// ── LIFF の自動作成 ─────────────────────────────────────────────────────────
+// LINEログインチャネルのIDとシークレットが登録されていて、LIFF ID が未設定のアカウントに対し、
+// LINE の LIFF API で LIFF を作成(または既存を再利用)して line_accounts.liff_id に割り当てる。
+// アカウント追加・更新のたびに自動で走り、失敗しても登録・更新自体は成功させる(理由は画面に返す)。
+type LiffSetupOutcome =
+  | { status: 'created' | 'reused'; liffId: string }
+  | { status: 'failed'; error: string };
+
+async function runLiffSetup(c: { env: Env['Bindings']; req: { url: string } }, accountId: string): Promise<LiffSetupOutcome> {
+  const account = await getLineAccountById(c.env.DB, accountId);
+  if (!account) return { status: 'failed', error: 'アカウントが見つかりません' };
+  if (!account.login_channel_id || !account.login_channel_secret) {
+    return { status: 'failed', error: 'LINEログインチャネルのIDとシークレットを先に登録してください' };
+  }
+  const others = ((await getLineAccounts(c.env.DB)) ?? []).filter((a) => a.id !== accountId);
+  const takenLiffIds = others.map((a) => a.liff_id).filter((v): v is string => Boolean(v));
+  const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+  try {
+    const result = await ensureLiffApp({
+      loginChannelId: account.login_channel_id,
+      loginChannelSecret: account.login_channel_secret,
+      workerUrl,
+      existingLiffId: account.liff_id,
+      takenLiffIds,
+    });
+    if (result.liffId !== account.liff_id) {
+      await updateLineAccountFields(c.env.DB, accountId, { liffId: result.liffId });
+    }
+    return { status: result.created ? 'created' : 'reused', liffId: result.liffId };
+  } catch (err) {
+    const error = err instanceof LiffSetupError ? err.message : 'LIFFの自動作成に失敗しました。時間をおいて「LIFFを自動作成」をもう一度押してください。';
+    if (!(err instanceof LiffSetupError)) console.error('[line-accounts] LIFF auto setup failed', err);
+    return { status: 'failed', error };
+  }
+}
+
+/** 登録・更新の直後に呼ぶ。対象外(ログイン未登録 or LIFF設定済み)なら何もしない。 */
+async function autoSetupLiff(
+  c: { env: Env['Bindings']; req: { url: string } },
+  accountId: string,
+): Promise<LiffSetupOutcome | null> {
+  try {
+    const account = await getLineAccountById(c.env.DB, accountId);
+    if (!account || !account.login_channel_id || !account.login_channel_secret || account.liff_id) return null;
+    return await runLiffSetup(c, accountId);
+  } catch (err) {
+    // 自動設定は「おまけ」。何があっても、アカウントの登録・更新そのものは成功させる。
+    console.error('[line-accounts] LIFF auto setup crashed', err);
+    return { status: 'failed', error: 'LIFFの自動作成に失敗しました。「LIFFを自動作成」ボタンでもう一度お試しください。' };
+  }
+}
 
 function serializeLineAccount(row: DbLineAccount) {
   return {
@@ -599,7 +653,9 @@ lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
       console.error('[line-accounts] failed to auto-enroll into main pool', err);
     }
 
-    return c.json({ success: true, data: serializeLineAccountFull(account) }, 201);
+    const liffSetup = await autoSetupLiff(c, account.id);
+    const fresh = liffSetup && liffSetup.status !== 'failed' ? ((await getLineAccountById(c.env.DB, account.id)) ?? account) : account;
+    return c.json({ success: true, data: serializeLineAccountFull(fresh), ...(liffSetup ? { liffSetup } : {}) }, 201);
   } catch (err) {
     // D1 surfaces UNIQUE-constraint violations as a thrown error. Surface
     // those as 409 so idempotent callers (e.g. create-line-harness retry
@@ -752,7 +808,9 @@ lineAccounts.patch(
           ogDefaultDescription,
         });
         if (!updated) return c.json({ success: false, error: 'not found' }, 404);
-        return c.json({ success: true, data: serializeLineAccount(updated) });
+        const liffSetup = touchesLogin ? await autoSetupLiff(c, id) : null;
+        const fresh = liffSetup && liffSetup.status !== 'failed' ? ((await getLineAccountById(c.env.DB, id)) ?? updated) : updated;
+        return c.json({ success: true, data: serializeLineAccount(fresh), ...(liffSetup ? { liffSetup } : {}) });
       }
 
       // name is present — use the full updateLineAccount path
@@ -767,13 +825,32 @@ lineAccounts.patch(
         og_default_description: ogDefaultDescription,
       });
       if (!updated) return c.json({ success: false, error: 'LINE account not found' }, 404);
-      return c.json({ success: true, data: serializeLineAccount(updated) });
+      const liffSetup2 = touchesLogin ? await autoSetupLiff(c, id) : null;
+      const fresh2 = liffSetup2 && liffSetup2.status !== 'failed' ? ((await getLineAccountById(c.env.DB, id)) ?? updated) : updated;
+      return c.json({ success: true, data: serializeLineAccount(fresh2), ...(liffSetup2 ? { liffSetup: liffSetup2 } : {}) });
     } catch (err) {
       console.error('PATCH /api/line-accounts/:id error:', err);
       return c.json({ success: false, error: 'Internal server error' }, 500);
     }
   },
 );
+
+// POST /api/line-accounts/:id/setup-liff — LIFF を自動作成して割り当てる(ボタン用)
+// 「LINEログインチャネルのID・シークレットさえあれば、LIFFの作成〜エンドポイント設定〜割り当てまで全自動」。
+lineAccounts.post('/api/line-accounts/:id/setup-liff', requireRole('owner', 'admin'), async (c) => {
+  try {
+    const id = c.req.param('id')!;
+    const account = await getLineAccountById(c.env.DB, id);
+    if (!account) return c.json({ success: false, error: 'not found' }, 404);
+    const outcome = await runLiffSetup(c, id);
+    if (outcome.status === 'failed') return c.json({ success: false, error: outcome.error }, 400);
+    const fresh = (await getLineAccountById(c.env.DB, id)) ?? account;
+    return c.json({ success: true, data: serializeLineAccount(fresh), liffSetup: outcome });
+  } catch (err) {
+    console.error('POST /api/line-accounts/:id/setup-liff error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
 
 // PUT /api/line-accounts/:id - update
 // Despite the verb, behaves as a partial update (only provided fields are
@@ -883,7 +960,10 @@ lineAccounts.put('/api/line-accounts/:id', requireRole('owner'), async (c) => {
     // Masked, not full: an update may touch only non-secret fields (or send an
     // empty body), in which case the echoed secrets would be the *stored* ones —
     // reopening exactly the read path the GET masking above closes.
-    return c.json({ success: true, data: serializeLineAccountMasked(updated) });
+    const touchesLoginPut = body.loginChannelId !== undefined || body.loginChannelSecret !== undefined;
+    const liffSetup = touchesLoginPut ? await autoSetupLiff(c, id) : null;
+    const fresh = liffSetup && liffSetup.status !== 'failed' ? ((await getLineAccountById(c.env.DB, id)) ?? updated) : updated;
+    return c.json({ success: true, data: serializeLineAccountMasked(fresh), ...(liffSetup ? { liffSetup } : {}) });
   } catch (err) {
     console.error('PUT /api/line-accounts/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

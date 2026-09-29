@@ -175,10 +175,19 @@ export function AccountFormSections({
       </FormSection>
 
       <FormSection
-        title="LINE Login（任意）"
-        description="友だち追加 OAuth 導線で使う。後から追加可"
-        defaultOpen={defaultOpen?.login ?? false}
+        title="LINEログイン(フォーム・予約に必要)"
+        description="ここを登録すると、LIFFの作成から設定までシステムが自動で行います"
+        defaultOpen={defaultOpen?.login ?? true}
       >
+        <div className="rounded-md bg-kumo-tint p-3 text-xs leading-relaxed text-kumo-default">
+          <p className="mb-1 font-semibold">LINEログインチャネルの作り方(最初の1回だけ・約2分)</p>
+          <ol className="list-decimal space-y-0.5 pl-4">
+            <li>LINE Developers の「プロバイダー」で、このLINE公式アカウントと<b>同じプロバイダー</b>を開く</li>
+            <li>「新規チャネル作成」→「LINEログイン」を選び、アプリタイプは「ウェブアプリ」で作成する</li>
+            <li>「チャネル基本設定」の<b>チャネルID</b>と<b>チャネルシークレット</b>を下に貼り付けて保存する</li>
+          </ol>
+          <p className="mt-1 text-kumo-subtle">※ 1つのLINE公式アカウントにつき、LINEログインチャネルが1つ必要です。以降のLIFFの作成・設定は自動です。</p>
+        </div>
         <TextField
           label="Login Channel ID"
           value={state.loginChannelId}
@@ -195,8 +204,8 @@ export function AccountFormSections({
       </FormSection>
 
       <FormSection
-        title="LIFF（任意）"
-        description="LIFF page を開くときの ?liffId= で識別。後から追加可"
+        title="LIFF(自動で作成されます)"
+        description="LINEログインを登録して保存すると、LIFFの作成・URL設定・割り当てを自動で行います"
         defaultOpen={defaultOpen?.liff ?? false}
       >
         <TextField
@@ -204,7 +213,7 @@ export function AccountFormSections({
           value={state.liffId}
           onChange={(v) => update({ liffId: v })}
           placeholder="2009624792-XXXXXXXX"
-          hint="LINE Developers > Login channel > LIFF タブで作成したものの ID"
+          hint="通常は空欄のままでOK(自動で入ります)。手動で作ったLIFFを使う場合だけ入力"
         />
       </FormSection>
 

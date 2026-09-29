@@ -19,6 +19,17 @@ const dbMocks = {
 };
 vi.mock('@line-crm/db', () => dbMocks);
 
+// LIFF の自動作成は LINE の実APIを呼ぶので、テストでは差し替える(本物のネットワークには出ない)。
+const liffMocks = { ensureLiffApp: vi.fn() };
+vi.mock('../services/liff-setup.js', () => {
+  class LiffSetupError extends Error {
+    constructor(message: string, readonly status: number = 400) {
+      super(message);
+    }
+  }
+  return { ensureLiffApp: liffMocks.ensureLiffApp, LiffSetupError };
+});
+
 const lineClientMocks = {
   getFollowersInsight: vi.fn(),
   getFollowerIds: vi.fn(),
@@ -834,5 +845,75 @@ describe('GET /api/line-accounts monthly send stat', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+
+describe('LIFF 自動作成', () => {
+  const withLogin = { ...fakeAccount, login_channel_id: 'login-1', login_channel_secret: 'login-secret', liff_id: null };
+
+  beforeEach(() => {
+    liffMocks.ensureLiffApp.mockReset();
+    dbMocks.getLineAccounts.mockResolvedValue([withLogin, { ...fakeAccount, id: 'acc-2', liff_id: '111-OTHER' }]);
+  });
+
+  test('POST /setup-liff: ログインチャネルからLIFFを作って、アカウントに割り当てる', async () => {
+    dbMocks.getLineAccountById.mockResolvedValueOnce(withLogin).mockResolvedValueOnce(withLogin).mockResolvedValue({ ...withLogin, liff_id: '2001-NEW' });
+    liffMocks.ensureLiffApp.mockResolvedValue({ liffId: '2001-NEW', created: true });
+    const app = setupApp('admin');
+    app.use('*', async (c, next) => { c.env = { DB: makeDbStub(), WORKER_URL: 'https://api.example.test' } as never; await next(); });
+    const res = await app.request('/api/line-accounts/acc-1/setup-liff', { method: 'POST' });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { liffSetup: { status: string; liffId: string }; data: { liffId: string } };
+    expect(json.liffSetup).toEqual({ status: 'created', liffId: '2001-NEW' });
+    expect(dbMocks.updateLineAccountFields).toHaveBeenCalledWith(expect.anything(), 'acc-1', { liffId: '2001-NEW' });
+    // 他のアカウントが使っているLIFFは「使用済み」として渡す(横取り防止)
+    expect(liffMocks.ensureLiffApp.mock.calls[0][0].takenLiffIds).toEqual(['111-OTHER']);
+  });
+
+  test('POST /setup-liff: ログインチャネル未登録なら、何をすればよいか分かるエラー', async () => {
+    dbMocks.getLineAccountById.mockResolvedValue({ ...fakeAccount, login_channel_id: null, login_channel_secret: null });
+    const res = await setupApp('admin').request('/api/line-accounts/acc-1/setup-liff', { method: 'POST' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('LINEログインチャネル');
+    expect(liffMocks.ensureLiffApp).not.toHaveBeenCalled();
+  });
+
+  test('POST /setup-liff: LINE側のエラー理由をそのまま画面に返す', async () => {
+    dbMocks.getLineAccountById.mockResolvedValue(withLogin);
+    const { LiffSetupError } = await import('../services/liff-setup.js');
+    liffMocks.ensureLiffApp.mockRejectedValue(new LiffSetupError('IDまたはシークレットが正しくありません', 400));
+    const res = await setupApp('admin').request('/api/line-accounts/acc-1/setup-liff', { method: 'POST' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('シークレット');
+  });
+
+  test('PATCH でログインチャネルを登録すると、LIFFが自動で作られる(失敗しても更新は成功)', async () => {
+    dbMocks.getLineAccountById.mockResolvedValue({ ...fakeAccount, login_channel_id: null, login_channel_secret: null });
+    dbMocks.updateLineAccountFields.mockResolvedValue(withLogin);
+    dbMocks.getLineAccountById.mockResolvedValueOnce({ ...fakeAccount }).mockResolvedValue(withLogin);
+    const { LiffSetupError } = await import('../services/liff-setup.js');
+    liffMocks.ensureLiffApp.mockRejectedValue(new LiffSetupError('IDまたはシークレットが正しくありません', 400));
+    const res = await setupApp('admin').request('/api/line-accounts/acc-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loginChannelId: 'login-1', loginChannelSecret: 'login-secret' }),
+    });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { liffSetup?: { status: string; error?: string } };
+    expect(json.liffSetup?.status).toBe('failed');
+    expect(json.liffSetup?.error).toContain('シークレット');
+  });
+
+  test('すでにLIFF IDがあるアカウントでは、自動作成しない', async () => {
+    dbMocks.getLineAccountById.mockResolvedValue({ ...withLogin, liff_id: '2001-EXIST' });
+    dbMocks.updateLineAccountFields.mockResolvedValue({ ...withLogin, liff_id: '2001-EXIST' });
+    const res = await setupApp('admin').request('/api/line-accounts/acc-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loginChannelId: 'login-1', loginChannelSecret: 'login-secret' }),
+    });
+    expect(res.status).toBe(200);
+    expect(liffMocks.ensureLiffApp).not.toHaveBeenCalled();
   });
 });

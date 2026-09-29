@@ -464,6 +464,23 @@ const spec = {
         responses: { '200': { description: 'Order updated' } },
       },
     },
+    '/api/line-accounts/{id}/setup-liff': {
+      post: {
+        tags: ['Accounts'],
+        summary: 'LIFF を自動作成して割り当てる',
+        description:
+          'アカウントに登録済みの LINE ログインチャネル ID・シークレットを使って、LINE の LIFF API で LIFF を作成(または既存を再利用)し、' +
+          'エンドポイント URL(`?liffId=` 付き)を設定して `liffId` を割り当てる。何度呼んでも安全。' +
+          'アカウントの登録・更新時にも、ログインチャネルが登録済みで LIFF ID が空なら自動で実行される(結果はレスポンスの `liffSetup`)。' +
+          '※ LINE ログインチャネル自体の作成は LINE Developers コンソールでの手作業が必要(LINE 側に API が無い)。',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'LIFF assigned (`liffSetup.status` = created | reused)' },
+          '400': { description: 'Login channel not registered, or wrong ID/secret (message explains)' },
+          '404': { description: 'Account not found' },
+        },
+      },
+    },
     '/api/line-accounts/{id}': {
       get: { tags: ['LINE Accounts'], summary: 'LINEアカウント詳細', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Account' } } },
       patch: {

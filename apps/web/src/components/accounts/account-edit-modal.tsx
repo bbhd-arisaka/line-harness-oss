@@ -1,5 +1,8 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
+import type { LiffSetupOutcome } from '@/lib/api'
+
 import { useState } from 'react'
 import { XIcon } from '@phosphor-icons/react'
 import { Banner } from '@cloudflare/kumo/components/banner'
@@ -54,6 +57,7 @@ export default function AccountEditModal({
     ogDefaultDescription: initialOgDefaultDescription,
     ogDefaultImageUrl: initialOgDefaultImageUrl,
   })
+  const dialogs = useDialogs()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -114,10 +118,16 @@ export default function AccountEditModal({
     }
 
     try {
-      const res = await api.lineAccounts.update(accountId, payload)
+      const res = (await api.lineAccounts.update(accountId, payload)) as Awaited<ReturnType<typeof api.lineAccounts.update>> & { liffSetup?: LiffSetupOutcome }
       if (res.success) {
         onSaved()
-        onClose()
+        if (res.liffSetup?.status === 'failed') {
+          // 保存は成功したが、LIFFの自動作成だけ失敗。理由を見せて、画面は開いたままにする
+          setError(`保存しました。ただし、LIFFの自動作成に失敗しました: ${res.liffSetup.error}`)
+        } else {
+          if (res.liffSetup) await dialogs.alert('LIFFを自動で作成し、このアカウントに割り当てました。')
+          onClose()
+        }
       } else {
         setError(res.error || '保存に失敗しました')
       }
