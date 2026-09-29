@@ -19,11 +19,12 @@ import { Table } from '@cloudflare/kumo/components/table'
 
 type FieldType =
   | 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
-  | 'prefecture' | 'file' | 'heading' | 'subheading'
+  | 'prefecture' | 'file' | 'heading' | 'subheading' | 'paragraph'
 
 const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
   { value: 'heading', label: '見出し(中見出し)' },
   { value: 'subheading', label: '小見出し' },
+  { value: 'paragraph', label: '説明文(同意書等の長文)' },
   { value: 'text', label: '1行テキスト' },
   { value: 'textarea', label: '複数行テキスト' },
   { value: 'email', label: 'メールアドレス' },
@@ -41,7 +42,10 @@ const FIELD_TYPE_OPTIONS: Array<{ value: FieldType; label: string }> = [
 const OPTION_TYPES: FieldType[] = ['select', 'radio', 'checkbox']
 
 /** 見出し類。回答データを持たないので必須指定・ラベル欄の扱いを変える。 */
-const DISPLAY_ONLY_TYPES: FieldType[] = ['heading', 'subheading']
+const DISPLAY_ONLY_TYPES: FieldType[] = ['heading', 'subheading', 'paragraph']
+
+/** ラベル欄を複数行(InputArea)にする項目タイプ。同意書等の長文向け。 */
+const MULTILINE_LABEL_TYPES: FieldType[] = ['paragraph']
 
 let fieldRowSeq = 0
 interface FieldDraft {
@@ -846,6 +850,16 @@ const openCreateForm = () => {
                           placeholder="選択肢をカンマ区切りで (例: 20代, 30代, 40代以上)"
                           value={field.optionsText}
                           onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, optionsText: v } : r)))}
+                        />
+                      )}
+                      {MULTILINE_LABEL_TYPES.includes(field.type) && (
+                        <InputArea
+                          className="mt-2 text-xs"
+                          aria-label="説明文の本文"
+                          rows={5}
+                          placeholder="同意書・プライバシーポリシーなどの本文"
+                          value={field.label}
+                          onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, label: v } : r)))}
                         />
                       )}
                       {!DISPLAY_ONLY_TYPES.includes(field.type) && (

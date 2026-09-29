@@ -29,7 +29,7 @@ interface FormField {
   type:
     | 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date'
     // Lステップ互換で追加: 都道府県プルダウン・ファイル添付・表示専用の見出し2種
-    | 'prefecture' | 'file' | 'heading' | 'subheading';
+    | 'prefecture' | 'file' | 'heading' | 'subheading' | 'paragraph';
   required?: boolean;
   options?: string[];
   placeholder?: string;
@@ -47,7 +47,7 @@ const PREFECTURES = [
 ];
 
 /** 表示専用(見出し)で、回答データを持たない項目タイプ。 */
-const DISPLAY_ONLY_TYPES: FormField['type'][] = ['heading', 'subheading'];
+const DISPLAY_ONLY_TYPES: FormField['type'][] = ['heading', 'subheading', 'paragraph'];
 
 interface FormDef {
   id: string;
@@ -179,6 +179,11 @@ function renderField(field: FormField, previousValue?: unknown): string {
   }
   if (field.type === 'subheading') {
     return `<h3 class="form-section-subheading">${escapeHtml(field.label)}</h3>`;
+  }
+  // 同意書・プライバシーポリシー等の長文表示用(Lステップは項目間に自由文を挟める)。
+  if (field.type === 'paragraph') {
+    const html = escapeHtml(field.label).replace(/\n/g, '<br>');
+    return `<p class="form-paragraph">${html}</p>`;
   }
 
   const required = field.required ? ' required' : '';
@@ -342,6 +347,9 @@ function injectStyles(): void {
     .form-section-heading:first-child { margin-top: 0; }
     .form-section-subheading {
       margin: 16px 0 6px; font-size: 14px; font-weight: 700; color: var(--form-accent);
+    }
+    .form-paragraph {
+      margin: 8px 0; font-size: 13px; line-height: 1.7; color: #555; white-space: pre-wrap;
     }
     .form-page { max-width: 480px; margin: 0 auto; padding: 16px; }
     .form-header { text-align: center; margin-bottom: 24px; }
