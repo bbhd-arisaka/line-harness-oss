@@ -16,6 +16,7 @@ import {
   jstNow,
   resolveDefaultLineAccount,
   stopAllFriendScenarios,
+  updateFriendRegistrationFields,
 } from '@line-crm/db';
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
@@ -28,6 +29,7 @@ import type {
   FormSubmission as DbFormSubmission,
   FormUsedByAccount,
   Friend as DbFriend,
+  FriendRegistrationTarget,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { awardActivityMileage } from '../services/activity-mileage.js';
@@ -622,6 +624,13 @@ forms.post('/api/forms/:id/submit', async (c) => {
       label: string;
       type: string;
       required?: boolean;
+      // Lステップ新形式の「回答の登録先(複数可)」相当。本名/システム表示名/個別メモ/
+      // 友だち情報(カスタム項目)のいずれか複数へ、この項目の回答をそのまま書き込む。
+      registrationTargets?: FriendRegistrationTarget[];
+      // ラジオ/チェックボックスの「選択時の動作」相当。
+      optionTags?: Record<string, string[]>;
+      friendFieldKey?: string;
+      optionFriendFieldValues?: Record<string, string>;
     }>;
 
     for (const field of fields) {
@@ -744,6 +753,68 @@ forms.post('/api/forms/:id/submit', async (c) => {
               .run();
           })(),
         );
+      }
+
+      // Lステップ新形式の「回答の登録先(複数可)」「選択時の動作」相当。
+      // 本名/システム表示名/個別メモ/友だち情報(カスタム項目)への書き込みと、
+      // ラジオ・チェックボックスの選択肢ごとのタグ追加・友だち情報への値書き込みを行う。
+      {
+        const metadataPatch: Record<string, unknown> = {};
+        let realNamePatch: string | undefined;
+        let displayNamePatch: string | undefined;
+        let memoPatch: string | undefined;
+        const tagIdsToAttach = new Set<string>();
+
+        for (const field of fields) {
+          const value = submissionData[field.name];
+          if (value === undefined) continue;
+
+          if (Array.isArray(field.registrationTargets)) {
+            const textValue = Array.isArray(value) ? value.join(', ') : String(value ?? '');
+            for (const target of field.registrationTargets) {
+              if (target.type === 'real_name') realNamePatch = textValue;
+              else if (target.type === 'display_name') displayNamePatch = textValue;
+              else if (target.type === 'memo') memoPatch = textValue;
+              else if (target.type === 'friend_field' && target.fieldKey) metadataPatch[target.fieldKey] = value;
+            }
+          }
+
+          if (field.type === 'radio' || field.type === 'checkbox') {
+            const selected = Array.isArray(value) ? value : [value];
+            for (const opt of selected) {
+              const optStr = String(opt);
+              const tagIds = field.optionTags?.[optStr];
+              if (tagIds) for (const id of tagIds) tagIdsToAttach.add(id);
+              if (field.friendFieldKey && field.optionFriendFieldValues?.[optStr] !== undefined) {
+                metadataPatch[field.friendFieldKey] = field.optionFriendFieldValues[optStr];
+              }
+            }
+          }
+        }
+
+        if (
+          realNamePatch !== undefined ||
+          displayNamePatch !== undefined ||
+          memoPatch !== undefined ||
+          Object.keys(metadataPatch).length > 0
+        ) {
+          sideEffects.push(
+            updateFriendRegistrationFields(db, friendId, {
+              ...(realNamePatch !== undefined ? { realName: realNamePatch } : {}),
+              ...(displayNamePatch !== undefined ? { displayName: displayNamePatch } : {}),
+              ...(memoPatch !== undefined ? { memo: memoPatch } : {}),
+              ...(Object.keys(metadataPatch).length > 0 ? { metadataPatch } : {}),
+            }),
+          );
+        }
+        for (const tagId of tagIdsToAttach) {
+          sideEffects.push(
+            attachTagAndFireSideEffects(db, friendId, tagId, {
+              defaultAccessToken: c.env.LINE_CHANNEL_ACCESS_TOKEN,
+              workerUrl: c.env.WORKER_URL,
+            }),
+          );
+        }
       }
 
       // Add tag — guarded attach so a tag_added-triggered scenario fires on

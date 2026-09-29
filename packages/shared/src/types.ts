@@ -28,6 +28,10 @@ export interface Friend {
   isFollowing: boolean;
   /** メタデータ (フォーム回答, 業種等). serializeFriend が JSON.parse 済 */
   metadata?: Record<string, unknown>;
+  /** 本名。友だち情報(metadata)とは別の専用カラム(Lステップ新形式の回答フォーム準拠) */
+  realName?: string | null;
+  /** 個別メモ。友だち情報(metadata)とは別の専用カラム */
+  memo?: string | null;
   /** 流入経路 ref コード (?ref=… で渡されたトラッキング識別子). 設定無しなら null */
   refCode?: string | null;
   /** 内部 user_id (UUIDv4). cross-account dedup 用 */

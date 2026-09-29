@@ -13,6 +13,7 @@ import {
   getMileageSummaryForFriend,
   getMileageHistoryForFriend,
   jstNow,
+  updateFriendRegistrationFields,
 } from '@line-crm/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
@@ -39,6 +40,8 @@ function serializeFriend(row: DbFriend) {
     statusMessage: row.status_message,
     isFollowing: Boolean(row.is_following),
     metadata: JSON.parse(row.metadata || '{}'),
+    realName: row.real_name ?? null,
+    memo: row.memo ?? null,
     refCode: (row as unknown as Record<string, unknown>).ref_code as string | null,
     lineAccountId: ((row as unknown as Record<string, unknown>).line_account_id as string | null) ?? null,
     userId: row.user_id,
@@ -544,6 +547,41 @@ friends.put('/api/friends/:id/metadata', async (c) => {
     });
   } catch (err) {
     console.error('PUT /api/friends/:id/metadata error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// PUT /api/friends/:id/profile - 本名・システム表示名・個別メモを更新。
+// 友だち情報欄(metadata)とは別のLステップ「回答の登録先」相当の専用項目。
+friends.put('/api/friends/:id/profile', async (c) => {
+  try {
+    const friendId = c.req.param('id');
+    const db = c.env.DB;
+
+    const friend = await getFriendById(db, friendId);
+    if (!friend) {
+      return c.json({ success: false, error: 'Friend not found' }, 404);
+    }
+
+    const body = await c.req.json<{ realName?: string | null; displayName?: string | null; memo?: string | null }>();
+    await updateFriendRegistrationFields(db, friendId, {
+      ...('realName' in body ? { realName: body.realName ?? null } : {}),
+      ...('displayName' in body ? { displayName: body.displayName ?? null } : {}),
+      ...('memo' in body ? { memo: body.memo ?? null } : {}),
+    });
+
+    const updated = await getFriendById(db, friendId);
+    const tags = await getFriendTags(db, friendId);
+
+    return c.json({
+      success: true,
+      data: {
+        ...serializeFriend(updated!),
+        tags: tags.map(serializeTag),
+      },
+    });
+  } catch (err) {
+    console.error('PUT /api/friends/:id/profile error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

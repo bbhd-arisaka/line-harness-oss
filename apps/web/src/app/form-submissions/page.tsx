@@ -47,6 +47,22 @@ const DISPLAY_ONLY_TYPES: FieldType[] = ['heading', 'subheading', 'paragraph']
 /** ラベル欄を複数行(InputArea)にする項目タイプ。同意書等の長文向け。 */
 const MULTILINE_LABEL_TYPES: FieldType[] = ['paragraph']
 
+/** 「回答の登録先(複数可)」を設定できる項目タイプ(単一値の入力系)。 */
+const REGISTRATION_TARGET_TYPES: FieldType[] = ['text', 'email', 'tel', 'number', 'textarea', 'date', 'prefecture', 'select']
+
+/** 選択時の動作(タグ追加・友だち情報への値書き込み)を選択肢ごとに設定できる項目タイプ。 */
+const CHOICE_ACTION_TYPES: FieldType[] = ['radio', 'checkbox']
+
+type RegistrationTarget =
+  | { type: 'real_name' }
+  | { type: 'display_name' }
+  | { type: 'memo' }
+  | { type: 'friend_field'; fieldKey: string }
+
+function registrationTargetKey(t: RegistrationTarget): string {
+  return t.type === 'friend_field' ? `friend_field:${t.fieldKey}` : t.type
+}
+
 let fieldRowSeq = 0
 interface FieldDraft {
   rowId: number
@@ -55,6 +71,12 @@ interface FieldDraft {
   type: FieldType
   required: boolean
   optionsText: string // カンマ区切り。select/radio/checkbox のときだけ使う
+  // Lステップ新形式の「回答の登録先(複数可)」相当。単一値の入力系項目のみ使う。
+  registrationTargets: RegistrationTarget[]
+  // ラジオ/チェックボックスの「選択時の動作」相当。
+  friendFieldKey: string // 友だち情報に登録する先(選択肢共通・空なら未設定)
+  optionTagIds: Record<string, string[]> // 選択肢の値 -> 追加するタグID
+  optionFriendFieldValues: Record<string, string> // 選択肢の値 -> friendFieldKeyへ書き込む値(空なら選択肢の値をそのまま使う)
 }
 
 /** ラベルから項目キー(name)を機械的に作る。英数字以外は捨て、空なら連番。 */
@@ -81,6 +103,10 @@ interface FormField {
   type?: FieldType
   required?: boolean
   options?: string[]
+  registrationTargets?: RegistrationTarget[]
+  friendFieldKey?: string
+  optionTags?: Record<string, string[]>
+  optionFriendFieldValues?: Record<string, string>
 }
 
 interface Form {
@@ -178,6 +204,17 @@ export default function FormSubmissionsPage() {
   const [draftDescription, setDraftDescription] = useState('')
   const [draftSaveToMetadata, setDraftSaveToMetadata] = useState(false)
   const [draftFields, setDraftFields] = useState<FieldDraft[]>([])
+  const [friendFieldDefs, setFriendFieldDefs] = useState<Array<{ fieldKey: string; label: string }>>([])
+  const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
+
+  useEffect(() => {
+    fetchApi<{ success: boolean; data: Array<{ fieldKey: string; label: string }> }>('/api/friend-fields/definitions')
+      .then((res) => { if (res.success) setFriendFieldDefs(res.data) })
+      .catch(() => { /* silent */ })
+    fetchApi<{ success: boolean; data: Array<{ id: string; name: string }> }>('/api/tags')
+      .then((res) => { if (res.success) setTags(res.data) })
+      .catch(() => { /* silent */ })
+  }, [])
   const [savingForm, setSavingForm] = useState(false)
   const [formError, setFormError] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -308,6 +345,10 @@ const openCreateForm = () => {
         type: (f.type as FieldType) ?? 'text',
         required: Boolean(f.required),
         optionsText: (f.options ?? []).join(', '),
+        registrationTargets: f.registrationTargets ?? [],
+        friendFieldKey: f.friendFieldKey ?? '',
+        optionTagIds: f.optionTags ?? {},
+        optionFriendFieldValues: f.optionFriendFieldValues ?? {},
       })),
     )
     // ISO文字列(YYYY-MM-DDTHH:MM:SS...) → datetime-local入力用(YYYY-MM-DDTHH:MM)
@@ -337,7 +378,10 @@ const openCreateForm = () => {
   const addDraftField = () => {
     setDraftFields((rows) => [
       ...rows,
-      { rowId: fieldRowSeq++, name: '', label: '', type: 'text', required: false, optionsText: '' },
+      {
+        rowId: fieldRowSeq++, name: '', label: '', type: 'text', required: false, optionsText: '',
+        registrationTargets: [], friendFieldKey: '', optionTagIds: {}, optionFriendFieldValues: {},
+      },
     ])
   }
 
@@ -358,6 +402,16 @@ const openCreateForm = () => {
         required: f.required,
         ...(OPTION_TYPES.includes(f.type)
           ? { options: f.optionsText.split(',').map((o) => o.trim()).filter(Boolean) }
+          : {}),
+        ...(REGISTRATION_TARGET_TYPES.includes(f.type) && f.registrationTargets.length > 0
+          ? { registrationTargets: f.registrationTargets }
+          : {}),
+        ...(CHOICE_ACTION_TYPES.includes(f.type)
+          ? {
+              ...(f.friendFieldKey ? { friendFieldKey: f.friendFieldKey } : {}),
+              ...(Object.keys(f.optionTagIds).length > 0 ? { optionTags: f.optionTagIds } : {}),
+              ...(Object.keys(f.optionFriendFieldValues).length > 0 ? { optionFriendFieldValues: f.optionFriendFieldValues } : {}),
+            }
           : {}),
       }))
       const payload = {
@@ -803,10 +857,13 @@ const openCreateForm = () => {
             />
             <Checkbox
               className="mt-3"
-              label="回答内容を友だち情報(本名など)として保存する"
+              label="回答内容をすべてまとめて友だち情報欄(metadata)に保存する(簡易)"
               checked={draftSaveToMetadata}
               onCheckedChange={setDraftSaveToMetadata}
             />
+            <p className="mt-1 text-[11px] text-gray-400">
+              項目ごとに書き込み先を指定したい場合は、下の各項目の「回答の登録先」を使ってください(本名はそちらのみで設定できます)。
+            </p>
 
             <div className="mt-5">
               <div className="flex items-center justify-between mb-2">
@@ -851,6 +908,121 @@ const openCreateForm = () => {
                           value={field.optionsText}
                           onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, optionsText: v } : r)))}
                         />
+                      )}
+                      {REGISTRATION_TARGET_TYPES.includes(field.type) && (
+                        <div className="mt-2 rounded-md bg-gray-50 p-2">
+                          <p className="mb-1.5 text-[11px] font-medium text-gray-500">回答の登録先(複数可)</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                            {([
+                              { key: 'real_name', label: '本名', target: { type: 'real_name' } as RegistrationTarget },
+                              { key: 'display_name', label: 'システム表示名', target: { type: 'display_name' } as RegistrationTarget },
+                              { key: 'memo', label: '個別メモ', target: { type: 'memo' } as RegistrationTarget },
+                            ]).map((opt) => {
+                              const checked = field.registrationTargets.some((t) => registrationTargetKey(t) === opt.key)
+                              return (
+                                <Checkbox
+                                  key={opt.key}
+                                  label={opt.label}
+                                  checked={checked}
+                                  onCheckedChange={(v) => setDraftFields((rows) => rows.map((r, ri) => {
+                                    if (ri !== i) return r
+                                    const targets = v
+                                      ? [...r.registrationTargets, opt.target]
+                                      : r.registrationTargets.filter((t) => registrationTargetKey(t) !== opt.key)
+                                    return { ...r, registrationTargets: targets }
+                                  }))}
+                                />
+                              )
+                            })}
+                            {friendFieldDefs.map((fd) => {
+                              const key = `friend_field:${fd.fieldKey}`
+                              const checked = field.registrationTargets.some((t) => registrationTargetKey(t) === key)
+                              return (
+                                <Checkbox
+                                  key={key}
+                                  label={`友だち情報: ${fd.label}`}
+                                  checked={checked}
+                                  onCheckedChange={(v) => setDraftFields((rows) => rows.map((r, ri) => {
+                                    if (ri !== i) return r
+                                    const target: RegistrationTarget = { type: 'friend_field', fieldKey: fd.fieldKey }
+                                    const targets = v
+                                      ? [...r.registrationTargets, target]
+                                      : r.registrationTargets.filter((t) => registrationTargetKey(t) !== key)
+                                    return { ...r, registrationTargets: targets }
+                                  }))}
+                                />
+                              )
+                            })}
+                            {friendFieldDefs.length === 0 && (
+                              <span className="text-[11px] text-gray-400">
+                                (友だち情報欄が未登録です。<Link href="/friend-fields" className="underline">友だち情報欄管理</Link>で項目を作成できます)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {CHOICE_ACTION_TYPES.includes(field.type) && (
+                        <div className="mt-2 rounded-md bg-gray-50 p-2 space-y-2">
+                          <div>
+                            <label className="mb-1 block text-[11px] font-medium text-gray-500">友だち情報に登録する場合の書き込み先(選択肢共通・任意)</label>
+                            <Select
+                              aria-label="友だち情報の書き込み先"
+                              value={field.friendFieldKey || '__none__'}
+                              onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => (ri === i ? { ...r, friendFieldKey: v === '__none__' ? '' : (v ?? '') } : r)))}
+                              items={[{ value: '__none__', label: '(設定しない)' }, ...friendFieldDefs.map((fd) => ({ value: fd.fieldKey, label: fd.label }))]}
+                            />
+                          </div>
+                          {field.optionsText.trim() && (
+                            <div>
+                              <p className="mb-1 text-[11px] font-medium text-gray-500">選択肢ごとの動作(選択時にタグ追加・友だち情報への値書き込み)</p>
+                              <div className="space-y-2">
+                                {field.optionsText.split(',').map((o) => o.trim()).filter(Boolean).map((opt) => (
+                                  <div key={opt} className="rounded border border-gray-200 bg-white p-2">
+                                    <p className="mb-1 text-xs font-medium text-gray-700">{opt}</p>
+                                    <div className="flex flex-wrap gap-2 mb-1.5">
+                                      {tags.map((tag) => {
+                                        const checked = (field.optionTagIds[opt] ?? []).includes(tag.id)
+                                        return (
+                                          <button
+                                            key={tag.id}
+                                            type="button"
+                                            className={`rounded-full border px-2 py-0.5 text-[11px] ${checked ? 'border-kumo-brand bg-kumo-control text-kumo-brand' : 'border-gray-200 text-gray-500'}`}
+                                            onClick={() => setDraftFields((rows) => rows.map((r, ri) => {
+                                              if (ri !== i) return r
+                                              const current = r.optionTagIds[opt] ?? []
+                                              const next = checked ? current.filter((id) => id !== tag.id) : [...current, tag.id]
+                                              const optionTagIds = { ...r.optionTagIds, [opt]: next }
+                                              if (next.length === 0) delete optionTagIds[opt]
+                                              return { ...r, optionTagIds }
+                                            }))}
+                                          >
+                                            {tag.name}
+                                          </button>
+                                        )
+                                      })}
+                                      {tags.length === 0 && <span className="text-[11px] text-gray-400">(タグ未作成)</span>}
+                                    </div>
+                                    {field.friendFieldKey && (
+                                      <Input
+                                        className="text-xs"
+                                        aria-label="友だち情報へ書き込む値"
+                                        placeholder={`友だち情報へ書き込む値(空欄なら「${opt}」をそのまま使用)`}
+                                        value={field.optionFriendFieldValues[opt] ?? ''}
+                                        onValueChange={(v) => setDraftFields((rows) => rows.map((r, ri) => {
+                                          if (ri !== i) return r
+                                          const optionFriendFieldValues = { ...r.optionFriendFieldValues }
+                                          if (v.trim()) optionFriendFieldValues[opt] = v
+                                          else delete optionFriendFieldValues[opt]
+                                          return { ...r, optionFriendFieldValues }
+                                        }))}
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                       {MULTILINE_LABEL_TYPES.includes(field.type) && (
                         <InputArea

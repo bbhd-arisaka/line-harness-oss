@@ -195,6 +195,7 @@ const KNOWN_GAPS: readonly string[] = [
   'POST /api/friends/{id}/messages',
   'POST /api/friends/{id}/score',
   'PUT /api/friends/{id}/metadata',
+  'PUT /api/friends/{id}/profile',
   // admin (10)
   'GET /api/admin/auto-reply-stats',
   'GET /api/admin/automations-summary',

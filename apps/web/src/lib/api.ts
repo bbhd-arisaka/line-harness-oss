@@ -372,6 +372,12 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
+    // 本名・システム表示名・個別メモ。Lステップ新形式で「友だち情報」とは別の登録先。
+    updateProfile: (id: string, data: { realName?: string | null; displayName?: string | null; memo?: string | null }) =>
+      fetchApi<ApiResponse<FriendDetail>>(`/api/friends/${id}/profile`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   },
   tags: {
     /** withCounts で friendCount 付き (JOIN 集計 — タグ管理ページ用)。 */

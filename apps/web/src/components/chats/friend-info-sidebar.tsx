@@ -12,6 +12,8 @@ interface FriendDetail {
   pictureUrl: string | null
   isFollowing: boolean
   metadata: Record<string, unknown>
+  realName: string | null
+  memo: string | null
   refCode: string | null
   createdAt: string
   tags: Array<{ id: string; name: string; color: string }>
@@ -60,7 +62,6 @@ const statusLabels: Record<NonNullable<ChatStatusInfo['status']>, { label: strin
  * キー名をそのまま出す — 項目を決め打ちで列挙すると増えるたびに直す羽目になる。
  */
 const METADATA_LABELS: Record<string, string> = {
-  full_name: '本名',
   lstep_member_id: 'Lステップ会員ID(移行元)',
 }
 
@@ -98,6 +99,11 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
     | { kind: 'data'; summary: MileageSummary; history: MileageHistoryItem[] }
   const [mileage, setMileage] = useState<MileageState>({ kind: 'loading' })
 
+  // 本名 — 友だち情報(metadata)とは別の専用項目。インライン編集。
+  const [editingRealName, setEditingRealName] = useState(false)
+  const [draftRealName, setDraftRealName] = useState('')
+  const [savingRealName, setSavingRealName] = useState(false)
+
   const [editingMetadata, setEditingMetadata] = useState(false)
   const [metadataRows, setMetadataRows] = useState<MetadataRow[]>([])
   const [savingMetadata, setSavingMetadata] = useState(false)
@@ -112,6 +118,24 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
       .catch(() => { /* silent */ })
   }, [])
   const fieldDefsByKey = new Map(fieldDefs.map((d) => [d.fieldKey, d]))
+
+  function startEditingRealName(current: string | null) {
+    setDraftRealName(current ?? '')
+    setEditingRealName(true)
+  }
+
+  async function saveRealName(friendId: string) {
+    setSavingRealName(true)
+    try {
+      const res = await api.friends.updateProfile(friendId, { realName: draftRealName.trim() || null })
+      if (res.success && res.data) {
+        setFriend(res.data as unknown as FriendDetail)
+        setEditingRealName(false)
+      }
+    } finally {
+      setSavingRealName(false)
+    }
+  }
 
   function startEditingMetadata(current: Record<string, unknown>) {
     const rows = Object.entries(current).map(([key, value]) => ({
@@ -272,6 +296,37 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
                   </span>
                 )}
               </div>
+            </div>
+
+            {/* 本名 — 友だち情報(metadata)とは別の専用項目(Lステップ新形式準拠) */}
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-1.5">
+                <h4 className="text-[11px] font-medium text-gray-500">本名</h4>
+                {!editingRealName && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-900"
+                    onClick={() => startEditingRealName(friend.realName)}
+                  >
+                    編集
+                  </button>
+                )}
+              </div>
+              {editingRealName ? (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    className="min-w-0 flex-1 text-xs"
+                    aria-label="本名"
+                    placeholder="山田花子"
+                    value={draftRealName}
+                    onValueChange={setDraftRealName}
+                  />
+                  <Button type="button" size="xs" variant="primary" loading={savingRealName} onClick={() => void saveRealName(friend.id)}>保存</Button>
+                  <Button type="button" size="xs" variant="secondary" onClick={() => setEditingRealName(false)}>取消</Button>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-700">{friend.realName || <span className="text-gray-400">未設定</span>}</p>
+              )}
             </div>
 
             {/* Harness Mileage — canonical user identity across LINE accounts */}

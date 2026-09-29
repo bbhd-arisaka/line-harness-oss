@@ -15,8 +15,44 @@ export interface Friend {
   line_account_id: string | null;
   metadata: string;
   first_tracked_link_id: string | null;
+  real_name?: string | null;
+  memo?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * 友だちの回答フォーム書き込み先。Lステップの新形式回答フォームで
+ * 「友だち情報」とは別の登録先として扱われる3種 + 友だち情報欄(カスタム項目)。
+ */
+export type FriendRegistrationTarget =
+  | { type: 'real_name' }
+  | { type: 'display_name' }
+  | { type: 'memo' }
+  | { type: 'friend_field'; fieldKey: string };
+
+export async function updateFriendRegistrationFields(
+  db: D1Database,
+  friendId: string,
+  updates: { realName?: string | null; displayName?: string | null; memo?: string | null; metadataPatch?: Record<string, unknown> },
+): Promise<void> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if ('realName' in updates) { sets.push('real_name = ?'); values.push(updates.realName ?? null); }
+  if ('displayName' in updates) { sets.push('display_name = ?'); values.push(updates.displayName ?? null); }
+  if ('memo' in updates) { sets.push('memo = ?'); values.push(updates.memo ?? null); }
+  if (updates.metadataPatch && Object.keys(updates.metadataPatch).length > 0) {
+    const friend = await db.prepare('SELECT metadata FROM friends WHERE id = ?').bind(friendId).first<{ metadata: string }>();
+    const existing = friend ? (JSON.parse(friend.metadata || '{}') as Record<string, unknown>) : {};
+    const merged = { ...existing, ...updates.metadataPatch };
+    sets.push('metadata = ?');
+    values.push(JSON.stringify(merged));
+  }
+  if (sets.length === 0) return;
+  sets.push('updated_at = ?');
+  values.push(jstNow());
+  values.push(friendId);
+  await db.prepare(`UPDATE friends SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run();
 }
 
 export interface GetFriendsOptions {
