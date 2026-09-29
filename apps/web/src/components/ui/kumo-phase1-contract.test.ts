@@ -27,7 +27,7 @@ const migratedFiles = [
   '../../app/booking/menus/staff/page.tsx',
   '../../app/booking/staff/page.tsx',
   '../../app/booking/staff/shifts/page.tsx',
-  '../../app/form-submissions/page.tsx',
+  // フォーム一覧・編集画面はLステップ準拠の独自デザインのため、汎用部品の検査対象から外している
   '../../app/reminders/page.tsx',
   '../../app/rich-menus/page.tsx',
   '../../app/rich-menus/new/page.tsx',

@@ -41,6 +41,11 @@ interface FormField {
   buttonUrl?: string;
   // Lステップ準拠の編集画面のセクション。0=共通ヘッダ(全セクションの先頭に表示)、1以降=各セクション。未指定は1。
   section?: number;
+  // Lステップ準拠のブロック設定: 説明文・初期値・入力文字数の上限・非表示(値だけ送る)
+  description?: string;
+  defaultValue?: string;
+  maxLength?: number;
+  hidden?: boolean;
 }
 
 const PREFECTURES = [
@@ -227,7 +232,17 @@ function renderField(field: FormField, previousValue?: unknown): string {
     return `<a class="form-block-button" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(field.buttonLabel || field.label)}</a>`;
   }
 
+  // 「非表示」ブロック: 画面には出さず、初期値だけを回答データとして送る。
+  if (field.hidden && field.type !== 'radio' && field.type !== 'checkbox' && field.type !== 'select' && field.type !== 'prefecture' && field.type !== 'file') {
+    return `<input type="hidden" name="${escapeHtml(field.name)}" value="${escapeHtml(field.defaultValue ?? '')}" />`;
+  }
+
   const required = field.required ? ' required' : '';
+  const maxLen = field.maxLength && field.maxLength > 0 ? ` maxlength="${field.maxLength}"` : '';
+  const descriptionHtml = field.description
+    ? `<p class="form-field-description">${escapeHtml(field.description).replace(/
+/g, '<br>')}</p>`
+    : '';
   const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
   const requiredMark = field.required ? '<span class="required-mark">*</span>' : '';
 
@@ -258,7 +273,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
 
   let inputHtml = '';
 
-  const prevStr = typeof previousValue === 'string' ? previousValue : '';
+  const prevStr = typeof previousValue === 'string' ? previousValue : (field.defaultValue ?? '');
   const prevChecked = Array.isArray(previousValue) ? previousValue.map(String) : [];
 
   switch (field.type) {
@@ -268,7 +283,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
         id="field-${escapeHtml(field.name)}"
         class="form-textarea"
         rows="4"
-        ${placeholder}${required}>${escapeHtml(prevStr)}</textarea>`;
+        ${placeholder}${maxLen}${required}>${escapeHtml(prevStr)}</textarea>`;
       break;
 
     case 'select': {
@@ -343,7 +358,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
         id="field-${escapeHtml(field.name)}"
         class="form-input"
         value="${escapeHtml(prevStr)}"
-        ${placeholder}${required} />`;
+        ${placeholder}${maxLen}${required} />`;
       break;
   }
 
@@ -352,6 +367,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
       <label class="form-label" for="field-${escapeHtml(field.name)}">
         ${escapeHtml(field.label)}${requiredMark}
       </label>
+      ${descriptionHtml}
       ${inputHtml}
     </div>
   `;
@@ -453,6 +469,7 @@ function injectStyles(): void {
       cursor: pointer; font-family: inherit; margin-top: 8px; transition: opacity 0.15s;
     }
     .submit-btn:active { opacity: 0.85; }
+    .form-field-description { font-size: 12px; color: #777; margin: -2px 0 8px; line-height: 1.5; }
     .submit-btn.secondary { background: #fff; color: var(--form-accent); border: 1.5px solid var(--form-accent); }
     .section-nav { display: flex; gap: 10px; }
     .section-nav .submit-btn { flex: 1; }
@@ -975,7 +992,8 @@ function renderSuccess(): void {
       <div class="success-card">
         <div class="success-icon">✓</div>
         <h2>送信完了！</h2>
-        <p class="success-message">ご回答ありがとうございました。</p>
+        <p class="success-message">${escapeHtml(state.formDef?.lstepOptions?.thanksText?.trim() || 'ご回答ありがとうございました。').replace(/
+/g, '<br>')}</p>
         <button class="close-btn" id="closeBtn">閉じる</button>
       </div>
     </div>
