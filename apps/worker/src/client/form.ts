@@ -39,6 +39,8 @@ interface FormField {
   imageUrl?: string;
   buttonLabel?: string;
   buttonUrl?: string;
+  // Lステップ準拠の編集画面のセクション。0=共通ヘッダ(全セクションの先頭に表示)、1以降=各セクション。未指定は1。
+  section?: number;
 }
 
 const PREFECTURES = [
@@ -87,6 +89,23 @@ interface FormDef {
   // Lステップの「回答復元」相当。restorePreviousAnswer が OFF、または前回の
   // 回答が無ければ null。
   previousAnswer?: Record<string, unknown> | null;
+  // Lステップ「オプション設定」相当(ページタイトル・ボタン文言・確認ダイアログなど)
+  lstepOptions?: LstepOptions;
+  isNotStarted?: boolean;
+  isExpired?: boolean;
+  isFull?: boolean;
+}
+
+interface LstepOptions {
+  pageTitle?: string;
+  submitLabel?: string;
+  nextLabel?: string;
+  buttonStyle?: 'default' | 'rounded' | 'square';
+  buttonColor?: string;
+  sectionHeaderStyle?: 'page-number' | 'progress' | 'none';
+  confirmDialog?: boolean;
+  startsAt?: string | null;
+  backgroundImageOpacity?: number;
 }
 
 interface ConsultationSlot {
@@ -360,10 +379,16 @@ function injectStyles(): void {
     }
     .form-page { font-family: var(--form-font); }
     .form-page {
+      position: relative;
       background-color: var(--form-page-bg);
+      isolation: isolate;
+    }
+    /* 背景画像は疑似要素に敷いて、Lステップの「透明度」スライダー相当を効かせる */
+    .form-page::before {
+      content: ''; position: absolute; inset: 0; z-index: -1;
       background-image: var(--form-page-bg-image);
-      background-size: cover;
-      background-position: top center;
+      background-size: cover; background-position: top center;
+      opacity: var(--form-page-bg-image-opacity, 1);
     }
     .form-header-image {
       display: block; width: 100%; max-width: 100%; border-radius: 8px;
@@ -428,6 +453,12 @@ function injectStyles(): void {
       cursor: pointer; font-family: inherit; margin-top: 8px; transition: opacity 0.15s;
     }
     .submit-btn:active { opacity: 0.85; }
+    .submit-btn.secondary { background: #fff; color: var(--form-accent); border: 1.5px solid var(--form-accent); }
+    .section-nav { display: flex; gap: 10px; }
+    .section-nav .submit-btn { flex: 1; }
+    .section-indicator { text-align: center; font-size: 13px; color: #666; margin: 4px 0 12px; }
+    .section-progress { height: 6px; background: #e6e6e6; border-radius: 3px; overflow: hidden; margin: 4px 0 14px; }
+    .section-progress > span { display: block; height: 100%; background: var(--form-accent); }
     .submit-btn:disabled { background: #bbb; cursor: not-allowed; }
     .form-error { color: var(--form-error); font-size: 12px; margin-top: 4px; }
     .form-error-msg { color: var(--form-error); font-size: 14px; margin: 8px 0; text-align: center; }
@@ -572,6 +603,7 @@ function render(): void {
   if (!formDef) return;
 
   injectStyles();
+  if (formDef.lstepOptions?.pageTitle) document.title = formDef.lstepOptions.pageTitle;
   // フォームごとのアクセントカラー(Lステップの「デザイン設定」相当)。未設定ならデフォルト(LINE緑)のまま。
   if (formDef.primaryColor) {
     document.documentElement.style.setProperty('--form-accent', formDef.primaryColor);
@@ -581,6 +613,9 @@ function render(): void {
   }
   if (formDef.formBackgroundColor) {
     document.documentElement.style.setProperty('--form-card-bg', formDef.formBackgroundColor);
+  }
+  if (formDef.lstepOptions?.backgroundImageOpacity != null) {
+    document.documentElement.style.setProperty('--form-page-bg-image-opacity', String(formDef.lstepOptions.backgroundImageOpacity / 100));
   }
   const safeBgImageUrl = safeHttpsUrl(formDef.backgroundImageUrl);
   if (safeBgImageUrl) {
@@ -740,9 +775,34 @@ function render(): void {
 
     attachFormEvents();
   } else {
-    // ─── Single page layout (original) ───
-    const fieldsHtml = formDef.fields
+    // ─── Single page layout / Lステップ準拠のセクション分割 ───
+    const opts = formDef.lstepOptions ?? {};
+    const headerFields = formDef.fields.filter((f) => f.section === 0);
+    const bodyFields = formDef.fields.filter((f) => f.section !== 0);
+    const sectionNumbers = [...new Set(bodyFields.map((f) => f.section ?? 1))].sort((a, b) => a - b);
+    const sections = sectionNumbers.length > 0 ? sectionNumbers : [1];
+    const multi = sections.length > 1;
+    const headerHtml = headerFields
       .map((f) => renderField(f, formDef.previousAnswer?.[f.name]))
+      .join('');
+    const sectionsHtml = sections
+      .map((num, idx) => {
+        const inner = bodyFields
+          .filter((f) => (f.section ?? 1) === num)
+          .map((f) => renderField(f, formDef.previousAnswer?.[f.name]))
+          .join('');
+        const isLast = idx === sections.length - 1;
+        const style = opts.sectionHeaderStyle ?? 'page-number';
+        const indicator = !multi || style === 'none'
+          ? ''
+          : style === 'progress'
+            ? `<div class="section-progress"><span style="width:${Math.round(((idx + 1) / sections.length) * 100)}%"></span></div>`
+            : `<div class="section-indicator">${idx + 1} / ${sections.length}</div>`;
+        const nav = isLast
+          ? `<div class="section-nav">${idx > 0 ? '<button type="button" class="submit-btn secondary" data-section-prev>戻る</button>' : ''}<button type="submit" class="submit-btn" id="submitBtn">${escapeHtml(submitLabel())}</button></div>`
+          : `<div class="section-nav">${idx > 0 ? '<button type="button" class="submit-btn secondary" data-section-prev>戻る</button>' : ''}<button type="button" class="submit-btn" data-section-next>${escapeHtml(opts.nextLabel || '次へ')}</button></div>`;
+        return `<div class="form-section-page" data-section-index="${idx}"${idx === 0 ? '' : ' hidden'}>${indicator}${inner}${nav}</div>`;
+      })
       .join('');
     app.innerHTML = `
       <div class="form-page">
@@ -753,14 +813,85 @@ function render(): void {
           ${profileHtml}
         </div>
         <form id="liff-form" class="form-body" novalidate>
-          ${fieldsHtml}
-          <button type="submit" class="submit-btn" id="submitBtn">送信する</button>
+          ${headerHtml}
+          ${sectionsHtml}
         </form>
       </div>
     `;
+    applyButtonStyle();
+    if (multi) attachSectionNav(sections.length);
 
     attachFormEvents();
   }
+}
+
+/** 送信ボタンの文言(Lステップの「送信ボタン文言」)。未設定なら「送信する」。 */
+function submitLabel(): string {
+  return state.formDef?.lstepOptions?.submitLabel?.trim() || '送信する';
+}
+
+/** ボタンスタイル・色(Lステップの「ボタン設定」)を反映する。 */
+function applyButtonStyle(): void {
+  const opts = state.formDef?.lstepOptions;
+  if (!opts) return;
+  const root = document.documentElement;
+  if (opts.buttonColor) root.style.setProperty('--form-accent', opts.buttonColor);
+  const radius = opts.buttonStyle === 'rounded' ? '999px' : opts.buttonStyle === 'square' ? '0' : '';
+  if (radius) {
+    let el = document.getElementById('form-button-style') as HTMLStyleElement | null;
+    if (!el) {
+      el = document.createElement('style');
+      el.id = 'form-button-style';
+      document.head.appendChild(el);
+    }
+    el.textContent = `.submit-btn { border-radius: ${radius} !important; }`;
+  }
+}
+
+/** 指定した項目群の必須チェック。エラーがあれば文言を返す。 */
+function validateFields(fields: FormField[]): string | null {
+  for (const field of fields) {
+    if (!field.required) continue;
+    if (field.type === 'checkbox') {
+      if (document.querySelectorAll<HTMLInputElement>(`input[name="${field.name}"]:checked`).length === 0) {
+        return `${field.label} は必須項目です`;
+      }
+    } else if (field.type === 'radio') {
+      if (!document.querySelector<HTMLInputElement>(`input[name="${field.name}"]:checked`)) {
+        return `${field.label} は必須項目です`;
+      }
+    } else {
+      const el = document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[name="${field.name}"]`);
+      if (!el || !el.value.trim()) return `${field.label} は必須項目です`;
+    }
+  }
+  return null;
+}
+
+/** セクション(ページ)の「次へ」「戻る」。次へ進む前にそのセクションの必須項目を検証する。 */
+function attachSectionNav(total: number): void {
+  const pages = Array.from(document.querySelectorAll<HTMLElement>('.form-section-page'));
+  const sectionNumbers = [...new Set((state.formDef?.fields ?? []).filter((f) => f.section !== 0).map((f) => f.section ?? 1))].sort((a, b) => a - b);
+  const show = (idx: number) => {
+    pages.forEach((p, i) => { p.hidden = i !== idx; });
+    window.scrollTo(0, 0);
+  };
+  pages.forEach((page, idx) => {
+    page.querySelector('[data-section-next]')?.addEventListener('click', () => {
+      const num = sectionNumbers[idx];
+      const err = validateFields((state.formDef?.fields ?? []).filter((f) => f.section !== 0 && (f.section ?? 1) === num));
+      page.querySelector('.form-error-msg')?.remove();
+      if (err) {
+        const el = document.createElement('p');
+        el.className = 'form-error-msg';
+        el.textContent = err;
+        page.querySelector('.section-nav')?.before(el);
+        return;
+      }
+      if (idx + 1 < total) show(idx + 1);
+    });
+    page.querySelector('[data-section-prev]')?.addEventListener('click', () => { if (idx > 0) show(idx - 1); });
+  });
 }
 
 async function showSubmitConditions(conditions: Record<string, boolean | null>, passed: boolean): Promise<void> {
@@ -1190,6 +1321,8 @@ async function submitForm(): Promise<void> {
     return;
   }
 
+  if (state.formDef.lstepOptions?.confirmDialog && !window.confirm('この内容で送信しますか?')) return;
+
   state.submitting = true;
   const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement | null;
   if (submitBtn) {
@@ -1207,7 +1340,7 @@ async function submitForm(): Promise<void> {
       const xField = ((data.x_username as string) ?? '').trim().replace(/^@/, '');
       if (!xField || xField !== state.verifiedXUsername) {
         state.submitting = false;
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '送信する'; }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = submitLabel(); }
         const existing = getApp().querySelector('.form-error-msg');
         if (existing) existing.remove();
         const errEl = document.createElement('p');
@@ -1286,7 +1419,7 @@ async function submitForm(): Promise<void> {
     state.submitting = false;
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = '送信する';
+      submitBtn.textContent = submitLabel();
     }
     const existing = getApp().querySelector('.form-error-msg');
     if (existing) existing.remove();
@@ -1662,6 +1795,19 @@ export async function initForm(formId: string | null): Promise<void> {
 
     if (!json.data.isActive) {
       renderFormError('このフォームは現在受付を停止しています');
+      return;
+    }
+
+    if (json.data.isNotStarted) {
+      renderFormError('この回答フォームはまだ回答を受け付けていません');
+      return;
+    }
+    if (json.data.isExpired) {
+      renderFormError('この回答フォームは回答期限を過ぎています');
+      return;
+    }
+    if (json.data.isFull) {
+      renderFormError('この回答フォームは先着数に達しました');
       return;
     }
 

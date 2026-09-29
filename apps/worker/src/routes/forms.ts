@@ -23,6 +23,7 @@ import {
   stopAllFriendScenarios,
   updateFriendRegistrationFields,
 } from '@line-crm/db';
+import type { FormLstepOptions } from '@line-crm/db';
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
@@ -38,6 +39,17 @@ import type {
   FriendRegistrationTarget,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
+
+/** forms.lstep_options(JSON文字列)を安全に読む。壊れていたら空オブジェクト。 */
+function parseFormLstepOptions(raw: string | null | undefined): FormLstepOptions {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? (v as FormLstepOptions) : {};
+  } catch {
+    return {};
+  }
+}
 import { awardActivityMileage } from '../services/activity-mileage.js';
 
 const forms = new Hono<Env>();
@@ -126,6 +138,7 @@ function serializeForm(
     themeErrorColor: row.theme_error_color,
     themeTextColor: row.theme_text_color,
     themeFont: row.theme_font,
+    lstepOptions: parseFormLstepOptions(row.lstep_options),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastSubmittedAt: extra?.lastSubmittedAt ?? null,
@@ -160,7 +173,7 @@ function publicWebhookConfig(row: DbForm): {
 function serializePublicForm(
   row: DbForm,
   consultationWebinarSlug: string | null = null,
-  status?: { isExpired: boolean; isFull: boolean },
+  status?: { isExpired: boolean; isFull: boolean; isNotStarted?: boolean },
   previousAnswer: Record<string, unknown> | null = null,
 ) {
   return {
@@ -173,6 +186,8 @@ function serializePublicForm(
     onSubmitWebhookFailMessage: row.on_submit_webhook_fail_message,
     primaryColor: row.primary_color,
     thanksUrl: row.thanks_url,
+    lstepOptions: parseFormLstepOptions(row.lstep_options),
+    isNotStarted: status?.isNotStarted ?? false,
     isExpired: status?.isExpired ?? false,
     isFull: status?.isFull ?? false,
     // Lステップの「回答復元」相当。restore_previous_answer が OFF、
@@ -208,14 +223,16 @@ function serializePublicForm(
 async function computeFormAvailability(
   db: D1Database,
   row: DbForm,
-): Promise<{ isExpired: boolean; isFull: boolean }> {
+): Promise<{ isExpired: boolean; isFull: boolean; isNotStarted: boolean }> {
   const isExpired = Boolean(row.expires_at) && row.expires_at! <= jstNow();
+  const startsAt = parseFormLstepOptions(row.lstep_options).startsAt;
+  const isNotStarted = Boolean(startsAt) && startsAt! > jstNow();
   let isFull = false;
   if (row.capacity_limit != null) {
     const count = await countFormSubmissions(db, row.id);
     isFull = count >= row.capacity_limit;
   }
-  return { isExpired, isFull };
+  return { isExpired, isFull, isNotStarted };
 }
 
 async function consultationWebinarSlugForForm(
@@ -427,6 +444,7 @@ forms.post('/api/forms', async (c) => {
       themeErrorColor?: string | null;
       themeTextColor?: string | null;
       themeFont?: string | null;
+      lstepOptions?: FormLstepOptions | null;
     }>();
 
     if (!body.name) {
@@ -472,6 +490,7 @@ forms.post('/api/forms', async (c) => {
       themeErrorColor: body.themeErrorColor ?? null,
       themeTextColor: body.themeTextColor ?? null,
       themeFont: body.themeFont ?? null,
+      lstepOptions: body.lstepOptions ?? null,
     });
 
     const liffId = (await resolveDefaultLineAccount(c.env.DB))?.liff_id ?? null;
@@ -541,6 +560,7 @@ forms.put('/api/forms/:id', async (c) => {
       themeErrorColor?: string | null;
       themeTextColor?: string | null;
       themeFont?: string | null;
+      lstepOptions?: FormLstepOptions | null;
     }>();
 
     // Only include fields that were explicitly sent (avoid undefined → null conversion)
@@ -584,6 +604,7 @@ forms.put('/api/forms/:id', async (c) => {
     if (body.themeErrorColor !== undefined) updates.themeErrorColor = body.themeErrorColor;
     if (body.themeTextColor !== undefined) updates.themeTextColor = body.themeTextColor;
     if (body.themeFont !== undefined) updates.themeFont = body.themeFont;
+    if (body.lstepOptions !== undefined) updates.lstepOptions = body.lstepOptions;
 
     const updated = await updateForm(c.env.DB, id, updates as any);
 
@@ -703,6 +724,10 @@ forms.post('/api/forms/:id/submit', async (c) => {
     }
     if (form.expires_at && form.expires_at <= jstNow()) {
       return c.json({ success: false, error: 'この回答フォームは回答期限を過ぎています' }, 400);
+    }
+    const startsAt = parseFormLstepOptions(form.lstep_options).startsAt;
+    if (startsAt && startsAt > jstNow()) {
+      return c.json({ success: false, error: 'この回答フォームはまだ回答を受け付けていません' }, 400);
     }
     if (form.capacity_limit != null) {
       const count = await countFormSubmissions(c.env.DB, formId);

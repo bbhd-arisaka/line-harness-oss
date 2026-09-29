@@ -655,6 +655,15 @@ const spec = {
         responses: { '201': { description: 'Created' }, '400': { description: 'name is required' } },
       },
     },
+    '/api/friend-fields/folders/reorder': {
+      post: {
+        tags: ['FriendFields'],
+        summary: 'フォルダの並び替え',
+        description: '渡した `ids` の順に display_order を振り直す（画面のドラッグ&ドロップ用）。',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' } } }, required: ['ids'] } } } },
+        responses: { '200': { description: 'Reordered' } },
+      },
+    },
     '/api/friend-fields/folders/{id}': {
       put: { tags: ['FriendFields'], summary: 'フォルダ更新', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated' } } },
       delete: {
@@ -666,19 +675,44 @@ const spec = {
       },
     },
     '/api/friend-fields/definitions': {
-      get: { tags: ['FriendFields'], summary: '項目定義一覧', responses: { '200': { description: 'Field definitions' } } },
+      get: {
+        tags: ['FriendFields'],
+        summary: '項目定義一覧',
+        description: '`withCounts=true` を付けると、各項目に値が入っている友だちの人数 `friendCount` も返す。',
+        parameters: [{ name: 'withCounts', in: 'query', required: false, schema: { type: 'boolean' } }],
+        responses: { '200': { description: 'Field definitions' } },
+      },
       post: {
         tags: ['FriendFields'],
         summary: '項目定義を作成',
         description:
-          '`fieldKey` は `friends.metadata` の実際の JSON キーになる（作成後の変更不可。既存キーと重複していたら 400）。\n\n' +
-          '`fieldType` は text/textarea/number/date/select/radio/checkbox。select/radio/checkbox のときだけ `options` を使う。',
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { folderId: { type: 'string', nullable: true }, fieldKey: { type: 'string' }, label: { type: 'string' }, fieldType: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, defaultValue: { type: 'string', nullable: true }, displayOrder: { type: 'integer' } }, required: ['fieldKey', 'label'] } } } },
-        responses: { '201': { description: 'Created' }, '400': { description: 'fieldKey/label are required, or fieldKey already in use' } },
+          '`fieldKey` は `friends.metadata` の実際の JSON キーになる（作成後の変更不可。省略すると自動採番。既存キーと重複していたら 400）。\n\n' +
+          '`fieldType` は text(標準)/textarea(長文)/image/pdf/date(年月日)/datetime(日時)/select(選択肢)、旧形式の number/radio/checkbox。' +
+          'select/radio/checkbox のときだけ `options` と、その並びに対応する色 `optionColors` を使う。',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { folderId: { type: 'string', nullable: true }, fieldKey: { type: 'string' }, label: { type: 'string' }, fieldType: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, optionColors: { type: 'array', items: { type: 'string' } }, defaultValue: { type: 'string', nullable: true }, displayOrder: { type: 'integer' } }, required: ['label'] } } } },
+        responses: { '201': { description: 'Created' }, '400': { description: 'label is required, or fieldKey already in use' } },
+      },
+    },
+    '/api/friend-fields/definitions/reorder': {
+      post: {
+        tags: ['FriendFields'],
+        summary: '項目定義の並び替え',
+        description: '渡した `ids` の順に display_order を振り直す（画面のドラッグ&ドロップ用）。',
+        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' } } }, required: ['ids'] } } } },
+        responses: { '200': { description: 'Reordered' } },
+      },
+    },
+    '/api/friend-fields/definitions/{id}/copy': {
+      post: {
+        tags: ['FriendFields'],
+        summary: '項目定義をコピー',
+        description: '名前に「のコピー」を付け、`fieldKey` は新規採番して複製する。友だちに登録済みの値はコピーしない。',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '201': { description: 'Copied' }, '404': { description: 'Not found' } },
       },
     },
     '/api/friend-fields/definitions/{id}': {
-      put: { tags: ['FriendFields'], summary: '項目定義を更新', description: '`fieldKey` は変更できない。folderId/label/fieldType/options/defaultValue/displayOrder のみ更新可。', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated' } } },
+      put: { tags: ['FriendFields'], summary: '項目定義を更新', description: '`fieldKey` は変更できない。folderId/label/fieldType/options/optionColors/isFavorite(★)/defaultValue/displayOrder のみ更新可。', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated' } } },
       delete: { tags: ['FriendFields'], summary: '項目定義を削除', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Deleted' } } },
     },
 

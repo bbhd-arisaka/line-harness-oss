@@ -53,8 +53,33 @@ export interface Form {
   theme_error_color: string | null;
   theme_text_color: string | null;
   theme_font: string | null;
+  /** Lステップ準拠オプション(JSON文字列)。中身は FormLstepOptions */
+  lstep_options: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** 回答フォームの「オプション設定」「デザイン設定」のうち、個別カラムを持たないもの。 */
+export interface FormLstepOptions {
+  pageTitle?: string;
+  submitLabel?: string;
+  nextLabel?: string;
+  buttonStyle?: 'default' | 'rounded' | 'square';
+  buttonColor?: string;
+  sectionHeaderStyle?: 'page-number' | 'progress' | 'none';
+  confirmDialog?: boolean;
+  startsAt?: string | null;
+  backgroundImageOpacity?: number;
+}
+
+export function parseFormLstepOptions(raw: string | null | undefined): FormLstepOptions {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? (v as FormLstepOptions) : {};
+  } catch {
+    return {};
+  }
 }
 
 export interface FormSubmission {
@@ -251,6 +276,7 @@ export interface CreateFormInput {
   themeErrorColor?: string | null;
   themeTextColor?: string | null;
   themeFont?: string | null;
+  lstepOptions?: FormLstepOptions | null;
 }
 
 export async function createForm(db: D1Database, input: CreateFormInput): Promise<Form> {
@@ -320,6 +346,13 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
     )
     .run();
 
+  if (input.lstepOptions) {
+    await db
+      .prepare(`UPDATE forms SET lstep_options = ? WHERE id = ?`)
+      .bind(JSON.stringify(input.lstepOptions), id)
+      .run();
+  }
+
   return (await getFormById(db, id))!;
 }
 
@@ -363,6 +396,7 @@ export interface UpdateFormInput {
   themeErrorColor?: string | null;
   themeTextColor?: string | null;
   themeFont?: string | null;
+  lstepOptions?: FormLstepOptions | null;
 }
 
 export async function updateForm(
@@ -495,6 +529,13 @@ export async function updateForm(
     )
     .run();
 
+  if ('lstepOptions' in input) {
+    await db
+      .prepare(`UPDATE forms SET lstep_options = ? WHERE id = ?`)
+      .bind(input.lstepOptions ? JSON.stringify(input.lstepOptions) : null, id)
+      .run();
+  }
+
   return getFormById(db, id);
 }
 
@@ -545,6 +586,7 @@ export async function duplicateForm(db: D1Database, id: string): Promise<Form | 
     themeErrorColor: existing.theme_error_color,
     themeTextColor: existing.theme_text_color,
     themeFont: existing.theme_font,
+    lstepOptions: existing.lstep_options ? parseFormLstepOptions(existing.lstep_options) : null,
   });
 }
 
