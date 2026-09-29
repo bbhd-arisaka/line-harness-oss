@@ -259,7 +259,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
     return `<input type="hidden" name="${escapeHtml(field.name)}" value="${escapeHtml(field.defaultValue ?? '')}" />`;
   }
 
-  const required = field.required ? ' required' : '';
+  const required = field.required && !field.hidden ? ' required' : '';
   const maxLen = field.maxLength && field.maxLength > 0 ? ` maxlength="${field.maxLength}"` : '';
   const descriptionHtml = field.description
     ? `<p class="form-field-description">${escapeHtml(field.description).replace(/\n/g, '<br>')}</p>`
@@ -402,7 +402,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
   }
 
   return `
-    <div class="form-field">
+    <div class="form-field"${field.hidden ? ' hidden' : ''}>
       <label class="form-label" for="field-${escapeHtml(field.name)}">
         ${escapeHtml(field.label)}${requiredMark}
       </label>
@@ -764,7 +764,7 @@ function render(): void {
 
       // Validate survey fields
       for (const field of surveyFields) {
-        if (!field.required) continue;
+        if (!field.required || field.hidden) continue;
         if (field.type === 'checkbox') {
           const checked = document.querySelectorAll<HTMLInputElement>(`input[name="${field.name}"]:checked`);
           if (checked.length === 0) {
@@ -907,7 +907,7 @@ function applyButtonStyle(): void {
 /** 指定した項目群の必須チェック。エラーがあれば文言を返す。 */
 function validateFields(fields: FormField[]): string | null {
   for (const field of fields) {
-    if (!field.required) continue;
+    if (!field.required || field.hidden) continue;
     if (field.type === 'checkbox') {
       if (document.querySelectorAll<HTMLInputElement>(`input[name="${field.name}"]:checked`).length === 0) {
         return `${field.label} は必須項目です`;
@@ -1347,7 +1347,7 @@ function validateForm(): string | null {
   if (!formDef) return null;
 
   for (const field of formDef.fields) {
-    if (!field.required) continue;
+    if (!field.required || field.hidden) continue;
 
     if (field.type === 'checkbox') {
       const checked = document.querySelectorAll<HTMLInputElement>(
