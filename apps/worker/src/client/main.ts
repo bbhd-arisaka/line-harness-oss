@@ -18,7 +18,7 @@
  */
 
 import { initBooking } from './booking.js';
-import { initForm } from './form.js';
+import { initForm, initFormPreview } from './form.js';
 import { safeRedirectTarget } from '../lib/safe-redirect.js';
 
 declare const liff: {
@@ -665,6 +665,14 @@ function forceReloginForStaleToken(): boolean {
 }
 
 async function main() {
+  // 管理画面の「プレビュー」(別タブ): LINEログインなしで、渡されたフォーム定義を表示するだけのモード
+  {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('page') === 'form' && q.get('preview') === '1') {
+      initFormPreview();
+      return;
+    }
+  }
   try {
     await liff.init({ liffId: LIFF_ID });
 

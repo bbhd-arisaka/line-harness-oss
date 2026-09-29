@@ -1,13 +1,14 @@
 'use client'
 
 import { useDialogs } from '@/components/ui/dialogs'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { api, fetchApi } from '@/lib/api'
 import { BlockCard } from '@/components/forms/block-card'
 import { DesignModal, OptionModal } from '@/components/forms/modals'
 import { PreviewPane } from '@/components/forms/preview-pane'
+import { getApiBase } from '@/lib/api-base'
 import type { PickerField, PickerFolder } from '@/components/forms/friend-field-picker'
 import { Popover } from '@/components/lstep/ui'
 import {
@@ -15,6 +16,7 @@ import {
   DISPLAY_ONLY_TYPES,
   draftFromApi,
   draftToPayload,
+  draftToPreviewFormDef,
   duplicateBlock,
   emptyDraft,
   newBlock,
@@ -279,9 +281,51 @@ export default function FormEditPage() {
     }
   }
 
+  // ── 別タブのプレビュー ─────────────────────────────────────
+  // 保存前の内容でも、本番と同じ描画で確認できる。編集するたびに開いているプレビューへ送り直す。
+  const previewWin = useRef<Window | null>(null)
+  const previewReady = useRef(false)
+  const previewOrigin = useRef('')
+
+  const sendPreview = useCallback((d: FormDraft) => {
+    const w = previewWin.current
+    if (!w || w.closed || !previewReady.current) return
+    w.postMessage({ type: 'form-preview', formDef: draftToPreviewFormDef(d) }, previewOrigin.current)
+  }, [])
+
+  useEffect(() => {
+    function onMessage(e: MessageEvent) {
+      if (e.source !== previewWin.current || e.origin !== previewOrigin.current) return
+      if ((e.data as { type?: string } | null)?.type === 'form-preview-ready') {
+        previewReady.current = true
+        sendPreview(draftRef.current)
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [sendPreview])
+
+  const draftRef = useRef(draft)
+  useEffect(() => {
+    draftRef.current = draft
+    const t = setTimeout(() => sendPreview(draft), 250)
+    return () => clearTimeout(t)
+  }, [draft, sendPreview])
+
   function preview() {
-    if (formUrl) window.open(formUrl, '_blank', 'noopener')
-    else void dialogs.alert('プレビューは、フォームを保存してから開けます。')
+    const base = getApiBase()
+    if (!base) { void dialogs.alert('プレビューの表示先(API)が設定されていません。'); return }
+    previewOrigin.current = new URL(base, window.location.href).origin
+    previewReady.current = false
+    // すでに開いていれば、そのタブを再利用して前面へ
+    if (previewWin.current && !previewWin.current.closed) {
+      previewWin.current.focus()
+      previewReady.current = true
+      sendPreview(draft)
+      return
+    }
+    previewWin.current = window.open(`${previewOrigin.current}/?page=form&preview=1`, 'form-preview')
+    if (!previewWin.current) void dialogs.alert('ポップアップがブロックされました。ブラウザの設定でこのサイトのポップアップを許可してください。')
   }
 
   const sectionTabs = [0, ...Array.from({ length: draft.sectionCount }, (_, i) => i + 1)]

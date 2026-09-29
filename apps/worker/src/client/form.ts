@@ -220,6 +220,9 @@ function getGateId(): string | null {
 /** 添付ファイルのアップロード中の件数。0 になるまで送信できない。 */
 let uploadingCount = 0;
 
+/** 管理画面の「プレビュー」から開かれたとき true。送信・アップロード・LINE連携は一切行わない。 */
+let previewMode = false;
+
 function getApp(): HTMLElement {
   return document.getElementById('app')!;
 }
@@ -1425,6 +1428,16 @@ async function submitForm(): Promise<void> {
     return;
   }
 
+  if (previewMode) {
+    getApp().querySelector('.form-error-msg')?.remove();
+    const note = document.createElement('p');
+    note.className = 'form-error-msg';
+    note.style.color = '#069e04';
+    note.textContent = '入力チェックはOKです。プレビューのため、回答は送信されません。';
+    document.getElementById('submitBtn')?.parentElement?.insertBefore(note, document.getElementById('submitBtn'));
+    return;
+  }
+
   if (state.formDef.lstepOptions?.confirmDialog && !window.confirm('この内容で送信しますか?')) return;
 
   state.submitting = true;
@@ -1865,6 +1878,11 @@ function attachFileUploads(): void {
     input.addEventListener('change', async () => {
       const file = input.files?.[0];
       if (!file || !state.formDef) return;
+      if (previewMode) {
+        input.value = '';
+        if (status) { status.style.color = ''; status.textContent = 'プレビューのため、ファイルはアップロードされません'; }
+        return;
+      }
       if (status) { status.style.color = ''; status.textContent = 'アップロード中...'; }
       if (hidden) hidden.value = '';
       uploadingCount++;
@@ -2015,4 +2033,47 @@ export async function initForm(formId: string | null): Promise<void> {
   } catch (err) {
     renderFormError(err instanceof Error ? err.message : 'エラーが発生しました');
   }
+}
+
+
+// ========== Preview (管理画面の「プレビュー」) ==========
+
+/**
+ * 管理画面の編集中の内容を、LINEを使わず別タブで確認するためのモード。
+ * 開いた側(管理画面)から postMessage で受け取ったフォーム定義を、本番と同じ描画処理で表示する。
+ * 送信・ファイルのアップロード・回答の保存は行わない。編集のたびに内容が更新される。
+ */
+export function initFormPreview(): void {
+  previewMode = true;
+  const opener = window.opener as Window | null;
+  if (!opener) {
+    renderFormError('管理画面のフォーム編集画面にある「プレビュー」から開いてください');
+    return;
+  }
+  renderLoading();
+  document.title = 'プレビュー';
+
+  const banner = document.createElement('div');
+  banner.textContent = 'プレビュー表示(編集内容がそのまま反映されます・回答は送信されません)';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#414143;color:#fff;font-size:12px;text-align:center;padding:6px 8px;';
+  document.body.appendChild(banner);
+  document.body.style.paddingTop = '30px';
+
+  window.addEventListener('message', (e: MessageEvent) => {
+    if (e.source !== opener) return;
+    const data = e.data as { type?: string; formDef?: FormDef } | null;
+    if (!data || data.type !== 'form-preview' || !data.formDef) return;
+
+    // 編集のたびに再描画されるので、表示中のセクションだけは保つ
+    const pages = Array.from(document.querySelectorAll<HTMLElement>('.form-section-page'));
+    const currentIdx = Math.max(0, pages.findIndex((p) => !p.hidden));
+
+    state.formDef = data.formDef;
+    state.profile = { userId: 'preview', displayName: 'プレビュー' };
+    render();
+
+    const next = Array.from(document.querySelectorAll<HTMLElement>('.form-section-page'));
+    if (next.length > 1 && currentIdx < next.length) next.forEach((p, i) => { p.hidden = i !== currentIdx; });
+  });
+  opener.postMessage({ type: 'form-preview-ready' }, '*');
 }

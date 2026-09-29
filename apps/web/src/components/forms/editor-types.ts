@@ -509,3 +509,37 @@ export function draftToPayload(d: FormDraft) {
     lstepOptions: d.lstep,
   }
 }
+
+/**
+ * 公開フォーム(LIFF)が受け取る「フォーム定義」を、編集中のドラフトから作る(別タブのプレビュー用)。
+ * 保存前の内容でも、本番と同じ描画処理で確認できる。
+ */
+export function draftToPreviewFormDef(d: FormDraft) {
+  const nz = (v: string) => (v.trim() ? v.trim() : null)
+  return {
+    id: 'preview',
+    name: d.name,
+    description: null,
+    fields: blocksToApi(d.blocks),
+    isActive: true,
+    hasSubmitWebhook: false,
+    webhookOrigin: null,
+    webhookGateId: null,
+    thanksUrl: null, // プレビューでは移動させない
+    previousAnswer: null,
+    fullOptions: {},
+    lstepOptions: d.lstep,
+    primaryColor: nz(d.primaryColor),
+    backgroundColor: nz(d.backgroundColor),
+    formBackgroundColor: nz(d.formBackgroundColor),
+    headerImageUrl: nz(d.headerImageUrl),
+    backgroundImageUrl: nz(d.backgroundImageUrl),
+    hideHeaderIcon: true,
+    customCss: d.customCssEnabled ? nz(d.customCss) : null,
+    themeMainColor: nz(d.themeMainColor),
+    themeSubColor: nz(d.themeSubColor),
+    themeErrorColor: nz(d.themeErrorColor),
+    themeTextColor: nz(d.themeTextColor),
+    themeFont: nz(d.themeFont),
+  }
+}
