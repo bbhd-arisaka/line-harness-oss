@@ -46,6 +46,14 @@ interface FormField {
   defaultValue?: string;
   maxLength?: number;
   hidden?: boolean;
+  // 選択系ブロックの「その他」「初期表示」。
+  allowOther?: boolean;
+  defaultOptions?: string[];
+  // 画像ブロックのサイズ・クリック時のリンク、ボタンブロックのスタイル・色。
+  imageSize?: 'small' | 'normal' | 'large';
+  imageLinkUrl?: string;
+  buttonStyle?: 'default' | 'outline' | 'rounded';
+  buttonColor?: string;
 }
 
 const PREFECTURES = [
@@ -99,6 +107,8 @@ interface FormDef {
   isNotStarted?: boolean;
   isExpired?: boolean;
   isFull?: boolean;
+  // 定員に達した選択肢(項目名 → 選択肢)
+  fullOptions?: Record<string, string[]>;
 }
 
 interface LstepOptions {
@@ -224,12 +234,24 @@ function renderField(field: FormField, previousValue?: unknown): string {
   // Lステップ新形式の「画像」「ボタン」ブロック。どちらも回答データを持たない。
   if (field.type === 'image') {
     const src = safeHttpsUrl(field.imageUrl);
-    return src ? `<img class="form-block-image" src="${escapeHtml(src)}" alt="${escapeHtml(field.label)}" />` : '';
+    if (!src) return '';
+    const width = field.imageSize === 'small' ? '50%' : field.imageSize === 'large' ? '100%' : '80%';
+    const img = `<img class="form-block-image" style="width:${width};margin-left:auto;margin-right:auto" src="${escapeHtml(src)}" alt="${escapeHtml(field.label)}" />`;
+    const link = safeHttpsUrl(field.imageLinkUrl);
+    return link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${img}</a>` : img;
   }
   if (field.type === 'button') {
     const href = safeHttpsUrl(field.buttonUrl);
     if (!href) return '';
-    return `<a class="form-block-button" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(field.buttonLabel || field.label)}</a>`;
+    const color = /^#[0-9a-fA-F]{3,8}$/.test(field.buttonColor ?? '') ? field.buttonColor! : '';
+    const styleParts: string[] = [];
+    if (color) {
+      if (field.buttonStyle === 'outline') styleParts.push(`background:#fff;color:${color};border:2px solid ${color}`);
+      else styleParts.push(`background:${color};color:#fff`);
+    }
+    if (field.buttonStyle === 'rounded') styleParts.push('border-radius:999px');
+    const style = styleParts.length > 0 ? ` style="${styleParts.join(';')}"` : '';
+    return `<a class="form-block-button"${style} href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(field.buttonLabel || field.label)}</a>`;
   }
 
   // 「非表示」ブロック: 画面には出さず、初期値だけを回答データとして送る。
@@ -286,44 +308,62 @@ function renderField(field: FormField, previousValue?: unknown): string {
       break;
 
     case 'select': {
+      const full = state.formDef?.fullOptions?.[field.name] ?? [];
+      const hasPrev = typeof previousValue === 'string' && previousValue !== '';
+      const initial = hasPrev ? prevStr : (field.defaultOptions?.[0] ?? '');
       const opts = (field.options ?? [])
-        .map((o) => `<option value="${escapeHtml(o)}"${o === prevStr ? ' selected' : ''}>${escapeHtml(o)}</option>`)
+        .map((o) => {
+          const isFull = full.includes(o);
+          return `<option value="${escapeHtml(o)}"${o === initial ? ' selected' : ''}${isFull ? ' disabled' : ''}>${escapeHtml(o)}${isFull ? '(満員)' : ''}</option>`;
+        })
         .join('');
+      const otherOpt = field.allowOther ? '<option value="__other__">その他</option>' : '';
       inputHtml = `<select
         name="${escapeHtml(field.name)}"
         id="field-${escapeHtml(field.name)}"
         class="form-select"${required}>
         <option value="">選択してください</option>
-        ${opts}
-      </select>`;
+        ${opts}${otherOpt}
+      </select>${field.allowOther ? `<input type="text" class="form-input other-input" data-other-for="${escapeHtml(field.name)}" placeholder="その他の内容を入力" hidden style="margin-top:8px" />` : ''}`;
       break;
     }
 
     case 'radio': {
+      const full = state.formDef?.fullOptions?.[field.name] ?? [];
+      const hasPrev = typeof previousValue === 'string' && previousValue !== '';
+      const initial = hasPrev ? prevStr : (field.defaultOptions?.[0] ?? '');
       const radios = (field.options ?? [])
-        .map(
-          (o) =>
-            `<label class="radio-label">
-              <input type="radio" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${required}${o === prevStr ? ' checked' : ''} />
-              ${escapeHtml(o)}
-            </label>`,
-        )
+        .map((o) => {
+          const isFull = full.includes(o);
+          return `<label class="radio-label"${isFull ? ' style="opacity:.5"' : ''}>
+              <input type="radio" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${required}${o === initial ? ' checked' : ''}${isFull ? ' disabled' : ''} />
+              ${escapeHtml(o)}${isFull ? '(満員)' : ''}
+            </label>`;
+        })
         .join('');
-      inputHtml = `<div class="radio-group${field.columns === 2 ? ' two-col' : ''}">${radios}</div>`;
+      const other = field.allowOther
+        ? `<label class="radio-label"><input type="radio" name="${escapeHtml(field.name)}" value="__other__"${required} /> その他 <input type="text" class="form-input other-input" data-other-for="${escapeHtml(field.name)}" placeholder="内容を入力" style="margin-left:8px;padding:6px 8px" /></label>`
+        : '';
+      inputHtml = `<div class="radio-group${field.columns === 2 ? ' two-col' : ''}">${radios}${other}</div>`;
       break;
     }
 
     case 'checkbox': {
+      const full = state.formDef?.fullOptions?.[field.name] ?? [];
+      const initialChecked = Array.isArray(previousValue) ? prevChecked : (field.defaultOptions ?? []);
       const boxes = (field.options ?? [])
-        .map(
-          (o) =>
-            `<label class="checkbox-label">
-              <input type="checkbox" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${prevChecked.includes(o) ? ' checked' : ''} />
-              ${escapeHtml(o)}
-            </label>`,
-        )
+        .map((o) => {
+          const isFull = full.includes(o);
+          return `<label class="checkbox-label"${isFull ? ' style="opacity:.5"' : ''}>
+              <input type="checkbox" name="${escapeHtml(field.name)}" value="${escapeHtml(o)}"${initialChecked.includes(o) ? ' checked' : ''}${isFull ? ' disabled' : ''} />
+              ${escapeHtml(o)}${isFull ? '(満員)' : ''}
+            </label>`;
+        })
         .join('');
-      inputHtml = `<div class="checkbox-group${field.columns === 2 ? ' two-col' : ''}">${boxes}</div>`;
+      const other = field.allowOther
+        ? `<label class="checkbox-label"><input type="checkbox" name="${escapeHtml(field.name)}" value="__other__" /> その他 <input type="text" class="form-input other-input" data-other-for="${escapeHtml(field.name)}" placeholder="内容を入力" style="margin-left:8px;padding:6px 8px" /></label>`
+        : '';
+      inputHtml = `<div class="checkbox-group${field.columns === 2 ? ' two-col' : ''}">${boxes}${other}</div>`;
       break;
     }
 
@@ -1264,6 +1304,14 @@ function renderLoading(): void {
 
 // ========== Form Submission ==========
 
+/** 「その他」を選んだときの回答値。入力内容を括弧書きで付ける(例: その他(友人の紹介))。 */
+function resolveOther(fieldName: string, value: string): string {
+  if (value !== '__other__') return value;
+  const input = document.querySelector<HTMLInputElement>(`[data-other-for="${fieldName}"]`);
+  const text = (input?.value ?? '').trim();
+  return text ? `その他(${text})` : 'その他';
+}
+
 function collectFormData(): Record<string, unknown> {
   const { formDef } = state;
   if (!formDef) return {};
@@ -1276,18 +1324,18 @@ function collectFormData(): Record<string, unknown> {
         document.querySelectorAll<HTMLInputElement>(
           `input[name="${field.name}"]:checked`,
         ),
-      ).map((el) => el.value);
+      ).map((el) => resolveOther(field.name, el.value));
       result[field.name] = checked;
     } else if (field.type === 'radio') {
       const checked = document.querySelector<HTMLInputElement>(
         `input[name="${field.name}"]:checked`,
       );
-      result[field.name] = checked?.value ?? '';
+      result[field.name] = resolveOther(field.name, checked?.value ?? '');
     } else {
       const el = document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
         `[name="${field.name}"]`,
       );
-      result[field.name] = el?.value ?? '';
+      result[field.name] = field.type === 'select' ? resolveOther(field.name, el?.value ?? '') : (el?.value ?? '');
     }
   }
 
@@ -1737,6 +1785,12 @@ function attachXAutocomplete(): void {
 }
 
 function attachFormEvents(): void {
+  // プルダウンで「その他」を選んだときだけ、内容の入力欄を出す
+  document.querySelectorAll<HTMLSelectElement>('select.form-select').forEach((sel) => {
+    const other = document.querySelector<HTMLInputElement>(`[data-other-for="${sel.name}"]`);
+    if (!other || other.type !== 'text') return;
+    sel.addEventListener('change', () => { other.hidden = sel.value !== '__other__'; });
+  });
   const form = document.getElementById('liff-form');
   form?.addEventListener('submit', (e) => {
     e.preventDefault();

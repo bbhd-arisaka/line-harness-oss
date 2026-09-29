@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // Lステップ風の一覧画面(友だち情報欄・回答フォーム等)で共通に使う小さな部品。
 
@@ -17,11 +17,52 @@ export function useDismiss(onDismiss: () => void) {
   return ref
 }
 
-export function Popover({ onClose, children, align = 'right' }: { onClose: () => void; children: React.ReactNode; align?: 'left' | 'right' }) {
-  const ref = useDismiss(onClose)
+/** ⋮メニュー等の小さなポップオーバー。開閉時に必ずフェード(閉じるときも消える前にフェードアウトする)。 */
+export function Popover({
+  open,
+  onClose,
+  children,
+  align = 'right',
+}: {
+  open: boolean
+  onClose: () => void
+  children: React.ReactNode
+  align?: 'left' | 'right'
+}) {
+  const [mounted, setMounted] = useState(open)
+  const [shown, setShown] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      const id = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)))
+      return () => cancelAnimationFrame(id)
+    }
+    setShown(false)
+    const t = setTimeout(() => setMounted(false), 160)
+    return () => clearTimeout(t)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open, onClose])
+
+  if (!mounted) return null
   return (
     <div
       ref={ref}
+      style={{
+        opacity: shown ? 1 : 0,
+        transform: shown ? 'translateY(0)' : 'translateY(-4px)',
+        transition: 'opacity 160ms ease, transform 160ms ease',
+        pointerEvents: shown ? 'auto' : 'none',
+      }}
       className={`absolute top-full z-30 mt-1 min-w-[9rem] rounded border border-[#cacace] bg-white py-1 text-sm shadow-lg ${align === 'right' ? 'right-0' : 'left-0'}`}
     >
       {children}

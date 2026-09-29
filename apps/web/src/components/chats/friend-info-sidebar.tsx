@@ -6,6 +6,7 @@ import { api, fetchApi, type MileageHistoryItem, type MileageSummary } from '@/l
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
+import { FriendFieldPicker, type PickerFolder } from '@/components/forms/friend-field-picker'
 import { FriendNameEditDialog, NameEditPencil, resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 
 interface FriendDetail {
@@ -71,13 +72,14 @@ const METADATA_LABELS: Record<string, string> = {
 }
 
 interface FieldDef {
+  id: string
+  folderId: string | null
   fieldKey: string
   label: string
   fieldType: 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'image' | 'pdf' | 'select' | 'radio' | 'checkbox'
   options: string[]
 }
 
-const CUSTOM_KEY = '__custom__'
 
 let metadataRowSeq = 0
 interface MetadataRow { rowId: number; key: string; value: string }
@@ -115,12 +117,15 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
   const [savingMetadata, setSavingMetadata] = useState(false)
   const [metadataError, setMetadataError] = useState<string | null>(null)
   const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([])
-  const [pendingFieldKey, setPendingFieldKey] = useState<string>('')
+  const [fieldFolders, setFieldFolders] = useState<PickerFolder[]>([])
 
   // 友だち情報欄の定義(本名など、事前に登録された項目)。友だち一覧全体で共通なので一度だけ取得。
   useEffect(() => {
     fetchApi<{ success: boolean; data: FieldDef[] }>('/api/friend-fields/definitions')
       .then((res) => { if (res.success) setFieldDefs(res.data) })
+      .catch(() => { /* silent */ })
+    fetchApi<{ success: boolean; data: PickerFolder[] }>('/api/friend-fields/folders')
+      .then((res) => { if (res.success) setFieldFolders(res.data) })
       .catch(() => { /* silent */ })
   }, [])
   const fieldDefsByKey = new Map(fieldDefs.map((d) => [d.fieldKey, d]))
@@ -586,32 +591,26 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
                     )
                   })}
 
-                  <div className="flex items-center gap-1.5">
-                    <Select
-                      className="min-w-0 flex-1"
-                      aria-label="追加する項目"
-                      placeholder="項目を選択して追加..."
-                      value={pendingFieldKey}
-                      onValueChange={(v) => setPendingFieldKey(v ?? '')}
-                      items={[
-                        ...fieldDefs
-                          .filter((d) => !metadataRows.some((r) => r.key === d.fieldKey))
-                          .map((d) => ({ value: d.fieldKey, label: d.label })),
-                        { value: CUSTOM_KEY, label: '自由入力(キーを直接指定)' },
-                      ]}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <FriendFieldPicker
+                      value=""
+                      placeholder="＋ 友だち情報欄を選択して追加"
+                      fields={fieldDefs}
+                      folders={fieldFolders}
+                      disabledKeys={metadataRows.map((r) => r.key)}
+                      onChange={(key) => {
+                        if (!key) return
+                        setMetadataRows((rows) => (rows.some((r) => r.key === key) ? rows : [...rows, { rowId: metadataRowSeq++, key, value: '' }]))
+                      }}
+                      onCreated={(f) => setFieldDefs((prev) => [...prev, { ...f, options: [], fieldType: (f.fieldType ?? 'text') as FieldDef['fieldType'] }])}
                     />
                     <Button
                       type="button"
                       size="xs"
                       variant="secondary"
-                      disabled={!pendingFieldKey}
-                      onClick={() => {
-                        const key = pendingFieldKey === CUSTOM_KEY ? '' : pendingFieldKey
-                        setMetadataRows((rows) => [...rows, { rowId: metadataRowSeq++, key, value: '' }])
-                        setPendingFieldKey('')
-                      }}
+                      onClick={() => setMetadataRows((rows) => [...rows, { rowId: metadataRowSeq++, key: '', value: '' }])}
                     >
-                      + 追加
+                      自由入力(キーを直接指定)
                     </Button>
                   </div>
 

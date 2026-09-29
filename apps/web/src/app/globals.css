@@ -12,3 +12,50 @@
   --color-harness-ink: #101828;
   --color-harness-line: #e4e7ec;
 }
+
+/* ── ポップアップ共通(すべてのダイアログ・メニュー) ──────────────────────────
+   背景は暗く+ぼかし、開閉時は必ずフェード。Kumo(Base UI)のダイアログは
+   背景要素が `fixed inset-0 bg-kumo-recessed`、本体は data-starting/ending-style で開閉する。 */
+.fixed.inset-0.bg-kumo-recessed {
+  background-color: rgba(0, 0, 0, 0.55) !important;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  opacity: 1 !important;
+  transition: opacity 220ms ease !important;
+}
+.fixed.inset-0.bg-kumo-recessed[data-starting-style],
+.fixed.inset-0.bg-kumo-recessed[data-ending-style] {
+  opacity: 0 !important;
+}
+[role='dialog'][data-starting-style],
+[role='dialog'][data-ending-style],
+[role='alertdialog'][data-starting-style],
+[role='alertdialog'][data-ending-style] {
+  opacity: 0 !important;
+}
+[role='dialog'],
+[role='alertdialog'] {
+  transition-property: opacity, transform !important;
+  transition-duration: 220ms !important;
+  transition-timing-function: ease !important;
+}
+/* ドロップダウンメニュー・セレクトの選択肢リストもフェード */
+[role='menu'],
+[role='listbox'] {
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+[role='menu'][data-starting-style],
+[role='menu'][data-ending-style],
+[role='listbox'][data-starting-style],
+[role='listbox'][data-ending-style] {
+  opacity: 0;
+}
+
+/* 自前のポップオーバー(⋮メニュー等)のフェードイン */
+@keyframes popover-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.popover-fade {
+  animation: popover-fade-in 160ms ease both;
+}

@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { fetchApi } from '@/lib/api'
@@ -40,6 +41,7 @@ const SORT_LABEL: Record<SortMode, string> = {
 }
 
 export default function FriendFieldsPage() {
+  const dialogs = useDialogs()
   const [folders, setFolders] = useState<Folder[]>([])
   const [definitions, setDefinitions] = useState<Definition[]>([])
   const [loading, setLoading] = useState(true)
@@ -146,7 +148,7 @@ export default function FriendFieldsPage() {
   async function deleteFolder() {
     if (!selectedFolder) return
     setFolderMenuOpen(false)
-    if (!window.confirm(`フォルダ「${selectedFolder.name}」を削除しますか?\n中の友だち情報欄は「未分類」に移動します。`)) return
+    if (!await dialogs.confirm(`フォルダ「${selectedFolder.name}」を削除しますか?\n中の友だち情報欄は「未分類」に移動します。`)) return
     await fetchApi(`/api/friend-fields/folders/${selectedFolder.id}`, { method: 'DELETE' })
     setSelectedFolderId(UNFILED)
     await load()
@@ -179,7 +181,7 @@ export default function FriendFieldsPage() {
       targets.length === 1
         ? `友だち情報欄「${targets[0].label}」を削除しますか?`
         : `選択した${targets.length}件の友だち情報欄を削除しますか?`
-    if (!window.confirm(`${msg}\n(友だちに登録済みの値はそのまま残ります)`)) return
+    if (!await dialogs.confirm(`${msg}\n(友だちに登録済みの値はそのまま残ります)`)) return
     for (const t of targets) {
       await fetchApi(`/api/friend-fields/definitions/${t.id}`, { method: 'DELETE' })
     }
@@ -237,12 +239,10 @@ export default function FriendFieldsPage() {
                   selectedFolderId === f.id ? (
                     <div className="relative">
                       <button type="button" aria-label="フォルダメニュー" className="px-1.5 text-base font-bold" onClick={(e) => { e.stopPropagation(); setFolderMenuOpen((v) => !v) }}>⋮</button>
-                      {folderMenuOpen && (
-                        <Popover onClose={() => setFolderMenuOpen(false)}>
+                      <Popover open={folderMenuOpen} onClose={() => setFolderMenuOpen(false)}>
                           <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={openRenameFolder}>名前を変更</button>
                           <button type="button" className="block w-full px-3 py-1.5 text-left text-[#e5451f] hover:bg-[#f1f1f4]" onClick={() => void deleteFolder()}>削除</button>
                         </Popover>
-                      )}
                     </div>
                   ) : null
                 }
@@ -273,8 +273,7 @@ export default function FriendFieldsPage() {
                 <button type="button" className={btnWhite} onClick={() => setSortOpen((v) => !v)}>
                   <span aria-hidden="true">⇅</span> 並び替え
                 </button>
-                {sortOpen && (
-                  <Popover onClose={() => setSortOpen(false)}>
+                <Popover open={sortOpen} onClose={() => setSortOpen(false)}>
                     {(Object.keys(SORT_LABEL) as SortMode[]).map((m) => (
                       <button
                         key={m}
@@ -286,7 +285,6 @@ export default function FriendFieldsPage() {
                       </button>
                     ))}
                   </Popover>
-                )}
               </div>
               <div className="flex">
                 <input
@@ -358,12 +356,10 @@ export default function FriendFieldsPage() {
                       <Star filled={d.isFavorite} />
                     </button>
                     <button type="button" aria-label="メニュー" className="px-1.5 text-base font-bold" onClick={() => setRowMenuId((v) => (v === d.id ? null : d.id))}>⋮</button>
-                    {rowMenuId === d.id && (
-                      <Popover onClose={() => setRowMenuId(null)}>
+                    <Popover open={rowMenuId === d.id} onClose={() => setRowMenuId(null)}>
                         <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => void copyDefinition(d)}>コピー</button>
                         <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => void deleteDefinitions([d])}>削除</button>
                       </Popover>
-                    )}
                   </div>
                 </div>
               ))

@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -44,6 +45,7 @@ const SIZE_LABEL: Record<Group['size'], string> = {
 }
 
 export default function RichMenuEditPage() {
+  const dialogs = useDialogs()
   return (
     <Suspense
       fallback={
@@ -58,6 +60,7 @@ export default function RichMenuEditPage() {
 }
 
 function RichMenuEditPageInner() {
+  const dialogs = useDialogs()
   const searchParams = useSearchParams()
   const router = useRouter()
   const groupId = searchParams.get('id') ?? ''
@@ -82,6 +85,7 @@ function Editor({
   groupId: string
   router: ReturnType<typeof useRouter>
 }) {
+  const dialogs = useDialogs()
   const [group, setGroup] = useState<Group | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -191,7 +195,7 @@ function Editor({
 
   function removePage(pageId: string, confirmed = false) {
     if (pages.length <= 1) {
-      alert('最低 1 ページは必要です。')
+      void dialogs.alert('最低 1 ページは必要です。')
       return
     }
     // 削除しようとしているページが他 page の richmenuswitch から参照されてないか確認。
@@ -206,7 +210,7 @@ function Editor({
         ),
       )
     if (referrers.length > 0) {
-      alert(
+      void dialogs.alert(
         `このページは ${referrers.map((p) => `「${p.name}」`).join(', ')} のタブ切替アクションから参照されています。先に各 area の遷移先を変更してから削除してください。`,
       )
       return
@@ -275,7 +279,7 @@ function Editor({
       await persistDraft()
       const res = await api.richMenuGroups.publish(groupId)
       if (!res.success) throw new Error(res.error ?? 'LINE 登録失敗')
-      alert('LINE への登録が完了しました。\n\n友だちに表示するには、一覧画面の「友だちに表示」を実行してください。')
+      void dialogs.alert('LINE への登録が完了しました。\n\n友だちに表示するには、一覧画面の「友だちに表示」を実行してください。')
       await reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -297,9 +301,9 @@ function Editor({
       if (!res.success) throw new Error(res.error ?? '取り下げ失敗')
       const warnings = res.data?.warnings ?? []
       if (warnings.length > 0) {
-        alert(`取り下げ完了 (一部 warnings あり):\n\n${warnings.join('\n')}`)
+        void dialogs.alert(`取り下げ完了 (一部 warnings あり):\n\n${warnings.join('\n')}`)
       } else {
-        alert('LINE 上のメニュー登録を取り下げました。')
+        void dialogs.alert('LINE 上のメニュー登録を取り下げました。')
       }
       await reload()
     } catch (e) {
@@ -312,7 +316,7 @@ function Editor({
   async function handleDelete() {
     if (!group) return
     if (group.status === 'published') {
-      alert(
+      void dialogs.alert(
         'このリッチメニューは LINE に登録中です。\n\n' +
           '先に「LINE から取り下げ」を実行してから削除してください。',
       )
@@ -324,7 +328,7 @@ function Editor({
     )
     if (typed === null) return
     if (typed !== group.name) {
-      alert('入力が一致しませんでした。削除をキャンセルしました。')
+      void dialogs.alert('入力が一致しませんでした。削除をキャンセルしました。')
       return
     }
     try {
@@ -332,13 +336,13 @@ function Editor({
       if (!res.success) throw new Error(res.error ?? '削除失敗')
       router.push('/rich-menus')
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      void dialogs.alert(e instanceof Error ? e.message : String(e))
     }
   }
 
   async function handleImageUpload(pageId: string, file: File) {
     if (pageId.startsWith('tmp-')) {
-      alert('まず Save Draft でページを保存してから画像を upload してください。')
+      void dialogs.alert('まず Save Draft でページを保存してから画像を upload してください。')
       return
     }
     setBusy(true)
@@ -351,7 +355,7 @@ function Editor({
       })
       setImageVersion((v) => v + 1)
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      void dialogs.alert(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
@@ -481,7 +485,7 @@ function Editor({
                     setSelectedAreaId(null)
                   }
                 } else {
-                  alert(`action: ${area.actionType}\n${JSON.stringify(area.actionData)}`)
+                  void dialogs.alert(`action: ${area.actionType}\n${JSON.stringify(area.actionData)}`)
                 }
               }}
             />

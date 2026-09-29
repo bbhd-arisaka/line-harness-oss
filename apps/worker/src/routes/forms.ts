@@ -22,6 +22,7 @@ import {
   resolveDefaultLineAccount,
   stopAllFriendScenarios,
   updateFriendRegistrationFields,
+  removeTagFromFriend,
 } from '@line-crm/db';
 import type { FormLstepOptions } from '@line-crm/db';
 import { enrollFriendInScenario } from '@line-crm/db';
@@ -39,6 +40,29 @@ import type {
   FriendRegistrationTarget,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
+
+/** 選択肢ごとの選択人数を数える(キーは「項目名\u0000選択肢」)。定員数の判定用。 */
+function countOptionSelections(
+  submissions: Array<{ data: string }>,
+  fields: Array<{ name: string; optionCapacity?: Record<string, number> }>,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const sub of submissions) {
+    let data: Record<string, unknown>;
+    try { data = JSON.parse(sub.data) as Record<string, unknown>; } catch { continue; }
+    for (const f of fields) {
+      const v = data[f.name];
+      const chosen = (Array.isArray(v) ? v : [v]).map((x) => String(x ?? ''));
+      for (const opt of chosen) {
+        if (f.optionCapacity && opt in f.optionCapacity) {
+          const key = `${f.name}\u0000${opt}`;
+          counts[key] = (counts[key] ?? 0) + 1;
+        }
+      }
+    }
+  }
+  return counts;
+}
 
 /** forms.lstep_options(JSON文字列)を安全に読む。壊れていたら空オブジェクト。 */
 function parseFormLstepOptions(raw: string | null | undefined): FormLstepOptions {
@@ -173,7 +197,7 @@ function publicWebhookConfig(row: DbForm): {
 function serializePublicForm(
   row: DbForm,
   consultationWebinarSlug: string | null = null,
-  status?: { isExpired: boolean; isFull: boolean; isNotStarted?: boolean },
+  status?: { isExpired: boolean; isFull: boolean; isNotStarted?: boolean; fullOptions?: Record<string, string[]> },
   previousAnswer: Record<string, unknown> | null = null,
 ) {
   return {
@@ -188,6 +212,8 @@ function serializePublicForm(
     thanksUrl: row.thanks_url,
     lstepOptions: parseFormLstepOptions(row.lstep_options),
     isNotStarted: status?.isNotStarted ?? false,
+    // 定員に達した選択肢(項目名 → 選択肢の配列)。公開フォームで選べなくする。
+    fullOptions: status?.fullOptions ?? {},
     isExpired: status?.isExpired ?? false,
     isFull: status?.isFull ?? false,
     // Lステップの「回答復元」相当。restore_previous_answer が OFF、
@@ -223,7 +249,7 @@ function serializePublicForm(
 async function computeFormAvailability(
   db: D1Database,
   row: DbForm,
-): Promise<{ isExpired: boolean; isFull: boolean; isNotStarted: boolean }> {
+): Promise<{ isExpired: boolean; isFull: boolean; isNotStarted: boolean; fullOptions: Record<string, string[]> }> {
   const isExpired = Boolean(row.expires_at) && row.expires_at! <= jstNow();
   const startsAt = parseFormLstepOptions(row.lstep_options).startsAt;
   const isNotStarted = Boolean(startsAt) && startsAt! > jstNow();
@@ -232,7 +258,21 @@ async function computeFormAvailability(
     const count = await countFormSubmissions(db, row.id);
     isFull = count >= row.capacity_limit;
   }
-  return { isExpired, isFull, isNotStarted };
+  const fullOptions: Record<string, string[]> = {};
+  try {
+    const capped = (JSON.parse(row.fields || '[]') as Array<{ name: string; optionCapacity?: Record<string, number> }>)
+      .filter((f) => f.optionCapacity && Object.keys(f.optionCapacity).length > 0);
+    if (capped.length > 0) {
+      const subs = await getFormSubmissions(db, row.id);
+      const counts = countOptionSelections(subs, capped);
+      for (const f of capped) {
+        for (const [opt, limit] of Object.entries(f.optionCapacity ?? {})) {
+          if ((counts[`${f.name} ${opt}`] ?? 0) >= limit) (fullOptions[f.name] ??= []).push(opt);
+        }
+      }
+    }
+  } catch { /* 定員判定に失敗しても、フォーム自体の表示は止めない */ }
+  return { isExpired, isFull, isNotStarted, fullOptions };
 }
 
 async function consultationWebinarSlugForForm(
@@ -773,6 +813,10 @@ forms.post('/api/forms/:id/submit', async (c) => {
       optionTags?: Record<string, string[]>;
       friendFieldKey?: string;
       optionFriendFieldValues?: Record<string, string>;
+      // 選択肢ごとの「アクション」(タグ追加/削除・シナリオ開始)
+      optionActions?: Record<string, { addTagIds?: string[]; removeTagIds?: string[]; scenarioId?: string }>;
+      // 選択肢ごとの定員数(先着)
+      optionCapacity?: Record<string, number>;
     }>;
 
     for (const field of fields) {
@@ -783,6 +827,25 @@ forms.post('/api/forms/:id/submit', async (c) => {
             { success: false, error: `${field.label} は必須項目です` },
             400,
           );
+        }
+      }
+    }
+
+    // 選択肢ごとの定員数(先着)。満員の選択肢を選んだ回答は受け付けない。
+    {
+      const capped = fields.filter((f) => f.optionCapacity && Object.keys(f.optionCapacity).length > 0);
+      if (capped.length > 0) {
+        const existing = await getFormSubmissions(c.env.DB, formId);
+        const counts = countOptionSelections(existing, capped);
+        for (const field of capped) {
+          const chosen = submissionData[field.name];
+          const selected = (Array.isArray(chosen) ? chosen : [chosen]).map((v) => String(v ?? ''));
+          for (const opt of selected) {
+            const limit = field.optionCapacity?.[opt];
+            if (limit != null && (counts[`${field.name}\u0000${opt}`] ?? 0) >= limit) {
+              return c.json({ success: false, error: `「${opt}」は定員に達したため選択できません` }, 400);
+            }
+          }
         }
       }
     }
@@ -906,6 +969,8 @@ forms.post('/api/forms/:id/submit', async (c) => {
         let displayNamePatch: string | undefined;
         let memoPatch: string | undefined;
         const tagIdsToAttach = new Set<string>();
+        const tagIdsToDetach = new Set<string>();
+        const scenarioIdsToStart = new Set<string>();
 
         for (const field of fields) {
           const value = submissionData[field.name];
@@ -921,15 +986,29 @@ forms.post('/api/forms/:id/submit', async (c) => {
             }
           }
 
-          if (field.type === 'radio' || field.type === 'checkbox') {
+          if (field.type === 'radio' || field.type === 'checkbox' || field.type === 'select') {
             const selected = Array.isArray(value) ? value : [value];
+            const friendValues: string[] = [];
             for (const opt of selected) {
               const optStr = String(opt);
-              const tagIds = field.optionTags?.[optStr];
+              // 「その他(自由入力)」は、選択肢名「その他」の設定を使う
+              const optKey = optStr.startsWith('その他(') ? 'その他' : optStr;
+              const tagIds = field.optionTags?.[optKey];
               if (tagIds) for (const id of tagIds) tagIdsToAttach.add(id);
-              if (field.friendFieldKey && field.optionFriendFieldValues?.[optStr] !== undefined) {
-                metadataPatch[field.friendFieldKey] = field.optionFriendFieldValues[optStr];
+              const action = field.optionActions?.[optKey];
+              if (action) {
+                for (const id of action.addTagIds ?? []) tagIdsToAttach.add(id);
+                for (const id of action.removeTagIds ?? []) tagIdsToDetach.add(id);
+                if (action.scenarioId) scenarioIdsToStart.add(action.scenarioId);
               }
+              if (field.friendFieldKey) {
+                // 「登録する値」が空なら、選択肢の文言をそのまま友だち情報へ入れる
+                const custom = field.optionFriendFieldValues?.[optKey];
+                friendValues.push(custom !== undefined && custom !== '' ? custom : optStr);
+              }
+            }
+            if (field.friendFieldKey && friendValues.length > 0) {
+              metadataPatch[field.friendFieldKey] = field.type === 'checkbox' ? friendValues.join(', ') : friendValues[0];
             }
           }
         }
@@ -956,6 +1035,12 @@ forms.post('/api/forms/:id/submit', async (c) => {
               workerUrl: c.env.WORKER_URL,
             }),
           );
+        }
+        for (const tagId of tagIdsToDetach) {
+          if (!tagIdsToAttach.has(tagId)) sideEffects.push(removeTagFromFriend(db, friendId, tagId));
+        }
+        for (const scenarioId of scenarioIdsToStart) {
+          sideEffects.push(enrollFriendInScenario(db, friendId, scenarioId));
         }
       }
 

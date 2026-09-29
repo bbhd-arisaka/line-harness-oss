@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import Header from '@/components/layout/header'
@@ -46,6 +47,7 @@ type LineMenu = {
 }
 
 export default function RichMenusListPage() {
+  const dialogs = useDialogs()
   const { selectedAccount } = useAccount()
   const [groups, setGroups] = useState<RichMenuGroupListItem[]>([])
   const [external, setExternal] = useState<{
@@ -104,7 +106,7 @@ export default function RichMenusListPage() {
 
   async function handleDelete(group: RichMenuGroupListItem, confirmed = false) {
     if (group.status === 'published') {
-      alert(
+      void dialogs.alert(
         `「${group.name}」は LINE に登録されています。\n\n` +
           '編集画面の「危険な操作」から「LINE から取り下げ」を実行してから、改めて削除してください。',
       )
@@ -117,7 +119,7 @@ export default function RichMenusListPage() {
       if (!res.success) throw new Error(res.error ?? '削除失敗')
       await reload()
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      void dialogs.alert(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -130,7 +132,7 @@ export default function RichMenusListPage() {
       if (!res.success) throw new Error(res.error ?? '削除失敗')
       await reload()
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      void dialogs.alert(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -141,10 +143,10 @@ export default function RichMenusListPage() {
     try {
       const res = await api.richMenuGroups.importFromLine(menu.richMenuId, selectedAccount.id)
       if (!res.success) throw new Error(res.error ?? '取り込み失敗')
-      alert(`取り込みました: ${res.data?.name ?? menu.name}`)
+      void dialogs.alert(`取り込みました: ${res.data?.name ?? menu.name}`)
       await reload()
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      void dialogs.alert(e instanceof Error ? e.message : String(e))
     }
   }
 

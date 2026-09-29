@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 export type Area = {
@@ -83,6 +84,7 @@ export function CanvasEditor({
   preview = false,
   onPreviewAction,
 }: Props) {
+  const dialogs = useDialogs()
   const canvasRef = useRef<HTMLDivElement>(null)
   const dims = SIZE_DIMS[size]
   const [scale, setScale] = useState(0.3)
@@ -198,7 +200,7 @@ export function CanvasEditor({
           // LINE の上限 (1 page あたり area 20 個) を事前にブロック。
           // 上限を超えて追加させると Save Draft / Publish が 400 になる。
           if (areas.length >= 20) {
-            alert('1 ページあたり areas は最大 20 個までです (LINE 仕様)。')
+            void dialogs.alert('1 ページあたり areas は最大 20 個までです (LINE 仕様)。')
           } else {
             onAddArea({
               id: typeof crypto !== 'undefined' && 'randomUUID' in crypto

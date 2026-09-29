@@ -43,6 +43,7 @@ export function PreviewPane({
             return (
               <div
                 key={b.rowId}
+                id={`preview-block-${b.rowId}`}
                 onClick={() => onSelect(b.rowId)}
                 className={`relative cursor-pointer rounded p-1 ${active ? 'outline outline-2 outline-[#0e9aa7]' : ''}`}
               >
@@ -80,12 +81,27 @@ function PreviewBlock({ b, accent, error }: { b: BlockDraft; accent: string; err
   if (b.type === 'subheading') return <h4 className="text-xs font-bold">{title}</h4>
   if (b.type === 'paragraph') return <p className="whitespace-pre-wrap text-xs leading-relaxed">{b.label || '(本文未入力)'}</p>
   if (b.type === 'image') {
+    const width = b.imageSize === 'small' ? '50%' : b.imageSize === 'large' ? '100%' : '80%'
     return b.imageUrl
-      ? <img src={b.imageUrl} alt={b.label} className="w-full rounded" />
+      ? <img src={b.imageUrl} alt={b.label} className="mx-auto rounded" style={{ width }} />
       : <div className="flex h-20 items-center justify-center rounded bg-black/10 text-xs text-black/40">画像</div>
   }
   if (b.type === 'button') {
-    return <div className="rounded border py-2 text-center text-xs font-bold" style={{ borderColor: accent, color: accent }}>{b.label || 'ボタン'}</div>
+    const color = b.buttonColor || accent
+    const filled = b.buttonStyle !== 'outline'
+    return (
+      <div
+        className="border py-2 text-center text-xs font-bold"
+        style={{
+          borderColor: color,
+          color: filled ? '#fff' : color,
+          background: filled ? color : '#fff',
+          borderRadius: b.buttonStyle === 'rounded' ? 999 : 6,
+        }}
+      >
+        {b.label || 'ボタン'}
+      </div>
+    )
   }
   return (
     <div className={b.hidden ? 'opacity-40' : ''}>
@@ -99,10 +115,17 @@ function PreviewBlock({ b, accent, error }: { b: BlockDraft; accent: string; err
         <div className="space-y-1">
           {(b.options.length ? b.options : ['']).map((o, i) => (
             <div key={i} className="flex items-center gap-1.5 rounded border border-black/15 bg-white px-2 py-1 text-xs">
-              <span className={`inline-block h-3 w-3 border border-black/30 ${b.type === 'radio' ? 'rounded-full' : 'rounded-sm'}`} />
+              <span className={`inline-block h-3 w-3 border ${b.defaultOptions.includes(o) ? 'border-[#069e04] bg-[#069e04]' : 'border-black/30'} ${b.type === 'radio' ? 'rounded-full' : 'rounded-sm'}`} />
               {o || '選択肢'}
+              {b.optionCapacity[o] ? <span className="ml-auto text-[10px] text-black/40">定員{b.optionCapacity[o]}名</span> : null}
             </div>
           ))}
+          {b.allowOther && (
+            <div className="flex items-center gap-1.5 rounded border border-black/15 bg-white px-2 py-1 text-xs">
+              <span className={`inline-block h-3 w-3 border border-black/30 ${b.type === 'radio' ? 'rounded-full' : 'rounded-sm'}`} />
+              その他
+            </div>
+          )}
         </div>
       ) : b.type === 'select' || b.type === 'prefecture' ? (
         <div className="rounded border border-black/15 bg-white px-2 py-1.5 text-xs text-black/50">{b.type === 'select' ? '選択してください' : PREFECTURE_SAMPLE} ▾</div>

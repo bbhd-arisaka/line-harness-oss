@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getApiBase } from '@/lib/api-base'
@@ -51,6 +52,7 @@ async function fetchHistory(adminKey: string): Promise<Row[]> {
 }
 
 export default function UpdatesPage() {
+  const dialogs = useDialogs()
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
 
   useEffect(() => {
@@ -135,7 +137,7 @@ export default function UpdatesPage() {
                         size="xs"
                         variant="ghost"
                         onClick={() =>
-                          alert('rollback not implemented in MVP — use CLI')
+                          void dialogs.alert('rollback not implemented in MVP — use CLI')
                         }
                       >
                         Rollback

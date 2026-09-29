@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -7,6 +8,7 @@ import { api, fetchApi } from '@/lib/api'
 import { BlockCard } from '@/components/forms/block-card'
 import { DesignModal, OptionModal } from '@/components/forms/modals'
 import { PreviewPane } from '@/components/forms/preview-pane'
+import type { PickerField, PickerFolder } from '@/components/forms/friend-field-picker'
 import { Popover } from '@/components/lstep/ui'
 import {
   BLOCK_MENU,
@@ -27,6 +29,7 @@ interface Snapshot { blocks: BlockDraft[]; sectionCount: number }
 const toolBtn = 'px-2 py-1 text-xs font-bold text-[#069e04] disabled:text-[#9fd49d] disabled:cursor-not-allowed'
 
 export default function FormEditPage() {
+  const dialogs = useDialogs()
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [formId, setFormId] = useState<string | null>(null)
@@ -35,7 +38,8 @@ export default function FormEditPage() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [tags, setTags] = useState<Array<{ id: string; name: string }>>([])
   const [scenarios, setScenarios] = useState<Array<{ id: string; name: string }>>([])
-  const [friendFields, setFriendFields] = useState<Array<{ fieldKey: string; label: string }>>([])
+  const [pickerFields, setPickerFields] = useState<PickerField[]>([])
+  const [pickerFolders, setPickerFolders] = useState<PickerFolder[]>([])
   const [sheetsEmail, setSheetsEmail] = useState<string | null>(null)
 
   const [section, setSection] = useState(1) // 0=共通ヘッダ
@@ -58,17 +62,19 @@ export default function FormEditPage() {
     setFormId(id)
     ;(async () => {
       try {
-        const [fRes, tRes, sRes, dRes, gRes] = await Promise.all([
+        const [fRes, tRes, sRes, dRes, pfRes, gRes] = await Promise.all([
           fetchApi<{ success: boolean; data: Folder[] }>('/api/forms/folders'),
           api.tags.list(),
           api.scenarios.list(),
-          fetchApi<{ success: boolean; data: Array<{ fieldKey: string; label: string }> }>('/api/friend-fields/definitions'),
+          fetchApi<{ success: boolean; data: PickerField[] }>('/api/friend-fields/definitions'),
+          fetchApi<{ success: boolean; data: PickerFolder[] }>('/api/friend-fields/folders'),
           fetchApi<{ success: boolean; data: { serviceAccountEmail: string | null } }>('/api/forms/integrations/google-sheets').catch(() => null),
         ])
         if (fRes.success) setFolders(fRes.data)
         if (tRes.success) setTags(tRes.data.map((t) => ({ id: t.id, name: t.name })))
         if (sRes.success) setScenarios(sRes.data.map((s) => ({ id: s.id, name: s.name })))
-        if (dRes.success) setFriendFields(dRes.data)
+        if (dRes.success) setPickerFields(dRes.data)
+        if (pfRes.success) setPickerFolders(pfRes.data)
         if (gRes && gRes.success) setSheetsEmail(gRes.data.serviceAccountEmail)
         if (id) {
           const res = await fetchApi<{ success: boolean; data: Record<string, unknown> }>(`/api/forms/${id}`)
@@ -129,6 +135,31 @@ export default function FormEditPage() {
   const selectedBlock = draft.blocks.find((b) => b.rowId === selectedRowId) ?? null
   const selectedInSection = selectedBlock?.section === section ? selectedBlock : null
 
+  // プレビューで項目を押したら、その編集カードへスムーズにスクロールする。
+  // 共通ヘッダの項目は、どのセクションのプレビューにも出るため、必要なら先に共通ヘッダのタブへ切り替える。
+  const [pendingScroll, setPendingScroll] = useState<number | null>(null)
+  function selectFromPreview(rowId: number) {
+    const b = draft.blocks.find((x) => x.rowId === rowId)
+    if (!b) return
+    setSelectedRowId(rowId)
+    if (b.section !== section) setSection(b.section)
+    setPendingScroll(rowId)
+  }
+  // 編集カードを選んだら、プレビュー側の該当項目も見える位置へ(こちらもスムーズスクロール)
+  useEffect(() => {
+    if (selectedRowId === null) return
+    document.getElementById(`preview-block-${selectedRowId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [selectedRowId])
+
+  useEffect(() => {
+    if (pendingScroll === null) return
+    const id = requestAnimationFrame(() => {
+      document.getElementById(`block-card-${pendingScroll}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setPendingScroll(null)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [pendingScroll, section])
+
   function addBlock(type: FieldType) {
     setMenuOpen(false)
     const b = newBlock(type, section)
@@ -184,10 +215,10 @@ export default function FormEditPage() {
     setSelectedRowId(null)
   }
 
-  function deleteSection(num: number) {
+  async function deleteSection(num: number) {
     setSectionMenu(null)
-    if (draft.sectionCount <= 1) { window.alert('セクションは最低1つ必要です'); return }
-    if (!window.confirm(`セクション${num}を削除しますか?\nこのセクションのブロックも削除されます。`)) return
+    if (draft.sectionCount <= 1) { void dialogs.alert('セクションは最低1つ必要です'); return }
+    if (!await dialogs.confirm(`セクション${num}を削除しますか?\nこのセクションのブロックも削除されます。`)) return
     const blocks = draft.blocks
       .filter((b) => b.section !== num)
       .map((b) => (b.section > num ? { ...b, section: b.section - 1 } : b))
@@ -227,7 +258,7 @@ export default function FormEditPage() {
 
   function preview() {
     if (formUrl) window.open(formUrl, '_blank', 'noopener')
-    else window.alert('プレビューは、フォームを保存してから開けます。')
+    else void dialogs.alert('プレビューは、フォームを保存してから開けます。')
   }
 
   const sectionTabs = [0, ...Array.from({ length: draft.sectionCount }, (_, i) => i + 1)]
@@ -284,11 +315,6 @@ export default function FormEditPage() {
         <p className="p-6 text-sm text-[#757578]">読み込み中...</p>
       ) : (
         <div className="flex h-[calc(100vh-13rem)] min-h-[28rem] border border-[#e3e3e6] bg-white">
-          {/* 左: プレビュー */}
-          <div className="w-[21rem] flex-shrink-0 border-r border-[#e3e3e6]">
-            <PreviewPane draft={draft} section={section} selectedRowId={selectedRowId} onSelect={setSelectedRowId} />
-          </div>
-
           {/* 右: セクションとブロック */}
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex items-end gap-1 border-b-[3px] border-[#069e04] bg-[#dff3df] px-2 pt-2">
@@ -313,11 +339,9 @@ export default function FormEditPage() {
                       </span>
                     )}
                   </button>
-                  {sectionMenu === n && (
-                    <Popover onClose={() => setSectionMenu(null)} align="left">
+                  <Popover open={sectionMenu === n} onClose={() => setSectionMenu(null)} align="left">
                       <button type="button" className="block w-full px-3 py-1.5 text-left text-[#e5451f] hover:bg-[#f1f1f4]" onClick={() => deleteSection(n)}>セクションを削除</button>
                     </Popover>
-                  )}
                 </div>
               ))}
               <button
@@ -347,8 +371,7 @@ export default function FormEditPage() {
                   >
                     ＋ブロックを追加 ▾
                   </button>
-                  {menuOpen && (
-                    <Popover onClose={() => setMenuOpen(false)}>
+                  <Popover open={menuOpen} onClose={() => setMenuOpen(false)}>
                       {BLOCK_MENU.map((m, i) =>
                         m.type === 'divider' ? (
                           <div key={i} className="my-1 border-t border-[#e3e3e6]" />
@@ -364,7 +387,6 @@ export default function FormEditPage() {
                         ),
                       )}
                     </Popover>
-                  )}
                 </div>
               </div>
             </div>
@@ -384,8 +406,11 @@ export default function FormEditPage() {
                     block={b}
                     number={numberInSection(b)}
                     selected={b.rowId === selectedRowId}
-                    friendFields={friendFields}
+                    pickerFields={pickerFields}
+                    pickerFolders={pickerFolders}
                     tags={tags}
+                    scenarios={scenarios}
+                    onFieldCreated={(f) => setPickerFields((prev) => [...prev, f])}
                     onSelect={() => setSelectedRowId(b.rowId)}
                     onChange={(p) => updateBlock(b.rowId, p)}
                   />
@@ -393,6 +418,11 @@ export default function FormEditPage() {
               )}
             </div>
           </div>
+          {/* 右: プレビュー */}
+          <div className="w-[21rem] flex-shrink-0 border-l border-[#e3e3e6]">
+            <PreviewPane draft={draft} section={section} selectedRowId={selectedRowId} onSelect={selectFromPreview} />
+          </div>
+
         </div>
       )}
 
@@ -400,17 +430,21 @@ export default function FormEditPage() {
         <Link
           href={`/form-submissions?group=${draft.folderId}`}
           className="text-[#2b7bb9] underline"
-          onClick={(e) => { if (dirty && !window.confirm('保存されていない変更があります。破棄して戻りますか?')) e.preventDefault() }}
+          onClick={(e) => {
+            if (!dirty) return
+            e.preventDefault()
+            void dialogs.confirm('保存されていない変更があります。破棄して戻りますか?', { okLabel: '破棄して戻る', danger: true }).then((ok) => {
+              if (ok) { setDirty(false); router.push(`/form-submissions?group=${draft.folderId}`) }
+            })
+          }}
         >
           戻る
         </Link>
       </p>
 
-      {modal === 'design' && (
-        <DesignModal draft={draft} onClose={() => setModal(null)} onSave={(p) => { patch(p); setModal(null) }} />
-      )}
-      {modal === 'option' && (
-        <OptionModal
+      <DesignModal open={modal === 'design'} draft={draft} onClose={() => setModal(null)} onSave={(p) => { patch(p); setModal(null) }} />
+      <OptionModal
+          open={modal === 'option'}
           draft={draft}
           tags={tags}
           scenarios={scenarios}
@@ -418,7 +452,6 @@ export default function FormEditPage() {
           onClose={() => setModal(null)}
           onSave={(p) => { patch(p); setModal(null) }}
         />
-      )}
     </div>
   )
 }

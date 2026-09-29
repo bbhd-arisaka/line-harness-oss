@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { fetchApi } from '@/lib/api'
@@ -52,6 +53,7 @@ function Toggle({ on, disabled, onChange, label }: { on: boolean; disabled?: boo
 }
 
 export default function FormListPage() {
+  const dialogs = useDialogs()
   const [forms, setForms] = useState<Form[]>([])
   const [folders, setFolders] = useState<FormFolder[]>([])
   const [loading, setLoading] = useState(true)
@@ -138,7 +140,7 @@ export default function FormListPage() {
   async function deleteFolder() {
     if (!selectedFolder) return
     setFolderMenuOpen(false)
-    if (!window.confirm(`フォルダ「${selectedFolder.name}」を削除しますか?\n中の回答フォームは「未分類」に移動します。`)) return
+    if (!await dialogs.confirm(`フォルダ「${selectedFolder.name}」を削除しますか?\n中の回答フォームは「未分類」に移動します。`)) return
     await fetchApi(`/api/forms/folders/${selectedFolder.id}`, { method: 'DELETE' })
     setSelectedFolderId(UNASSIGNED)
     await load()
@@ -173,7 +175,7 @@ export default function FormListPage() {
   }
   async function remove(f: Form) {
     setRowMenuId(null)
-    if (!window.confirm(`回答フォーム「${displayFormName(f.name)}」を削除しますか?\n回答データも一緒に削除されます。`)) return
+    if (!await dialogs.confirm(`回答フォーム「${displayFormName(f.name)}」を削除しますか?\n回答データも一緒に削除されます。`)) return
     await fetchApi(`/api/forms/${f.id}`, { method: 'DELETE' })
     await load()
   }
@@ -216,8 +218,7 @@ export default function FormListPage() {
                   selectedFolderId === f.id ? (
                     <div className="relative">
                       <button type="button" aria-label="フォルダメニュー" className="px-1.5 text-base font-bold" onClick={(e) => { e.stopPropagation(); setFolderMenuOpen((v) => !v) }}>⋮</button>
-                      {folderMenuOpen && (
-                        <Popover onClose={() => setFolderMenuOpen(false)}>
+                      <Popover open={folderMenuOpen} onClose={() => setFolderMenuOpen(false)}>
                           <button
                             type="button"
                             className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]"
@@ -227,7 +228,6 @@ export default function FormListPage() {
                           </button>
                           <button type="button" className="block w-full px-3 py-1.5 text-left text-[#e5451f] hover:bg-[#f1f1f4]" onClick={() => void deleteFolder()}>削除</button>
                         </Popover>
-                      )}
                     </div>
                   ) : null
                 }
@@ -246,8 +246,7 @@ export default function FormListPage() {
                 <button type="button" className={btnWhite} onClick={() => setSortOpen((v) => !v)}>
                   <span aria-hidden="true">⇅</span> 並び替え
                 </button>
-                {sortOpen && (
-                  <Popover onClose={() => setSortOpen(false)}>
+                <Popover open={sortOpen} onClose={() => setSortOpen(false)}>
                     {(Object.keys(SORT_LABEL) as SortMode[]).map((m) => (
                       <button
                         key={m}
@@ -259,7 +258,6 @@ export default function FormListPage() {
                       </button>
                     ))}
                   </Popover>
-                )}
               </div>
               <div className="flex">
                 <input
@@ -308,15 +306,13 @@ export default function FormListPage() {
                     <span><Toggle on={f.isActive} disabled={busyId === f.id} onChange={() => void toggleActive(f)} label={`${displayFormName(f.name)}を${f.isActive ? '停止' : '公開'}`} /></span>
                     <div className="relative flex justify-end">
                       <button type="button" aria-label="メニュー" className="px-1.5 text-base font-bold" onClick={() => setRowMenuId((v) => (v === f.id ? null : f.id))}>⋮</button>
-                      {rowMenuId === f.id && (
-                        <Popover onClose={() => setRowMenuId(null)}>
+                      <Popover open={rowMenuId === f.id} onClose={() => setRowMenuId(null)}>
                           {f.formUrl && (
                             <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => { setRowMenuId(null); window.open(f.formUrl!, '_blank', 'noopener') }}>プレビュー</button>
                           )}
                           <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => void duplicate(f)}>コピー</button>
                           <button type="button" className="block w-full px-3 py-1.5 text-left text-[#e5451f] hover:bg-[#f1f1f4]" onClick={() => void remove(f)}>削除</button>
                         </Popover>
-                      )}
                     </div>
                   </div>
                 )

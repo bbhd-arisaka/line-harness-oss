@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { getApiBase } from '@/lib/api-base'
@@ -16,6 +17,7 @@ import { Loader } from '@cloudflare/kumo/components/loader'
 import { Select } from '@cloudflare/kumo/components/select'
 
 export default function PoolsPage() {
+  const dialogs = useDialogs()
   const [pools, setPools] = useState<TrafficPool[]>([])
   const [accounts, setAccounts] = useState<LineAccount[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,6 +99,7 @@ function PoolCard({
   accounts: LineAccount[]
   onChange: () => void
 }) {
+  const dialogs = useDialogs()
   const isMain = pool.slug === 'main'
   const apiBase = getApiBase() ?? ''
   const publicUrl = `${apiBase}/pool/${pool.slug}`
@@ -118,7 +121,7 @@ function PoolCard({
       setDeleteOpen(false)
       onChange()
     }
-    else alert(res.error ?? '削除に失敗しました')
+    else void dialogs.alert(res.error ?? '削除に失敗しました')
   }
 
   return (

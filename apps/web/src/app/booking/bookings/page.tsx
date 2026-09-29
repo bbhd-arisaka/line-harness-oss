@@ -1,5 +1,6 @@
 'use client'
 
+import { useDialogs } from '@/components/ui/dialogs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Header from '@/components/layout/header'
@@ -95,6 +96,7 @@ const receivedFormatter = new Intl.DateTimeFormat('ja-JP', {
 })
 
 export default function BookingsPage() {
+  const dialogs = useDialogs()
   const { selectedAccountId, selectedAccount } = useAccount()
   const [statusFilter, setStatusFilter] = useState('all')
   const [timeFilter, setTimeFilter] = useState<BookingTimeFilter>('upcoming')
@@ -165,7 +167,7 @@ export default function BookingsPage() {
       setPendingAction(null)
       await load()
     } catch (e) {
-      alert(`操作に失敗しました: ${e instanceof Error ? e.message : String(e)}`)
+      void dialogs.alert(`操作に失敗しました: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setDeciding(false)
     }

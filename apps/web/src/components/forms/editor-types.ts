@@ -38,11 +38,28 @@ export const TEXT_SUBTYPES: Array<{ value: FieldType; label: string }> = [
 ]
 
 export const OPTION_TYPES: FieldType[] = ['select', 'radio', 'checkbox']
+/** 「タイプ」プルダウンで相互に切り替えられる選択系ブロック */
+export const CHOICE_TYPES: Array<{ value: FieldType; label: string }> = [
+  { value: 'radio', label: 'ラジオボタン' },
+  { value: 'checkbox', label: 'チェックボックス' },
+  { value: 'select', label: 'プルダウン' },
+]
 export const DISPLAY_ONLY_TYPES: FieldType[] = ['heading', 'subheading', 'paragraph', 'image', 'button']
 /** 「回答の登録先(複数可)」を設定できる項目タイプ(単一値の入力系)。 */
 export const REGISTRATION_TARGET_TYPES: FieldType[] = ['text', 'email', 'tel', 'number', 'textarea', 'date', 'prefecture', 'select']
 /** 選択時の動作(タグ追加・友だち情報への値書き込み)を選択肢ごとに設定できるタイプ。 */
-export const CHOICE_ACTION_TYPES: FieldType[] = ['radio', 'checkbox']
+export const CHOICE_ACTION_TYPES: FieldType[] = ['radio', 'checkbox', 'select']
+/** 「友だち情報に登録」だけを持つ入力タイプ(本名・システム表示名・個別メモは出さない) */
+export const FRIEND_FIELD_ONLY_TYPES: FieldType[] = ['date', 'prefecture', 'file']
+
+/** 選択時の動作(Lステップの「タグ追加 / 友だち情報に登録 / アクション」) */
+export type ChoiceMode = 'tag' | 'friend' | 'action'
+
+export interface OptionAction {
+  addTagIds: string[]
+  removeTagIds: string[]
+  scenarioId: string
+}
 /** 「説明文/初期値/プレースホルダ/入力制限」を持てる入力タイプ。 */
 export const TEXT_INPUT_TYPES: FieldType[] = ['text', 'email', 'tel', 'number', 'textarea']
 
@@ -81,6 +98,18 @@ export interface BlockDraft {
   optionFriendFieldValues: Record<string, string>
   imageUrl: string
   buttonUrl: string
+  // 選択系ブロック
+  choiceMode: ChoiceMode
+  optionActions: Record<string, OptionAction>
+  allowOther: boolean
+  defaultOptions: string[]
+  optionCapacity: Record<string, number>
+  // 画像・ボタン・ファイル
+  imageSize: 'small' | 'normal' | 'large'
+  imageLinkUrl: string
+  buttonStyle: 'default' | 'outline' | 'rounded'
+  buttonColor: string
+  fileKind: 'image' | 'pdf'
 }
 
 export function newBlock(type: FieldType, section: number): BlockDraft {
@@ -104,6 +133,16 @@ export function newBlock(type: FieldType, section: number): BlockDraft {
     optionFriendFieldValues: {},
     imageUrl: '',
     buttonUrl: '',
+    choiceMode: 'tag',
+    optionActions: {},
+    allowOther: false,
+    defaultOptions: [],
+    optionCapacity: {},
+    imageSize: 'normal',
+    imageLinkUrl: '',
+    buttonStyle: 'default',
+    buttonColor: '',
+    fileKind: 'image',
   }
 }
 
@@ -117,6 +156,9 @@ export function duplicateBlock(b: BlockDraft): BlockDraft {
     registrationTargets: b.registrationTargets.map((t) => ({ ...t })),
     optionTagIds: JSON.parse(JSON.stringify(b.optionTagIds)),
     optionFriendFieldValues: { ...b.optionFriendFieldValues },
+    optionActions: JSON.parse(JSON.stringify(b.optionActions)),
+    defaultOptions: [...b.defaultOptions],
+    optionCapacity: { ...b.optionCapacity },
   }
 }
 
@@ -140,6 +182,15 @@ export interface ApiField {
   placeholder?: string
   maxLength?: number
   hidden?: boolean
+  optionActions?: Record<string, OptionAction>
+  allowOther?: boolean
+  defaultOptions?: string[]
+  optionCapacity?: Record<string, number>
+  imageSize?: 'small' | 'normal' | 'large'
+  imageLinkUrl?: string
+  buttonStyle?: 'default' | 'outline' | 'rounded'
+  buttonColor?: string
+  fileKind?: 'image' | 'pdf'
 }
 
 export function blockFromApi(f: ApiField): BlockDraft {
@@ -168,6 +219,16 @@ export function blockFromApi(f: ApiField): BlockDraft {
     optionFriendFieldValues: f.optionFriendFieldValues ?? {},
     imageUrl: f.imageUrl ?? '',
     buttonUrl: f.buttonUrl ?? '',
+    choiceMode: f.friendFieldKey ? 'friend' : f.optionActions && Object.keys(f.optionActions).length > 0 ? 'action' : 'tag',
+    optionActions: f.optionActions ?? {},
+    allowOther: Boolean(f.allowOther),
+    defaultOptions: f.defaultOptions ?? [],
+    optionCapacity: f.optionCapacity ?? {},
+    imageSize: f.imageSize ?? 'normal',
+    imageLinkUrl: f.imageLinkUrl ?? '',
+    buttonStyle: f.buttonStyle ?? 'default',
+    buttonColor: f.buttonColor ?? '',
+    fileKind: f.fileKind ?? 'image',
   }
 }
 
@@ -191,14 +252,45 @@ export function blocksToApi(blocks: BlockDraft[]): ApiField[] {
     const f: ApiField = { name, label: b.label.trim(), type: b.type, required: b.required, section: b.section }
     if (b.hidden) f.hidden = true
     if (OPTION_TYPES.includes(b.type)) f.options = b.options.map((o) => o.trim()).filter(Boolean)
-    if (REGISTRATION_TARGET_TYPES.includes(b.type) && b.registrationTargets.length > 0) f.registrationTargets = b.registrationTargets
+    if ((REGISTRATION_TARGET_TYPES.includes(b.type) || b.type === 'file') && b.registrationTargets.length > 0) f.registrationTargets = b.registrationTargets
     if (CHOICE_ACTION_TYPES.includes(b.type)) {
-      if (b.friendFieldKey) f.friendFieldKey = b.friendFieldKey
-      if (Object.keys(b.optionTagIds).length > 0) f.optionTags = b.optionTagIds
-      if (Object.keys(b.optionFriendFieldValues).length > 0) f.optionFriendFieldValues = b.optionFriendFieldValues
+      // 選択時の動作は、いま選んでいるモードの内容だけを保存する(切り替えて残った古い設定は捨てる)
+      const names = new Set(b.options.map((o) => o.trim()).filter(Boolean))
+      if (b.allowOther) names.add('その他')
+      const only = <T,>(rec: Record<string, T>) => Object.fromEntries(Object.entries(rec).filter(([k]) => names.has(k)))
+      if (b.choiceMode === 'friend' && b.friendFieldKey) {
+        f.friendFieldKey = b.friendFieldKey
+        const vals = Object.fromEntries(Object.entries(only(b.optionFriendFieldValues)).filter(([, v]) => v !== ''))
+        if (Object.keys(vals).length > 0) f.optionFriendFieldValues = vals
+      }
+      if (b.choiceMode === 'tag') {
+        const tags = only(b.optionTagIds)
+        if (Object.keys(tags).length > 0) f.optionTags = tags
+      }
+      if (b.choiceMode === 'action') {
+        const acts = Object.fromEntries(
+          Object.entries(only(b.optionActions)).filter(([, a]) => a.addTagIds.length || a.removeTagIds.length || a.scenarioId),
+        )
+        if (Object.keys(acts).length > 0) f.optionActions = acts
+      }
+      if (b.allowOther) f.allowOther = true
+      const defs = b.defaultOptions.filter((o) => names.has(o))
+      if (defs.length > 0) f.defaultOptions = defs
+      const caps = only(b.optionCapacity)
+      if (Object.keys(caps).length > 0) f.optionCapacity = caps
     }
-    if (b.type === 'image') f.imageUrl = b.imageUrl.trim() || undefined
-    if (b.type === 'button') { f.buttonLabel = b.label.trim(); f.buttonUrl = b.buttonUrl.trim() || undefined }
+    if (b.type === 'image') {
+      f.imageUrl = b.imageUrl.trim() || undefined
+      if (b.imageSize !== 'normal') f.imageSize = b.imageSize
+      if (b.imageLinkUrl.trim()) f.imageLinkUrl = b.imageLinkUrl.trim()
+    }
+    if (b.type === 'button') {
+      f.buttonLabel = b.label.trim()
+      f.buttonUrl = b.buttonUrl.trim() || undefined
+      if (b.buttonStyle !== 'default') f.buttonStyle = b.buttonStyle
+      if (b.buttonColor) f.buttonColor = b.buttonColor
+    }
+    if (b.type === 'file' && b.fileKind !== 'image') f.fileKind = b.fileKind
     if (!DISPLAY_ONLY_TYPES.includes(b.type)) {
       if (b.open.description && b.description.trim()) f.description = b.description.trim()
       if (b.open.defaultValue && b.defaultValue) f.defaultValue = b.defaultValue

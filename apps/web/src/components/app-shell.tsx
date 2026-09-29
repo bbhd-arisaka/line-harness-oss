@@ -6,9 +6,10 @@ import TopBar from './layout/top-bar'
 import { UpdateBanner } from './update/update-banner'
 import { QuotaBanner } from './quota-banner'
 import AuthGuard from './auth-guard'
+import { DialogsProvider } from './ui/dialogs'
 import { AccountProvider } from '@/contexts/account-context'
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+function AppShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [menuCollapsed, setMenuCollapsed] = useState(false)
@@ -66,5 +67,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </AccountProvider>
     </AuthGuard>
+  )
+}
+
+export default function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <DialogsProvider>
+      <AppShellInner>{children}</AppShellInner>
+    </DialogsProvider>
   )
 }

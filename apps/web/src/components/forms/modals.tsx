@@ -1,16 +1,19 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Modal as SharedModal } from '@/components/ui/modal'
 import type { FormDraft, LstepOptions } from './editor-types'
 
-/** Lステップ風モーダル: 緑の見出し・右上×・下に「閉じる」「保存する」。 */
-function Modal({
+/** Lステップ風モーダル: 緑の見出し・右上×・下に「閉じる」「保存する」。背景は暗く+ぼかし、開閉はフェード。 */
+function ModalFrame({
+  open,
   title,
   onClose,
   onSave,
   wide,
   children,
 }: {
+  open: boolean
   title: string
   onClose: () => void
   onSave: () => void
@@ -18,19 +21,17 @@ function Modal({
   children: ReactNode
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-12">
-      <div className={`w-full ${wide ? 'max-w-4xl' : 'max-w-3xl'} rounded bg-white shadow-xl`}>
-        <div className="flex items-center justify-between border-b border-[#e3e3e6] px-6 py-4">
-          <h2 className="text-base font-bold text-[#069e04]">{title}</h2>
-          <button type="button" onClick={onClose} aria-label="閉じる" className="text-2xl leading-none text-[#414143]">×</button>
-        </div>
-        <div className="max-h-[calc(100vh-15rem)] overflow-y-auto px-6 py-5">{children}</div>
-        <div className="flex justify-end gap-3 border-t border-[#e3e3e6] px-6 py-4">
-          <button type="button" onClick={onClose} className="h-10 w-28 rounded border border-[#cacace] bg-white text-sm hover:bg-[#f7f7f9]">閉じる</button>
-          <button type="button" onClick={onSave} className="h-10 w-28 rounded bg-[#069e04] text-sm font-bold text-white hover:bg-[#058503]">保存する</button>
-        </div>
+    <SharedModal open={open} onClose={onClose} maxWidthClass={wide ? 'max-w-4xl' : 'max-w-3xl'}>
+      <div className="flex items-center justify-between border-b border-[#e3e3e6] px-6 py-4">
+        <h2 className="text-base font-bold text-[#069e04]">{title}</h2>
+        <button type="button" onClick={onClose} aria-label="閉じる" className="text-2xl leading-none text-[#414143]">×</button>
       </div>
-    </div>
+      <div className="max-h-[calc(100vh-15rem)] overflow-y-auto px-6 py-5">{children}</div>
+      <div className="flex justify-end gap-3 border-t border-[#e3e3e6] px-6 py-4">
+        <button type="button" onClick={onClose} className="h-10 w-28 rounded border border-[#cacace] bg-white text-sm hover:bg-[#f7f7f9]">閉じる</button>
+        <button type="button" onClick={onSave} className="h-10 w-28 rounded bg-[#069e04] text-sm font-bold text-white hover:bg-[#058503]">保存する</button>
+      </div>
+    </SharedModal>
   )
 }
 
@@ -60,6 +61,7 @@ const check = 'flex items-center gap-2 text-sm'
 // ─────────────────────────────────────────────────────────────
 
 export function OptionModal({
+  open,
   draft,
   tags,
   scenarios,
@@ -67,6 +69,7 @@ export function OptionModal({
   onClose,
   onSave,
 }: {
+  open: boolean
   draft: FormDraft
   tags: Array<{ id: string; name: string }>
   scenarios: Array<{ id: string; name: string }>
@@ -76,12 +79,14 @@ export function OptionModal({
 }) {
   const [d, setD] = useState<FormDraft>(draft)
   const [actionOpen, setActionOpen] = useState(false)
+  useEffect(() => { if (open) { setD(draft); setActionOpen(false) } }, [open, draft])
   const set = (patch: Partial<FormDraft>) => setD((prev) => ({ ...prev, ...patch }))
   const setL = (patch: Partial<LstepOptions>) => setD((prev) => ({ ...prev, lstep: { ...prev.lstep, ...patch } }))
   const l = d.lstep
 
   return (
-    <Modal
+    <ModalFrame
+      open={open}
       title="オプション設定"
       onClose={onClose}
       onSave={() => onSave(d)}
@@ -240,7 +245,7 @@ export function OptionModal({
           </div>
         )}
       </Row>
-    </Modal>
+    </ModalFrame>
   )
 }
 
@@ -268,21 +273,24 @@ function ColorDot({ label, value, onChange }: { label: string; value: string; on
 }
 
 export function DesignModal({
+  open,
   draft,
   onClose,
   onSave,
 }: {
+  open: boolean
   draft: FormDraft
   onClose: () => void
   onSave: (patch: Partial<FormDraft>) => void
 }) {
   const [d, setD] = useState<FormDraft>(draft)
+  useEffect(() => { if (open) setD(draft) }, [open, draft])
   const [tab, setTab] = useState<'custom' | 'theme'>('custom')
   const set = (patch: Partial<FormDraft>) => setD((prev) => ({ ...prev, ...patch }))
   const opacity = d.lstep.backgroundImageOpacity ?? 100
 
   return (
-    <Modal title="デザイン設定" onClose={onClose} onSave={() => onSave(d)} wide>
+    <ModalFrame open={open} title="デザイン設定" onClose={onClose} onSave={() => onSave(d)} wide>
       <div className="mb-4 flex border-b-2 border-[#069e04] bg-[#dff3df]">
         {(['custom', 'theme'] as const).map((t) => (
           <button
@@ -386,6 +394,6 @@ export function DesignModal({
           )}
         </div>
       )}
-    </Modal>
+    </ModalFrame>
   )
 }
