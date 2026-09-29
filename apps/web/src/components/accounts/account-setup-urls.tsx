@@ -28,7 +28,6 @@ export default function AccountSetupUrls({ liffId, heading }: Props) {
   // LIFF page knows which account to init for. Without it, the LIFF page
   // falls back to VITE_LIFF_ID (account ①) and non-default accounts hit an
   // auth loop. See memory: liff-endpoint-url-rule.md.
-  const liffEndpointUrl = base && liffId ? `${base}?liffId=${encodeURIComponent(liffId)}` : ''
 
   return (
     <div className="space-y-3 mt-4 pt-4 border-t border-gray-100">
@@ -41,15 +40,6 @@ export default function AccountSetupUrls({ liffId, heading }: Props) {
           label="Callback URL"
           hint="LINE Login channel の Callback URL に貼る"
           url={callbackUrl}
-        />
-        <UrlRow
-          label="LIFF Endpoint URL"
-          hint={
-            liffId
-              ? '?liffId= 付き — LIFF 設定画面に貼る'
-              : 'LIFF ID 入力後に表示されます'
-          }
-          url={liffEndpointUrl}
         />
       </div>
     </div>

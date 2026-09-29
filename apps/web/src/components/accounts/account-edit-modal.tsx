@@ -123,9 +123,9 @@ export default function AccountEditModal({
         onSaved()
         if (res.liffSetup?.status === 'failed') {
           // 保存は成功したが、LIFFの自動作成だけ失敗。理由を見せて、画面は開いたままにする
-          setError(`保存しました。ただし、LIFFの自動作成に失敗しました: ${res.liffSetup.error}`)
+          setError(`保存しました。ただし、フォーム連携の自動設定に失敗しました: ${res.liffSetup.error}`)
         } else {
-          if (res.liffSetup) await dialogs.alert('LIFFを自動で作成し、このアカウントに割り当てました。')
+          if (res.liffSetup) await dialogs.alert('フォーム連携を自動で設定しました。')
           onClose()
         }
       } else {

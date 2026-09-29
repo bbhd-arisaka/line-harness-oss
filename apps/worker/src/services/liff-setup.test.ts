@@ -42,6 +42,8 @@ describe('ensureLiffApp', () => {
     const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/liff/v1/apps'))!;
     expect((post.body as { view: { url: string } }).view.url).toBe('https://api.example.test/');
     expect(post.auth).toBe('Bearer tok');
+    // LINEの制限: LIFFの名前は20文字以内(超えると作成が拒否される)
+    expect([...((post.body as { description: string }).description)].length).toBeLessThanOrEqual(20);
     const put = calls.find((c) => c.method === 'PUT')!;
     expect(put.url).toContain('/liff/v1/apps/2001-NEW');
     expect((put.body as { view: { url: string } }).view.url).toBe('https://api.example.test/?liffId=2001-NEW');

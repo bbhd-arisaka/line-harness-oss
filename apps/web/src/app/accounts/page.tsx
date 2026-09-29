@@ -252,7 +252,7 @@ export default function AccountsPage() {
         <Banner
           className="mb-6"
           variant={liffMessage.ok ? 'default' : 'error'}
-          title={liffMessage.ok ? 'LIFFを設定しました' : 'LIFFを自動作成できませんでした'}
+          title={liffMessage.ok ? 'フォーム連携を設定しました' : 'フォーム連携を設定できませんでした'}
           description={liffMessage.text}
         />
       ) : null}
@@ -264,9 +264,9 @@ export default function AccountsPage() {
             <p className="text-sm font-semibold text-kumo-strong">アカウントを登録しました</p>
           </div>
           {justCreated.liffSetup?.status === 'created' || justCreated.liffSetup?.status === 'reused' ? (
-            <p className="mb-3 text-xs text-kumo-success">LIFFを自動で作成し、割り当てました(LIFF ID: {justCreated.liffSetup.liffId})。LIFFの手作業は不要です。</p>
+            <p className="mb-3 text-xs text-kumo-success">フォーム連携を自動で設定しました。手作業は不要です。</p>
           ) : justCreated.liffSetup?.status === 'failed' ? (
-            <Banner className="mb-3" variant="error" title="LIFFの自動作成に失敗しました" description={`${justCreated.liffSetup.error}(アカウントは登録済みです。直したあと、下のアカウントの「LIFFを自動作成」ボタンで再実行できます)`} />
+            <Banner className="mb-3" variant="error" title="フォーム連携の自動設定に失敗しました" description={`${justCreated.liffSetup.error}(アカウントは登録済みです。直したあと、下のアカウントの「フォーム連携を設定」ボタンで再実行できます)`} />
           ) : null}
           <p className="mb-3 text-xs text-kumo-subtle">次にLINE Developers Consoleへ以下のURLを登録してください。</p>
           <AccountSetupUrls liffId={justCreated.liffId} heading="登録するURL" />
@@ -367,7 +367,7 @@ export default function AccountsPage() {
 
                 <div className="mb-3 flex flex-wrap gap-2">
                   <Badge variant={account.loginChannelId ? 'info' : 'neutral'}>Login: {account.loginChannelId ? '設定済み' : '未設定'}</Badge>
-                  <Badge variant={account.liffId ? 'info' : 'neutral'}>LIFF: {account.liffId ? '設定済み' : '未設定'}</Badge>
+                  <Badge variant={account.liffId ? 'info' : 'neutral'}>フォーム連携: {account.liffId ? '設定済み' : '未設定'}</Badge>
                   {account.loginChannelId && !account.liffId ? (
                     <Button
                       type="button"
@@ -380,19 +380,19 @@ export default function AccountsPage() {
                         try {
                           const res = await api.lineAccounts.setupLiff(account.id)
                           if (res.success) {
-                            setLiffMessage({ ok: true, text: `「${account.name}」のLIFFを自動で作成・割り当てしました。` })
+                            setLiffMessage({ ok: true, text: `「${account.name}」のフォーム連携を設定しました。` })
                             await reloadAccounts()
                           } else {
-                            setLiffMessage({ ok: false, text: res.error || 'LIFFの自動作成に失敗しました' })
+                            setLiffMessage({ ok: false, text: res.error || 'フォーム連携の設定に失敗しました' })
                           }
                         } catch {
-                          setLiffMessage({ ok: false, text: 'LIFFの自動作成に失敗しました。時間をおいてもう一度お試しください。' })
+                          setLiffMessage({ ok: false, text: 'フォーム連携の設定に失敗しました。時間をおいてもう一度お試しください。' })
                         } finally {
                           setLiffBusyId(null)
                         }
                       }}
                     >
-                      LIFFを自動作成
+                      フォーム連携を設定
                     </Button>
                   ) : null}
                 </div>

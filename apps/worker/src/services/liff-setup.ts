@@ -49,6 +49,18 @@ function endpointFor(workerUrl: string, liffId?: string): string {
   return liffId ? `${base}/?liffId=${liffId}` : `${base}/`;
 }
 
+/** LINEが返したエラーの中身(message/details)を、画面に出せる短い文にする。認証情報は含まれない。 */
+async function lineErrorDetail(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    const j = JSON.parse(text) as { message?: string; details?: Array<{ message?: string; property?: string }> };
+    const parts = [j.message, ...(j.details ?? []).map((d) => [d.property, d.message].filter(Boolean).join(': '))].filter(Boolean);
+    return parts.length > 0 ? `(LINEからの回答: ${parts.join(' / ').slice(0, 300)}、HTTP ${res.status})` : `(HTTP ${res.status})`;
+  } catch {
+    return `(HTTP ${res.status})`;
+  }
+}
+
 async function issueToken(input: LiffSetupInput, f: FetchLike): Promise<string> {
   const res = await f(LINE_TOKEN_URL, {
     method: 'POST',
@@ -74,7 +86,7 @@ async function listApps(token: string, f: FetchLike): Promise<LiffApp[]> {
   const res = await f(LIFF_APPS_URL, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     throw new LiffSetupError(
-      'LIFFの一覧をLINEから取得できませんでした。このチャネルが「LINEログイン」チャネルか確認してください(Messaging APIチャネルでは作れません)。',
+      `LIFFの一覧をLINEから取得できませんでした。このチャネルが「LINEログイン」チャネルか確認してください(Messaging APIチャネルでは作れません)。${await lineErrorDetail(res)}`,
       res.status === 403 || res.status === 401 ? 400 : 502,
     );
   }
@@ -88,7 +100,7 @@ async function setEndpoint(token: string, liffId: string, url: string, f: FetchL
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ view: { type: 'full', url } }),
   });
-  if (!res.ok) throw new LiffSetupError('LIFFのエンドポイントURLをLINEに設定できませんでした。', 502);
+  if (!res.ok) throw new LiffSetupError(`LIFFのエンドポイントURLをLINEに設定できませんでした。${await lineErrorDetail(res)}`, 502);
 }
 
 /**
@@ -119,13 +131,11 @@ export async function ensureLiffApp(input: LiffSetupInput, f: FetchLike = fetch)
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       view: { type: 'full', url: endpointFor(input.workerUrl) },
-      description: 'beyond line(フォーム・予約など)',
-      features: { qrCode: false },
-      permanentLinkPattern: 'concat',
+      description: 'beyond form', // LIFFの名前。LINEの制限で20文字以内
       scope: ['profile', 'openid'],
     }),
   });
-  if (!res.ok) throw new LiffSetupError('LIFFの作成にLINE側で失敗しました。しばらくしてからもう一度お試しください。', 502);
+  if (!res.ok) throw new LiffSetupError(`LIFFの作成にLINE側で失敗しました。${await lineErrorDetail(res)}`, 502);
   const json = (await res.json()) as { liffId?: string };
   if (!json.liffId) throw new LiffSetupError('LIFFは作成されましたが、IDを受け取れませんでした。', 502);
 

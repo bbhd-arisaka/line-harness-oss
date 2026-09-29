@@ -176,7 +176,7 @@ export function AccountFormSections({
 
       <FormSection
         title="LINEログイン(フォーム・予約に必要)"
-        description="ここを登録すると、LIFFの作成から設定までシステムが自動で行います"
+        description="ここを登録して保存すると、フォーム連携の設定はシステムが自動で行います"
         defaultOpen={defaultOpen?.login ?? true}
       >
         <div className="rounded-md bg-kumo-tint p-3 text-xs leading-relaxed text-kumo-default">
@@ -186,7 +186,7 @@ export function AccountFormSections({
             <li>「新規チャネル作成」→「LINEログイン」を選び、アプリタイプは「ウェブアプリ」で作成する</li>
             <li>「チャネル基本設定」の<b>チャネルID</b>と<b>チャネルシークレット</b>を下に貼り付けて保存する</li>
           </ol>
-          <p className="mt-1 text-kumo-subtle">※ 1つのLINE公式アカウントにつき、LINEログインチャネルが1つ必要です。以降のLIFFの作成・設定は自動です。</p>
+          <p className="mt-1 text-kumo-subtle">※ 1つのLINE公式アカウントにつき、LINEログインチャネルが1つ必要です。以降の連携設定は自動です。</p>
         </div>
         <TextField
           label="Login Channel ID"
@@ -200,20 +200,6 @@ export function AccountFormSections({
           value={state.loginChannelSecret}
           onChange={(v) => update({ loginChannelSecret: v })}
           type="password"
-        />
-      </FormSection>
-
-      <FormSection
-        title="LIFF(自動で作成されます)"
-        description="LINEログインを登録して保存すると、LIFFの作成・URL設定・割り当てを自動で行います"
-        defaultOpen={defaultOpen?.liff ?? false}
-      >
-        <TextField
-          label="LIFF ID"
-          value={state.liffId}
-          onChange={(v) => update({ liffId: v })}
-          placeholder="2009624792-XXXXXXXX"
-          hint="通常は空欄のままでOK(自動で入ります)。手動で作ったLIFFを使う場合だけ入力"
         />
       </FormSection>
 
