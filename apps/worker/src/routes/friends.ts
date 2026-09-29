@@ -41,6 +41,7 @@ function serializeFriend(row: DbFriend) {
     isFollowing: Boolean(row.is_following),
     metadata: JSON.parse(row.metadata || '{}'),
     realName: row.real_name ?? null,
+    systemDisplayName: row.system_display_name ?? null,
     memo: row.memo ?? null,
     refCode: (row as unknown as Record<string, unknown>).ref_code as string | null,
     lineAccountId: ((row as unknown as Record<string, unknown>).line_account_id as string | null) ?? null,
@@ -563,9 +564,16 @@ friends.put('/api/friends/:id/profile', async (c) => {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
 
-    const body = await c.req.json<{ realName?: string | null; displayName?: string | null; memo?: string | null }>();
+    const body = await c.req.json<{ realName?: string | null; displayName?: string | null; systemDisplayName?: string | null; memo?: string | null }>();
+    // Lステップの表示名編集モーダルと同じく本名・システム表示名は20文字まで。
+    for (const [label, v] of [['本名', body.realName], ['システム表示名', body.systemDisplayName]] as const) {
+      if (typeof v === 'string' && [...v].length > 20) {
+        return c.json({ success: false, error: `${label}は20文字以内で入力してください` }, 400);
+      }
+    }
     await updateFriendRegistrationFields(db, friendId, {
       ...('realName' in body ? { realName: body.realName ?? null } : {}),
+      ...('systemDisplayName' in body ? { systemDisplayName: body.systemDisplayName ?? null } : {}),
       ...('displayName' in body ? { displayName: body.displayName ?? null } : {}),
       ...('memo' in body ? { memo: body.memo ?? null } : {}),
     });

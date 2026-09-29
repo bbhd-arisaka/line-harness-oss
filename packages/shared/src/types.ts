@@ -30,6 +30,7 @@ export interface Friend {
   metadata?: Record<string, unknown>;
   /** 本名。友だち情報(metadata)とは別の専用カラム(Lステップ新形式の回答フォーム準拠) */
   realName?: string | null;
+  systemDisplayName?: string | null;
   /** 個別メモ。友だち情報(metadata)とは別の専用カラム */
   memo?: string | null;
   /** 流入経路 ref コード (?ref=… で渡されたトラッキング識別子). 設定無しなら null */

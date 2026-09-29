@@ -6,6 +6,7 @@ import { api, fetchApi, type MileageHistoryItem, type MileageSummary } from '@/l
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
+import { FriendNameEditDialog, NameEditPencil, resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 
 interface FriendDetail {
   id: string
@@ -14,6 +15,7 @@ interface FriendDetail {
   isFollowing: boolean
   metadata: Record<string, unknown>
   realName: string | null
+  systemDisplayName: string | null
   memo: string | null
   refCode: string | null
   createdAt: string
@@ -35,6 +37,8 @@ interface ChatStatusInfo {
 
 interface Props {
   friendId: string | null
+  /** 表示名(本名/システム表示名)を保存した後に呼ばれる。親側の一覧・ヘッダー再取得用 */
+  onNameChanged?: () => void
   /** 親 (ChatDetail) が持っている chat 側の情報 — status / notes */
   chatStatus?: ChatStatusInfo
   /** 担当者名 (ChatDetail で operatorId → name 変換済を渡す想定) */
@@ -90,8 +94,9 @@ function renderValue(value: unknown): string {
   }
 }
 
-export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, notesValue, onNotesChange, onSaveNotes, savingNotes }: Props) {
+export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus, operatorName, notesValue, onNotesChange, onSaveNotes, savingNotes }: Props) {
   const [friend, setFriend] = useState<FriendDetail | null>(null)
+  const [nameDialogOpen, setNameDialogOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   type MileageState =
@@ -287,7 +292,10 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-gray-900 truncate">{friend.displayName || '名前なし'}</p>
+                <div className="flex items-center gap-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{resolveFriendName(friend)}</p>
+                  <NameEditPencil onClick={() => setNameDialogOpen(true)} />
+                </div>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   登録日: {formatDate(friend.createdAt)}
                 </p>
@@ -298,6 +306,16 @@ export default function FriendInfoSidebar({ friendId, chatStatus, operatorName, 
                 )}
               </div>
             </div>
+
+            <FriendNameEditDialog
+              friend={friend}
+              open={nameDialogOpen}
+              onClose={() => setNameDialogOpen(false)}
+              onSaved={(u) => {
+                setFriend((prev) => (prev ? { ...prev, ...u } : prev))
+                onNameChanged?.()
+              }}
+            />
 
             {/* 本名 — 友だち情報(metadata)とは別の専用項目(Lステップ新形式準拠) */}
             <div className="p-4">

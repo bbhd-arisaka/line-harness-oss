@@ -918,7 +918,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
           sideEffects.push(
             updateFriendRegistrationFields(db, friendId, {
               ...(realNamePatch !== undefined ? { realName: realNamePatch } : {}),
-              ...(displayNamePatch !== undefined ? { displayName: displayNamePatch } : {}),
+              ...(displayNamePatch !== undefined ? { systemDisplayName: displayNamePatch } : {}),
               ...(memoPatch !== undefined ? { memo: memoPatch } : {}),
               ...(Object.keys(metadataPatch).length > 0 ? { metadataPatch } : {}),
             }),

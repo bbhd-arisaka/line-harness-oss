@@ -373,7 +373,7 @@ export const api = {
         body: JSON.stringify(data),
       }),
     // 本名・システム表示名・個別メモ。Lステップ新形式で「友だち情報」とは別の登録先。
-    updateProfile: (id: string, data: { realName?: string | null; displayName?: string | null; memo?: string | null }) =>
+    updateProfile: (id: string, data: { realName?: string | null; displayName?: string | null; systemDisplayName?: string | null; memo?: string | null }) =>
       fetchApi<ApiResponse<FriendDetail>>(`/api/friends/${id}/profile`, {
         method: 'PUT',
         body: JSON.stringify(data),

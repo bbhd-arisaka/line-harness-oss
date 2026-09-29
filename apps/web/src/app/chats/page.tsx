@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseStickerMessageContent, stickerFallback } from '@line-crm/shared'
 import { api, fetchApi } from '@/lib/api'
+import { FriendNameEditDialog, NameEditPencil, type FriendNameFields } from '@/components/friends/friend-name-edit-dialog'
 import { UNANSWERED_REFRESH_EVENT } from '@/lib/events'
 import { useAccount } from '@/contexts/account-context'
 import CcPromptButton from '@/components/cc-prompt-button'
@@ -791,6 +792,26 @@ export default function ChatsPage() {
     }
   }
 
+  // 表示名(本名/システム表示名)編集: ヘッダーのペンから開くダイアログと、右サイドバー側の保存後の再取得
+  const [headerNameFriend, setHeaderNameFriend] = useState<FriendNameFields | null>(null)
+  const [sidebarKey, setSidebarKey] = useState(0)
+  const openHeaderNameEdit = async (friendId: string) => {
+    try {
+      const res = await api.friends.get(friendId)
+      if (res.success && res.data) {
+        const f = res.data as unknown as FriendNameFields
+        setHeaderNameFriend({ id: f.id, displayName: f.displayName ?? null, realName: f.realName ?? null, systemDisplayName: f.systemDisplayName ?? null })
+      }
+    } catch {
+      setError('友だち情報の取得に失敗しました。')
+    }
+  }
+  const handleNameChanged = () => {
+    loadChats()
+    if (selectedChatId) loadChatDetail(selectedChatId)
+    setSidebarKey((k) => k + 1)
+  }
+
   const handleStatusUpdate = async (newStatus: Chat['status']) => {
     if (!selectedChatId) return
     try {
@@ -1003,9 +1024,12 @@ export default function ChatsPage() {
                     <img src={chatDetail.friendPictureUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
                   )}
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {chatDetail.friendName}
-                    </p>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {chatDetail.friendName}
+                      </p>
+                      <NameEditPencil onClick={() => void openHeaderNameEdit(chatDetail.friendId ?? chatDetail.id)} />
+                    </div>
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${statusConfig[chatDetail.status].className}`}
                     >
@@ -1359,7 +1383,9 @@ export default function ChatsPage() {
           // コンポーザーが収まらなくなる。サイドバーは xl 以上でのみ出す。
           <div className="hidden xl:flex">
             <FriendInfoSidebar
+              key={sidebarKey}
               friendId={selectedFriendId || selectedChatId}
+              onNameChanged={handleNameChanged}
               chatStatus={
                 chatDetail && chatDetail.id === (selectedFriendId || selectedChatId)
                   ? { status: chatDetail.status, notes: chatDetail.notes }
@@ -1381,6 +1407,14 @@ export default function ChatsPage() {
           送信ボタンに重なってクリックを奪う。xl 以上では友だち詳細サイドバーの上に
           浮くので無害だが、サイドバーが消える xl 未満では入力欄の真上に来てしまい、
           複数行入力で伸びた textarea のクリックを奪う。xl 未満では表示しない。 */}
+      {headerNameFriend && (
+        <FriendNameEditDialog
+          friend={headerNameFriend}
+          open
+          onClose={() => setHeaderNameFriend(null)}
+          onSaved={handleNameChanged}
+        />
+      )}
       <CcPromptButton prompts={ccPrompts} positionClassName="max-xl:hidden bottom-24 right-6" />
     </div>
   )

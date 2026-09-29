@@ -16,6 +16,7 @@ export interface Friend {
   metadata: string;
   first_tracked_link_id: string | null;
   real_name?: string | null;
+  system_display_name?: string | null;
   memo?: string | null;
   created_at: string;
   updated_at: string;
@@ -34,12 +35,13 @@ export type FriendRegistrationTarget =
 export async function updateFriendRegistrationFields(
   db: D1Database,
   friendId: string,
-  updates: { realName?: string | null; displayName?: string | null; memo?: string | null; metadataPatch?: Record<string, unknown> },
+  updates: { realName?: string | null; displayName?: string | null; systemDisplayName?: string | null; memo?: string | null; metadataPatch?: Record<string, unknown> },
 ): Promise<void> {
   const sets: string[] = [];
   const values: unknown[] = [];
   if ('realName' in updates) { sets.push('real_name = ?'); values.push(updates.realName ?? null); }
   if ('displayName' in updates) { sets.push('display_name = ?'); values.push(updates.displayName ?? null); }
+  if ('systemDisplayName' in updates) { sets.push('system_display_name = ?'); values.push(updates.systemDisplayName ?? null); }
   if ('memo' in updates) { sets.push('memo = ?'); values.push(updates.memo ?? null); }
   if (updates.metadataPatch && Object.keys(updates.metadataPatch).length > 0) {
     const friend = await db.prepare('SELECT metadata FROM friends WHERE id = ?').bind(friendId).first<{ metadata: string }>();

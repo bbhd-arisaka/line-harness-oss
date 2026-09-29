@@ -1,5 +1,6 @@
 'use client'
 
+import { resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { api, fetchApi } from '@/lib/api'
@@ -117,7 +118,7 @@ export default function FriendDetailPage() {
   function startEditingProfile() {
     if (!friend) return
     setDraftRealName(friend.realName ?? '')
-    setDraftDisplayName(friend.displayName ?? '')
+    setDraftDisplayName(friend.systemDisplayName ?? '')
     setDraftMemo(friend.memo ?? '')
     setEditingProfile(true)
   }
@@ -128,7 +129,7 @@ export default function FriendDetailPage() {
     try {
       const res = await api.friends.updateProfile(friend.id, {
         realName: draftRealName.trim() || null,
-        displayName: draftDisplayName.trim() || null,
+        systemDisplayName: draftDisplayName.trim() || null,
         memo: draftMemo.trim() || null,
       })
       if (res.success && res.data) {
@@ -222,7 +223,7 @@ export default function FriendDetailPage() {
   return (
     <div>
       <Header
-        title={friend?.displayName || friend?.realName || '友だち詳細'}
+        title={friend ? resolveFriendName(friend) : '友だち詳細'}
         description="友だちの基本情報・タグ・友だち情報欄を確認・編集できます。"
         action={
           <Link href="/friends">
@@ -247,11 +248,11 @@ export default function FriendDetailPage() {
               <img src={friend.pictureUrl} alt="" className="h-14 w-14 flex-shrink-0 rounded-full" />
             ) : (
               <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-kumo-control-secondary text-lg text-kumo-subtle">
-                {(friend.displayName || '?').charAt(0)}
+                {resolveFriendName(friend).charAt(0)}
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-kumo-strong">{friend.displayName || '名前なし'}</p>
+              <p className="truncate text-sm font-semibold text-kumo-strong">{resolveFriendName(friend)}</p>
               <p className="mt-0.5 text-xs text-kumo-subtle">友だちID: {friend.id}</p>
               <p className="text-xs text-kumo-subtle">登録日: {formatDate(friend.createdAt)}</p>
               {!friend.isFollowing && (
@@ -292,7 +293,7 @@ export default function FriendDetailPage() {
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">システム表示名</dt>
-                      <dd className="text-kumo-strong">{friend.displayName || '未登録'}</dd>
+                      <dd className="text-kumo-strong">{friend.systemDisplayName || '未登録'}</dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">個別メモ</dt>
