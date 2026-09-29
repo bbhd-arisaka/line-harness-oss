@@ -870,6 +870,8 @@ export interface StaffMember {
   email: string | null;
   role: 'owner' | 'admin' | 'staff';
   apiKey: string;
+  /** 見られる公式アカウント。null/未設定 = 制限なし(全アカウント) */
+  accountIds?: string[] | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

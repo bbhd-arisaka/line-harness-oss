@@ -153,7 +153,9 @@ async function fetchBotProfile(accessToken: string): Promise<{ displayName?: str
 lineAccounts.get('/api/line-accounts', async (c) => {
   try {
     const db = c.env.DB;
-    const items = await getLineAccounts(db);
+    // 制限のあるスタッフには、許可されたアカウントだけを返す
+    const allowedIds = c.get('allowedAccountIds');
+    const items = (await getLineAccounts(db)).filter((a) => !allowedIds || allowedIds.includes(a.id));
 
     // Get stats for all accounts in parallel
     const results = await Promise.all(

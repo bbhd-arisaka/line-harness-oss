@@ -14,6 +14,7 @@ import {
 import { scheduled } from './scheduled.js';
 import { TenantScheduler } from './durable-objects/tenant-scheduler.js';
 import { authMiddleware } from './middleware/auth.js';
+import { accountAccessGuard } from './middleware/account-access.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
 import { webhook } from './routes/webhook.js';
 import { friends } from './routes/friends.js';
@@ -156,6 +157,8 @@ export type Env = {
   };
   Variables: {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };
+    /** 制限のあるスタッフの許可アカウントID。null = 全アカウント(制限なし)。 */
+    allowedAccountIds: string[] | null;
   };
 };
 
@@ -198,6 +201,9 @@ app.use('*', rateLimitMiddleware);
 
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);
+
+// スタッフごとのアカウント権限(制限のあるスタッフは許可したアカウントの友だち・トークだけ)
+app.use('*', accountAccessGuard);
 
 // Mount route groups — MVP & Round 2
 app.route('/', webhook);

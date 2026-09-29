@@ -7,6 +7,10 @@ import {
   deleteStaffMember,
   regenerateStaffApiKey,
   countActiveStaffByRole,
+  getStaffAllowedAccountIds,
+  getAllStaffAccountAccess,
+  setStaffAccountAccess,
+  getLineAccountById,
 } from '@line-crm/db';
 import type { StaffMember } from '@line-crm/db';
 import { requireRole } from '../middleware/role-guard.js';
@@ -18,8 +22,10 @@ function maskApiKey(key: string): string {
   return `lh_****${key.slice(-4)}`;
 }
 
-function serializeStaff(row: StaffMember, masked = true) {
+function serializeStaff(row: StaffMember, masked = true, accountIds: string[] | null = null) {
   return {
+    /** 見られるアカウント。null = 制限なし(全アカウント) */
+    accountIds,
     id: row.id,
     name: row.name,
     email: row.email,
@@ -45,6 +51,7 @@ staff.get('/api/staff/me', async (c) => {
           name: 'Owner',
           role: 'owner',
           email: null,
+          accountIds: null,
         },
       });
     }
@@ -61,6 +68,7 @@ staff.get('/api/staff/me', async (c) => {
         name: member.name,
         role: member.role,
         email: member.email,
+        accountIds: member.role === 'owner' ? null : await getStaffAllowedAccountIds(c.env.DB, member.id),
       },
     });
   } catch (err) {
@@ -73,7 +81,8 @@ staff.get('/api/staff/me', async (c) => {
 staff.get('/api/staff', requireRole('owner'), async (c) => {
   try {
     const members = await getStaffMembers(c.env.DB);
-    return c.json({ success: true, data: members.map((m) => serializeStaff(m, true)) });
+    const access = await getAllStaffAccountAccess(c.env.DB);
+    return c.json({ success: true, data: members.map((m) => serializeStaff(m, true, access.get(m.id) ?? null)) });
   } catch (err) {
     console.error('GET /api/staff error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -88,7 +97,7 @@ staff.get('/api/staff/:id', requireRole('owner'), async (c) => {
     if (!member) {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
     }
-    return c.json({ success: true, data: serializeStaff(member, true) });
+    return c.json({ success: true, data: serializeStaff(member, true, await getStaffAllowedAccountIds(c.env.DB, member.id)) });
   } catch (err) {
     console.error('GET /api/staff/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -119,6 +128,37 @@ staff.post('/api/staff', requireRole('owner'), async (c) => {
     return c.json({ success: true, data: serializeStaff(member, false) }, 201);
   } catch (err) {
     console.error('POST /api/staff error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// PUT /api/staff/:id/accounts — owner only. スタッフが見られる公式アカウントを設定する。
+// accountIds が空 = 制限なし(全アカウント)。オーナーは常に全アカウントなので設定不可。
+staff.put('/api/staff/:id/accounts', requireRole('owner'), async (c) => {
+  try {
+    const id = c.req.param('id')!;
+    const body = await c.req.json<{ accountIds?: unknown }>();
+    if (!Array.isArray(body.accountIds) || body.accountIds.some((v) => typeof v !== 'string')) {
+      return c.json({ success: false, error: 'accountIds must be an array of account ids' }, 400);
+    }
+    const accountIds = [...new Set(body.accountIds as string[])];
+    const target = await getStaffById(c.env.DB, id);
+    if (!target) {
+      return c.json({ success: false, error: 'Staff member not found' }, 404);
+    }
+    if (target.role === 'owner' && accountIds.length > 0) {
+      return c.json({ success: false, error: 'オーナーは常に全アカウントを扱えるため、制限できません' }, 400);
+    }
+    // 存在しないアカウントを指定して「意図せず制限なし」になるのを防ぐ
+    for (const accountId of accountIds) {
+      if (!(await getLineAccountById(c.env.DB, accountId))) {
+        return c.json({ success: false, error: `LINE account not found: ${accountId}` }, 400);
+      }
+    }
+    const saved = await setStaffAccountAccess(c.env.DB, id, accountIds);
+    return c.json({ success: true, data: { accountIds: saved } });
+  } catch (err) {
+    console.error('PUT /api/staff/:id/accounts error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

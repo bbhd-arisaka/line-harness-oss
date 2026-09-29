@@ -24,6 +24,7 @@ export * from './tracked-links';
 export * from './forms';
 export * from './ad-platforms';
 export * from './staff';
+export * from './staff-access';
 export * from './auto-replies';
 export * from './traffic-pools';
 export * from './message-templates';

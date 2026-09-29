@@ -1210,7 +1210,12 @@ export const api = {
     get: (id: string) =>
       fetchApi<ApiResponse<StaffMember>>(`/api/staff/${id}`),
     me: () =>
-      fetchApi<ApiResponse<{ id: string; name: string; role: string; email: string | null }>>('/api/staff/me'),
+      fetchApi<ApiResponse<{ id: string; name: string; role: string; email: string | null; accountIds?: string[] | null }>>('/api/staff/me'),
+    setAccounts: (id: string, accountIds: string[]) =>
+      fetchApi<ApiResponse<{ accountIds: string[] | null }>>(`/api/staff/${id}/accounts`, {
+        method: 'PUT',
+        body: JSON.stringify({ accountIds }),
+      }),
     create: (data: { name: string; email?: string; role: 'admin' | 'staff' }) =>
       fetchApi<ApiResponse<StaffMember>>('/api/staff', {
         method: 'POST',

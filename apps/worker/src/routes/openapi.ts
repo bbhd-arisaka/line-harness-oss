@@ -464,6 +464,34 @@ const spec = {
         responses: { '200': { description: 'Order updated' } },
       },
     },
+    '/api/staff/{id}/accounts': {
+      put: {
+        tags: ['Staff'],
+        summary: 'スタッフが見られる公式アカウントを設定する(オーナー専用)',
+        description:
+          '`accountIds` に指定したアカウントの友だち・トークだけを、そのスタッフが扱えるようにする。空配列 = 制限なし(全アカウント)。' +
+          'オーナーは常に全アカウントのため制限できない。制限されたスタッフは、アカウント別に安全と確認済みの API(友だち・トーク・タグの参照)以外は 403。' +
+          '存在しないアカウント ID を含む場合は 400(意図せず「制限なし」になるのを防ぐ)。',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['accountIds'],
+                properties: { accountIds: { type: 'array', items: { type: 'string' } } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Saved (`accountIds`: null = unrestricted)' },
+          '400': { description: 'Invalid ids, or owner cannot be restricted' },
+          '404': { description: 'Staff member not found' },
+        },
+      },
+    },
     '/api/line-accounts/{id}/setup-liff': {
       post: {
         tags: ['Accounts'],

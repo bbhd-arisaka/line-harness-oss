@@ -920,6 +920,13 @@ CREATE TABLE IF NOT EXISTS staff (
   FOREIGN KEY (line_account_id) REFERENCES line_accounts(id)
 );
 
+CREATE TABLE IF NOT EXISTS staff_account_access (
+  staff_id        TEXT NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+  line_account_id TEXT NOT NULL REFERENCES line_accounts(id) ON DELETE CASCADE,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  PRIMARY KEY (staff_id, line_account_id)
+);
+
 CREATE TABLE IF NOT EXISTS staff_availability_rules (
   id          TEXT PRIMARY KEY,
   staff_id    TEXT NOT NULL,
@@ -1398,6 +1405,8 @@ CREATE INDEX IF NOT EXISTS idx_scenario_steps_scenario_id ON scenario_steps (sce
 CREATE INDEX IF NOT EXISTS idx_shifts_staff_date ON staff_shifts (staff_id, work_date);
 
 CREATE INDEX IF NOT EXISTS idx_sso_jti_exp ON sso_jti(exp);
+
+CREATE INDEX IF NOT EXISTS idx_staff_account_access_account ON staff_account_access(line_account_id);
 
 CREATE INDEX IF NOT EXISTS idx_staff_account_sort ON staff (line_account_id, sort_order);
 

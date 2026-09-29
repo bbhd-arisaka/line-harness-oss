@@ -5,6 +5,7 @@ import { KeyIcon, PlusIcon, TrashIcon, UserPlusIcon } from '@phosphor-icons/reac
 import { Badge } from '@cloudflare/kumo/components/badge'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Button } from '@cloudflare/kumo/components/button'
+import { Checkbox } from '@cloudflare/kumo/components/checkbox'
 import { ClipboardText } from '@cloudflare/kumo/components/clipboard-text'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Empty } from '@cloudflare/kumo/components/empty'
@@ -14,7 +15,8 @@ import { Loader } from '@cloudflare/kumo/components/loader'
 import { Select } from '@cloudflare/kumo/components/select'
 import { Table } from '@cloudflare/kumo/components/table'
 import Header from '@/components/layout/header'
-import { fetchApi } from '@/lib/api'
+import { fetchApi, api } from '@/lib/api'
+import { Modal } from '@/components/ui/modal'
 import type { ApiResponse, StaffMember } from '@line-crm/shared'
 
 type NewApiKey = { apiKey: string; staffId: string }
@@ -44,6 +46,13 @@ export default function StaffPage() {
   const [formError, setFormError] = useState('')
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [confirming, setConfirming] = useState(false)
+  // 見られるアカウントの設定
+  const [accounts, setAccounts] = useState<Array<{ id: string; name: string }>>([])
+  const [accessTarget, setAccessTarget] = useState<StaffMember | null>(null)
+  const [accessAll, setAccessAll] = useState(true)
+  const [accessIds, setAccessIds] = useState<string[]>([])
+  const [accessSaving, setAccessSaving] = useState(false)
+  const [accessError, setAccessError] = useState('')
 
   const loadMembers = async () => {
     setLoading(true)
@@ -60,6 +69,42 @@ export default function StaffPage() {
   }
 
   useEffect(() => { void loadMembers() }, [])
+
+  useEffect(() => {
+    api.lineAccounts.list()
+      .then((res) => { if (res.success) setAccounts(res.data.map((a) => ({ id: a.id, name: a.name }))) })
+      .catch(() => {})
+  }, [])
+
+  const openAccess = (member: StaffMember) => {
+    setAccessTarget(member)
+    setAccessAll(!member.accountIds || member.accountIds.length === 0)
+    setAccessIds(member.accountIds ?? [])
+    setAccessError('')
+  }
+
+  const saveAccess = async () => {
+    if (!accessTarget) return
+    if (!accessAll && accessIds.length === 0) {
+      setAccessError('見られるアカウントを1つ以上選んでください')
+      return
+    }
+    setAccessSaving(true)
+    setAccessError('')
+    try {
+      const res = await api.staff.setAccounts(accessTarget.id, accessAll ? [] : accessIds)
+      if (res.success) {
+        setAccessTarget(null)
+        await loadMembers()
+      } else {
+        setAccessError(res.error ?? '保存に失敗しました')
+      }
+    } catch {
+      setAccessError('保存に失敗しました')
+    } finally {
+      setAccessSaving(false)
+    }
+  }
 
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -216,6 +261,7 @@ export default function StaffPage() {
                 <Table.Head>名前</Table.Head>
                 <Table.Head className="hidden sm:table-cell">メール</Table.Head>
                 <Table.Head>ロール</Table.Head>
+                <Table.Head className="hidden md:table-cell">見られるアカウント</Table.Head>
                 <Table.Head className="hidden md:table-cell">APIキー</Table.Head>
                 <Table.Head>状態</Table.Head>
                 <Table.Head className="text-right">操作</Table.Head>
@@ -224,13 +270,13 @@ export default function StaffPage() {
             <Table.Body>
               {loading ? (
                 <Table.Row>
-                  <Table.Cell colSpan={6} className="py-12 text-center">
+                  <Table.Cell colSpan={7} className="py-12 text-center">
                     <span className="inline-flex items-center gap-2 text-sm text-kumo-subtle"><Loader size="sm" /> 読み込み中</span>
                   </Table.Cell>
                 </Table.Row>
               ) : members.length === 0 ? (
                 <Table.Row>
-                  <Table.Cell colSpan={6} className="p-0">
+                  <Table.Cell colSpan={7} className="p-0">
                     <Empty
                       size="sm"
                       icon={<UserPlusIcon size={32} />}
@@ -249,6 +295,11 @@ export default function StaffPage() {
                   <Table.Cell className="font-medium text-kumo-strong">{member.name}</Table.Cell>
                   <Table.Cell className="hidden text-kumo-subtle sm:table-cell">{member.email ?? '—'}</Table.Cell>
                   <Table.Cell><RoleBadge role={member.role} /></Table.Cell>
+                  <Table.Cell className="hidden text-sm text-kumo-subtle md:table-cell">
+                    {member.role === 'owner' || !member.accountIds || member.accountIds.length === 0
+                      ? '全アカウント'
+                      : member.accountIds.map((id) => accounts.find((a) => a.id === id)?.name ?? '(削除済み)').join('、')}
+                  </Table.Cell>
                   <Table.Cell className="hidden font-mono text-xs text-kumo-subtle md:table-cell">{maskKey(member.apiKey ?? '')}</Table.Cell>
                   <Table.Cell>
                     <Badge variant={member.isActive ? 'success' : 'neutral'} appearance="dot">
@@ -259,6 +310,9 @@ export default function StaffPage() {
                     <div className="flex items-center justify-end gap-2">
                       {member.role !== 'owner' ? (
                         <>
+                          <Button type="button" size="xs" variant="secondary" onClick={() => openAccess(member)}>
+                            アカウント権限
+                          </Button>
                           <Button type="button" size="xs" variant="secondary" onClick={() => handleToggleActive(member)}>
                             {member.isActive ? '無効化' : '有効化'}
                           </Button>
@@ -290,6 +344,48 @@ export default function StaffPage() {
           </Table>
         </div>
       </LayerCard>
+
+      <Modal open={accessTarget !== null} onClose={() => { if (!accessSaving) setAccessTarget(null) }} maxWidthClass="max-w-lg" align="center">
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-kumo-strong">{accessTarget?.name} が見られるアカウント</h2>
+          <p className="mt-1 text-sm text-kumo-subtle">
+            選んだアカウントの友だち・トークだけを扱えます。他のアカウント(別の会社・事業を含む)は表示も操作もできません。
+          </p>
+          <div className="mt-4 space-y-2">
+            <Checkbox
+              label="全アカウント(制限しない)"
+              checked={accessAll}
+              onCheckedChange={(checked) => setAccessAll(Boolean(checked))}
+            />
+            {!accessAll ? (
+              <div className="ml-6 space-y-2 rounded border border-kumo-line p-3">
+                <p className="text-xs text-kumo-subtle">見られるアカウントを選んでください</p>
+                {accounts.map((account) => (
+                  <Checkbox
+                    key={account.id}
+                    label={account.name}
+                    checked={accessIds.includes(account.id)}
+                    onCheckedChange={(checked) =>
+                      setAccessIds((current) =>
+                        checked ? [...current, account.id] : current.filter((id) => id !== account.id),
+                      )}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+          {!accessAll ? (
+            <p className="mt-3 text-xs text-kumo-subtle">
+              制限されたスタッフが使える機能は、友だち・トーク・タグの参照に限られます(フォーム回答や各種設定は、管理者のみ)。
+            </p>
+          ) : null}
+          {accessError ? <Banner className="mt-3" size="sm" variant="error" title="保存できませんでした" description={accessError} /> : null}
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="secondary" disabled={accessSaving} onClick={() => setAccessTarget(null)}>キャンセル</Button>
+            <Button type="button" variant="primary" loading={accessSaving} onClick={saveAccess}>保存</Button>
+          </div>
+        </div>
+      </Modal>
 
       <Dialog.Root
         role="alertdialog"
