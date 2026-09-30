@@ -6,7 +6,7 @@ const BASE = { loginChannelId: '2001', loginChannelSecret: 'sec', workerUrl: 'ht
 type Call = { url: string; method: string; body?: unknown; auth?: string };
 
 /** LINE API の疑似サーバー。呼ばれた内容を記録する。 */
-function fakeLine(opts: { tokenOk?: boolean; apps?: Array<{ liffId: string; view?: { url?: string } }>; createOk?: boolean } = {}) {
+function fakeLine(opts: { tokenOk?: boolean; apps?: Array<{ liffId: string; view?: { url?: string } }>; createOk?: boolean; noAppsIs404?: boolean } = {}) {
   const calls: Call[] = [];
   const f = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -24,7 +24,10 @@ function fakeLine(opts: { tokenOk?: boolean; apps?: Array<{ liffId: string; view
         ? new Response('{}', { status: 400 })
         : new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 });
     }
-    if (url.endsWith('/liff/v1/apps') && method === 'GET') return new Response(JSON.stringify({ apps: opts.apps ?? [] }), { status: 200 });
+    if (url.endsWith('/liff/v1/apps') && method === 'GET') {
+      if (opts.noAppsIs404) return new Response(JSON.stringify({ message: 'no LIFF app found for channel 2001.' }), { status: 404 });
+      return new Response(JSON.stringify({ apps: opts.apps ?? [] }), { status: 200 });
+    }
     if (url.endsWith('/liff/v1/apps') && method === 'POST') {
       return opts.createOk === false ? new Response('{}', { status: 500 }) : new Response(JSON.stringify({ liffId: '2001-NEW' }), { status: 200 });
     }
@@ -35,6 +38,13 @@ function fakeLine(opts: { tokenOk?: boolean; apps?: Array<{ liffId: string; view
 }
 
 describe('ensureLiffApp', () => {
+  test('LIFFが1つも無いチャネルはLINEが404を返す(空の一覧ではない)。0件として扱って作成に進む', async () => {
+    const { f, calls } = fakeLine({ noAppsIs404: true });
+    const r = await ensureLiffApp(BASE, f);
+    expect(r).toEqual({ liffId: '2001-NEW', created: true });
+    expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/liff/v1/apps'))).toBe(true);
+  });
+
   test('LIFFが無ければ新規作成し、エンドポイントに自分のIDを付ける', async () => {
     const { f, calls } = fakeLine();
     const r = await ensureLiffApp(BASE, f);

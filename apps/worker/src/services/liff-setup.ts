@@ -84,6 +84,12 @@ async function issueToken(input: LiffSetupInput, f: FetchLike): Promise<string> 
 
 async function listApps(token: string, f: FetchLike): Promise<LiffApp[]> {
   const res = await f(LIFF_APPS_URL, { headers: { Authorization: `Bearer ${token}` } });
+  // LIFF が1つも無いログインチャネルでは、LINE は空の一覧ではなく 404("no LIFF app found for channel …")を返す。
+  // 認証は通っている(トークン発行済み)ので、「まだ0件」として作成に進む。
+  if (res.status === 404) {
+    const body = await res.clone().text().catch(() => '');
+    if (/no LIFF app found/i.test(body)) return [];
+  }
   if (!res.ok) {
     throw new LiffSetupError(
       `LIFFの一覧をLINEから取得できませんでした。このチャネルが「LINEログイン」チャネルか確認してください(Messaging APIチャネルでは作れません)。${await lineErrorDetail(res)}`,
