@@ -85,6 +85,7 @@ const menuSections: MenuSection[] = [
     items: [
       { href: '/accounts', label: 'LINE公式アカウント設定' },
       { href: '/staff', label: 'スタッフ設定' },
+      { href: '/imports', label: 'データ引き継ぎ' },
       { href: '/booking/menus', label: '予約メニュー' },
       { href: '/booking/staff', label: '予約スタッフ' },
       { href: '/webhooks', label: 'Webhook' },

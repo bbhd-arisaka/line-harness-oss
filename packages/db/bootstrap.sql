@@ -535,6 +535,27 @@ CREATE TABLE IF NOT EXISTS google_calendar_connections (
   updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
+CREATE TABLE IF NOT EXISTS import_batch_ops (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  batch_id TEXT NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+  op       TEXT NOT NULL,
+  ref1     TEXT,
+  ref2     TEXT,
+  before   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS import_batches (
+  id              TEXT PRIMARY KEY,
+  source          TEXT NOT NULL,                 -- 'lstep'
+  line_account_id TEXT,                          -- 取り込み先の公式アカウント
+  status          TEXT NOT NULL DEFAULT 'running', -- running / applied / undone
+  summary         TEXT,                          -- 件数など(JSON)
+  created_by      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  finished_at     TEXT,
+  undone_at       TEXT
+);
+
 CREATE TABLE IF NOT EXISTS incoming_webhooks (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
@@ -1321,6 +1342,8 @@ CREATE INDEX IF NOT EXISTS idx_health_logs_account_created_at
   ON account_health_logs (line_account_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON booking_idempotency_keys (expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_import_batch_ops_batch ON import_batch_ops(batch_id);
 
 CREATE INDEX IF NOT EXISTS idx_line_accounts_display_order
   ON line_accounts (display_order, created_at);

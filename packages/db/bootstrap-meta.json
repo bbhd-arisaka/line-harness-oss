@@ -88,7 +88,8 @@
     "080_friend_fields_lstep.sql",
     "081_forms_lstep_options.sql",
     "082_friends_per_account.sql",
-    "083_staff_account_access.sql"
+    "083_staff_account_access.sql",
+    "084_import_batches.sql"
   ],
-  "migrationCount": 89
+  "migrationCount": 90
 }

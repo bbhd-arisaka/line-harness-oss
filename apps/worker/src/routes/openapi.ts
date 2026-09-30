@@ -464,6 +464,52 @@ const spec = {
         responses: { '200': { description: 'Order updated' } },
       },
     },
+    '/api/imports': {
+      get: { tags: ['Imports'], summary: 'データ引き継ぎの実行履歴(オーナー専用)', responses: { '200': { description: 'Import batches' } } },
+    },
+    '/api/imports/lstep/plan': {
+      post: {
+        tags: ['Imports'],
+        summary: 'Lステップ引き継ぎの計画(何も書き込まない・オーナー専用)',
+        description: '取り込み用データを検証し、作られる友だち情報欄・タグ、変わる友だちの件数を返す。',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['definitions'], properties: { definitions: { type: 'object' }, friends: { type: 'array', items: { type: 'object' } } } } } } },
+        responses: { '200': { description: 'Plan' }, '400': { description: 'Invalid dataset' }, '404': { description: 'Account not found' } },
+      },
+    },
+    '/api/imports/lstep/start': {
+      post: {
+        tags: ['Imports'],
+        summary: 'Lステップ引き継ぎを開始し、友だち情報欄・タグを作る(オーナー専用)',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['definitions'], properties: { definitions: { type: 'object' } } } } } },
+        responses: { '201': { description: 'Batch created (batchId)' }, '400': { description: 'Invalid dataset' }, '404': { description: 'Account not found' } },
+      },
+    },
+    '/api/imports/lstep/{batchId}/friends': {
+      post: {
+        tags: ['Imports'],
+        summary: '友だちの本名・友だち情報・タグを反映する(1回100人まで・オーナー専用)',
+        parameters: [{ name: 'batchId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['friends'], properties: { friends: { type: 'array', items: { type: 'object' } } } } } } },
+        responses: { '200': { description: 'Applied counts' }, '400': { description: 'Invalid friends' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
+      },
+    },
+    '/api/imports/lstep/{batchId}/finish': {
+      post: {
+        tags: ['Imports'],
+        summary: 'Lステップ引き継ぎを完了にする(オーナー専用)',
+        parameters: [{ name: 'batchId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Finished' }, '409': { description: 'Cannot finish' } },
+      },
+    },
+    '/api/imports/{batchId}/undo': {
+      post: {
+        tags: ['Imports'],
+        summary: '取り込みを丸ごと元に戻す(オーナー専用)',
+        description: '変更前の値に戻し、取り込みで作ったタグ・友だち情報欄(まだ使われていないもの)を消す。',
+        parameters: [{ name: 'batchId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Undone' }, '404': { description: 'Batch not found' }, '409': { description: 'Already undone' } },
+      },
+    },
     '/api/staff/{id}/accounts': {
       put: {
         tags: ['Staff'],
