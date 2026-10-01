@@ -522,6 +522,14 @@ const spec = {
         responses: { '200': { description: 'Added / skipped counts' }, '400': { description: 'Invalid messages' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
       },
     },
+    '/api/imports/lstep/targets': {
+      get: {
+        tags: ['Imports'],
+        summary: '突き合わせの相手(取り込み先アカウントの友だち・フォーム・アカウント一覧)を返す(読み取りのみ・オーナー専用)',
+        parameters: [{ name: 'accountId', in: 'query', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'accounts / friends / forms' }, '400': { description: 'accountId missing' }, '404': { description: 'Account not found' } },
+      },
+    },
     '/api/imports/lstep/{batchId}/finish': {
       post: {
         tags: ['Imports'],

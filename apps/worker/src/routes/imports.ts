@@ -8,6 +8,7 @@ import {
   applySubmissions,
   finishImport,
   listImports,
+  loadImportTargets,
   loadFieldKeys,
   loadTagIds,
   planDefinitions,
@@ -41,6 +42,17 @@ function fail(c: { json: (b: unknown, s: 400 | 404 | 409 | 500) => Response }, e
 imports.get('/api/imports', requireRole('owner'), async (c) => {
   try {
     return c.json({ success: true, data: await listImports(c.env.DB) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+// 突き合わせの相手(取り込み先アカウントの友だち・フォーム・アカウント一覧)。読み取りのみ
+imports.get('/api/imports/lstep/targets', requireRole('owner'), async (c) => {
+  try {
+    const accountId = c.req.query('accountId');
+    if (!accountId) throw new ImportError('accountId を指定してください');
+    return c.json({ success: true, data: await loadImportTargets(c.env.DB, accountId) });
   } catch (err) {
     return fail(c, err);
   }

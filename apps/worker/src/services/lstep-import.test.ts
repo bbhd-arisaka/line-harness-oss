@@ -13,6 +13,7 @@ import {
   planMessages,
   planDefinitions,
   planFriends,
+  loadImportTargets,
   loadTagIds,
   startImport,
   undoImport,
@@ -239,6 +240,18 @@ describe('フォーム(代入先の是正・回答結果の取り込み)', () =>
     expect(() => validateSubmissions([{ formId: 'f', createdAt: '2025-10-28T13:07:04.000+09:00', data: {} }])).toThrow(/形式/);
     expect(() => validateFormConfigs([{ formId: 'f', fields: { a: { registrationTargets: [{ type: 'bogus' }] } } }])).toThrow(/代入先/);
     expect(() => validateFormConfigs([{ formId: 'f', fields: {}, addFields: [{ name: 'bad name', label: 'x' }] }])).toThrow(/名前/);
+  });
+});
+
+describe('突き合わせの相手', () => {
+  test('取り込み先アカウントの友だちだけを返す(別アカウントの友だちは出さない)。フォームは全部', async () => {
+    const { db, sqlite } = setup();
+    sqlite.prepare("INSERT INTO forms (id, name, fields, save_to_metadata, submit_count) VALUES ('form-1', 'カウンセリング', '[{\"name\":\"q1\"}]', 1, 0)").run();
+    const t = await loadImportTargets(db, 'acc-a');
+    expect(t.friends.map((x) => x.id).sort()).toEqual(['f1', 'f2']);
+    expect(t.accounts.map((a) => a.id).sort()).toEqual(['acc-a', 'acc-b']);
+    expect(t.forms).toEqual([{ id: 'form-1', name: 'カウンセリング', fields: [{ name: 'q1' }] }]);
+    await expect(loadImportTargets(db, 'nope')).rejects.toThrow(/見つかりません/);
   });
 });
 

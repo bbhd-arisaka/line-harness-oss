@@ -637,3 +637,25 @@ export async function applyMessages(db: D1Database, batchId: string, items: Data
   await chunked(db, statements, 50);
   return out;
 }
+
+// ── 突き合わせの相手(画面のワンクリック引き継ぎが使う) ─────────────────────
+
+export interface ImportTargets {
+  accounts: Array<{ id: string; name: string }>;
+  friends: Array<{ id: string; displayName: string | null; pictureUrl: string | null; isFollowing: boolean }>;
+  forms: Array<{ id: string; name: string; fields: unknown }>;
+}
+
+/** 取り込み先アカウントの友だち(突き合わせ用)と、フォーム一覧。読み取りのみ。 */
+export async function loadImportTargets(db: D1Database, accountId: string): Promise<ImportTargets> {
+  const account = await db.prepare('SELECT id FROM line_accounts WHERE id = ?').bind(accountId).first();
+  if (!account) throw new ImportError('取り込み先のアカウントが見つかりません', 404);
+  const accounts = (await db.prepare('SELECT id, name FROM line_accounts ORDER BY created_at').all<{ id: string; name: string }>()).results ?? [];
+  const friends = (await db.prepare('SELECT id, display_name, picture_url, is_following FROM friends WHERE line_account_id = ?').bind(accountId).all<{ id: string; display_name: string | null; picture_url: string | null; is_following: number }>()).results ?? [];
+  const forms = (await db.prepare('SELECT id, name, fields FROM forms ORDER BY created_at').all<{ id: string; name: string; fields: string }>()).results ?? [];
+  return {
+    accounts,
+    friends: friends.map((f) => ({ id: f.id, displayName: f.display_name, pictureUrl: f.picture_url, isFollowing: !!f.is_following })),
+    forms: forms.map((f) => { let fields: unknown = []; try { fields = JSON.parse(f.fields); } catch { /* 壊れた定義は空として扱う */ } return { id: f.id, name: f.name, fields }; }),
+  };
+}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Header from '@/components/layout/header'
 import { Modal } from '@/components/ui/modal'
 import { ApiError, fetchApi } from '@/lib/api'
+import { ExtensionImport } from './extension-import'
 
 // Lステップ → beyond line のデータ引き継ぎ(オーナー専用)。
 // 取り込み用データ(JSON)を選ぶ → 計画を確認 → 反映 → 必要なら元に戻す。
@@ -238,6 +239,15 @@ export default function ImportsPage() {
           {message.text}
         </div>
       )}
+
+      <ExtensionImport
+        disabled={!!busy}
+        onLoaded={(l) => {
+          setPlan(null)
+          setMessage(null)
+          setLoaded(l)
+        }}
+      />
 
       <section className="mb-6 rounded border border-[#e0e0e3] bg-white p-5">
         <h2 className="text-sm font-bold text-[#333]">1. 取り込み用データを選ぶ</h2>

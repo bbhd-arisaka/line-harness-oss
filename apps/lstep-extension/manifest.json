@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "beyond line 引き継ぎ(Lステップ)",
+  "version": "0.1.0",
+  "description": "Lステップの友だち・タグ・友だち情報・フォーム回答・トーク履歴を集めて、beyond line の「データ引き継ぎ」画面に渡します。",
+  "permissions": ["storage", "unlimitedStorage"],
+  "host_permissions": ["https://manager.linestep.net/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://manager.linestep.net/*"],
+      "js": ["lstep-content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://beyond-line-admin.cms-manager.jp/*", "http://localhost:3001/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
