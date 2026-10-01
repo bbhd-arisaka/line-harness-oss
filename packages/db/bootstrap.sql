@@ -692,7 +692,7 @@ CREATE TABLE IF NOT EXISTS messages_log (
   source           TEXT,
   line_account_id  TEXT,
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-);
+, import_batch_id TEXT);
 
 CREATE TABLE IF NOT EXISTS mileage_event_queue (
   engagement_event_id   TEXT PRIMARY KEY REFERENCES engagement_events(id) ON DELETE CASCADE,
@@ -1376,6 +1376,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_log_friend_direction_created ON messages
 CREATE INDEX IF NOT EXISTS idx_messages_log_friend_id ON messages_log (friend_id);
 
 CREATE INDEX IF NOT EXISTS idx_messages_log_friend_source ON messages_log (friend_id, source);
+
+CREATE INDEX IF NOT EXISTS idx_messages_log_import_batch ON messages_log(import_batch_id);
 
 CREATE INDEX IF NOT EXISTS idx_mileage_event_queue_due
   ON mileage_event_queue(status, available_at, created_at);

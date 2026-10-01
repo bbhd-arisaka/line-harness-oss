@@ -303,12 +303,13 @@ export async function listImports(db: D1Database) {
 }
 
 /** 取り込みを丸ごと元に戻す(記録を逆向きにたどる)。 */
-export async function undoImport(db: D1Database, batchId: string): Promise<{ restoredFriends: number; removedTags: number; removedDefinitions: number; removedSubmissions: number; restoredForms: number }> {
+export async function undoImport(db: D1Database, batchId: string): Promise<{ restoredFriends: number; removedTags: number; removedDefinitions: number; removedSubmissions: number; restoredForms: number; removedMessages: number }> {
   const batch = await db.prepare('SELECT id, status FROM import_batches WHERE id = ?').bind(batchId).first<{ id: string; status: string }>();
   if (!batch) throw new ImportError('取り込みの記録が見つかりません', 404);
   if (batch.status === 'undone') throw new ImportError('すでに取り消し済みです', 409);
   const ops = (await db.prepare('SELECT op, ref1, ref2, before FROM import_batch_ops WHERE batch_id = ? ORDER BY id DESC').bind(batchId).all<{ op: string; ref1: string | null; ref2: string | null; before: string | null }>()).results ?? [];
-  const out = { restoredFriends: 0, removedTags: 0, removedDefinitions: 0, removedSubmissions: ops.filter((o) => o.op === 'added_submission').length, restoredForms: ops.filter((o) => o.op === 'form_before').length };
+  const removedMessages = ((await db.prepare('SELECT COUNT(*) AS c FROM messages_log WHERE import_batch_id = ?').bind(batchId).first<{ c: number }>())?.c) ?? 0;
+  const out = { restoredFriends: 0, removedTags: 0, removedDefinitions: 0, removedMessages, removedSubmissions: ops.filter((o) => o.op === 'added_submission').length, restoredForms: ops.filter((o) => o.op === 'form_before').length };
   const statements: D1PreparedStatement[] = [];
   const now = jstNow();
   for (const o of ops) {
@@ -331,6 +332,8 @@ export async function undoImport(db: D1Database, batchId: string): Promise<{ res
       statements.push(db.prepare('UPDATE forms SET fields = ?, save_to_metadata = ?, updated_at = ? WHERE id = ?').bind(b.fields, b.save_to_metadata, now, o.ref1));
     }
   }
+  // トーク履歴: 取り込んだ印の付いたメッセージを消す
+  statements.push(db.prepare('DELETE FROM messages_log WHERE import_batch_id = ?').bind(batchId));
   for (const [formId, n] of removedCount) statements.push(db.prepare('UPDATE forms SET submit_count = MAX(submit_count - ?, 0) WHERE id = ?').bind(n, formId));
   await chunked(db, statements);
   // 作ったタグ・項目・フォルダは、まだ使われていなければ消す(他で使われ始めたものは残す)
@@ -521,5 +524,103 @@ export async function applySubmissions(db: D1Database, batchId: string, items: D
   }
   for (const [formId, n] of addedByForm) statements.push(db.prepare('UPDATE forms SET submit_count = submit_count + ? WHERE id = ?').bind(n, formId));
   await chunked(db, statements);
+  return out;
+}
+
+// ── トーク履歴 ───────────────────────────────────────────────────────────
+
+export interface DatasetMessage {
+  /** Lステップのメッセージ ID(同じメッセージを2回取り込まないための印) */
+  id: string;
+  beyondFriendId: string;
+  direction: 'incoming' | 'outgoing';
+  messageType: 'text' | 'flex';
+  content: string;
+  source: 'user' | 'broadcast' | 'manual' | 'scenario';
+  /** JST 例: 2025-10-28T13:07:04.000+09:00 */
+  createdAt: string;
+}
+
+export function validateMessages(x: unknown): DatasetMessage[] {
+  if (x === undefined || x === null) return [];
+  if (!Array.isArray(x)) throw new ImportError('messages は配列で指定してください');
+  if (x.length > 200) throw new ImportError('一度に反映できるメッセージは200件までです');
+  return x.map((m) => {
+    if (typeof m?.id !== 'string' || !/^\d{1,20}$/.test(m.id)) throw new ImportError('メッセージIDが不正です');
+    if (typeof m.beyondFriendId !== 'string' || !m.beyondFriendId) throw new ImportError('beyondFriendId がありません');
+    if (m.direction !== 'incoming' && m.direction !== 'outgoing') throw new ImportError('direction が不正です');
+    if (m.messageType !== 'text' && m.messageType !== 'flex') throw new ImportError('messageType が不正です');
+    if (typeof m.content !== 'string' || !m.content || m.content.length > 100_000) throw new ImportError('メッセージの内容が不正、または大きすぎます');
+    if (m.messageType === 'flex') { try { JSON.parse(m.content); } catch { throw new ImportError('Flexメッセージの内容がJSONではありません'); } }
+    if (!['user', 'broadcast', 'manual', 'scenario'].includes(m.source)) throw new ImportError('source が不正です');
+    if (typeof m.createdAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+09:00$/.test(m.createdAt)) throw new ImportError('日時の形式が正しくありません');
+    return { id: m.id, beyondFriendId: m.beyondFriendId, direction: m.direction, messageType: m.messageType, content: m.content, source: m.source, createdAt: m.createdAt };
+  });
+}
+
+export interface MessagesPlan { total: number; text: number; flex: number; outgoing: number; incoming: number; alreadyImported: number; nearDuplicates: number; friendNotInAccount: number }
+
+/** 受信メッセージが、すでに beyond line に記録されているもの(並行運用の期間中に届いた分)と同じかを調べる。 */
+async function isNearDuplicateIncoming(db: D1Database, friendId: string, createdAt: string, messageType: string): Promise<boolean> {
+  const ms = Date.parse(createdAt);
+  const from = new Date(ms - 10_000 + 9 * 3600_000).toISOString().replace('Z', '+09:00');
+  const to = new Date(ms + 10_000 + 9 * 3600_000).toISOString().replace('Z', '+09:00');
+  const row = await db.prepare("SELECT 1 AS x FROM messages_log WHERE friend_id = ? AND direction = 'incoming' AND message_type = ? AND created_at BETWEEN ? AND ? AND (import_batch_id IS NULL) LIMIT 1")
+    .bind(friendId, messageType, from, to).first();
+  return !!row;
+}
+
+export async function planMessages(db: D1Database, accountId: string, items: DatasetMessage[]): Promise<MessagesPlan> {
+  const plan: MessagesPlan = { total: items.length, text: 0, flex: 0, outgoing: 0, incoming: 0, alreadyImported: 0, nearDuplicates: 0, friendNotInAccount: 0 };
+  const friendIds = [...new Set(items.map((i) => i.beyondFriendId))];
+  const ok = new Set<string>();
+  for (let i = 0; i < friendIds.length; i += 50) {
+    const part = friendIds.slice(i, i + 50);
+    for (const r of (await db.prepare(`SELECT id FROM friends WHERE line_account_id = ? AND id IN (${part.map(() => '?').join(',')})`).bind(accountId, ...part).all<{ id: string }>()).results ?? []) ok.add(r.id);
+  }
+  const ids = items.map((i) => `lstep:${i.id}`);
+  const existing = new Set<string>();
+  for (let i = 0; i < ids.length; i += 50) {
+    const part = ids.slice(i, i + 50);
+    for (const r of (await db.prepare(`SELECT id FROM messages_log WHERE id IN (${part.map(() => '?').join(',')})`).bind(...part).all<{ id: string }>()).results ?? []) existing.add(r.id);
+  }
+  for (const m of items) {
+    if (m.messageType === 'text') plan.text++; else plan.flex++;
+    if (m.direction === 'outgoing') plan.outgoing++; else plan.incoming++;
+    if (!ok.has(m.beyondFriendId)) { plan.friendNotInAccount++; continue; }
+    if (existing.has(`lstep:${m.id}`)) { plan.alreadyImported++; continue; }
+    if (m.direction === 'incoming' && m.createdAt >= '2026-09-29' && (await isNearDuplicateIncoming(db, m.beyondFriendId, m.createdAt, m.messageType))) plan.nearDuplicates++;
+  }
+  return plan;
+}
+
+/** Lステップのトーク履歴を取り込む。取り込んだ印(import_batch_id)を付け、「元に戻す」で、その分だけ消せる。 */
+export async function applyMessages(db: D1Database, batchId: string, items: DatasetMessage[]): Promise<{ added: number; skipped: number; nearDuplicates: number; friendNotInAccount: number }> {
+  const batch = await assertRunning(db, batchId);
+  const out = { added: 0, skipped: 0, nearDuplicates: 0, friendNotInAccount: 0 };
+  const friendIds = [...new Set(items.map((i) => i.beyondFriendId))];
+  const ok = new Set<string>();
+  for (let i = 0; i < friendIds.length; i += 50) {
+    const part = friendIds.slice(i, i + 50);
+    for (const r of (await db.prepare(`SELECT id FROM friends WHERE line_account_id = ? AND id IN (${part.map(() => '?').join(',')})`).bind(batch.line_account_id, ...part).all<{ id: string }>()).results ?? []) ok.add(r.id);
+  }
+  const ids = items.map((i) => `lstep:${i.id}`);
+  const existing = new Set<string>();
+  for (let i = 0; i < ids.length; i += 50) {
+    const part = ids.slice(i, i + 50);
+    for (const r of (await db.prepare(`SELECT id FROM messages_log WHERE id IN (${part.map(() => '?').join(',')})`).bind(...part).all<{ id: string }>()).results ?? []) existing.add(r.id);
+  }
+  const statements: D1PreparedStatement[] = [];
+  for (const m of items) {
+    if (!ok.has(m.beyondFriendId)) { out.friendNotInAccount++; continue; }
+    if (existing.has(`lstep:${m.id}`)) { out.skipped++; continue; }
+    if (m.direction === 'incoming' && m.createdAt >= '2026-09-29' && (await isNearDuplicateIncoming(db, m.beyondFriendId, m.createdAt, m.messageType))) { out.nearDuplicates++; continue; }
+    statements.push(
+      db.prepare('INSERT OR IGNORE INTO messages_log (id, friend_id, direction, message_type, content, source, line_account_id, created_at, import_batch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(`lstep:${m.id}`, m.beyondFriendId, m.direction, m.messageType, m.content, m.source, batch.line_account_id, m.createdAt, batchId),
+    );
+    out.added++;
+  }
+  await chunked(db, statements, 50);
   return out;
 }

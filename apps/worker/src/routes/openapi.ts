@@ -512,6 +512,16 @@ const spec = {
         responses: { '200': { description: 'Added / skipped / detached counts' }, '400': { description: 'Invalid submissions' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
       },
     },
+    '/api/imports/lstep/{batchId}/messages': {
+      post: {
+        tags: ['Imports'],
+        summary: 'Lステップのトーク履歴を取り込む(1回200件まで・同じメッセージは2回入らない・オーナー専用)',
+        description: '取り込んだメッセージには取り込みバッチの印を付け、「元に戻す」で、その分だけを消せる。トークの未読・未対応の表示は変えない。',
+        parameters: [{ name: 'batchId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['messages'], properties: { messages: { type: 'array', items: { type: 'object' } } } } } } },
+        responses: { '200': { description: 'Added / skipped counts' }, '400': { description: 'Invalid messages' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
+      },
+    },
     '/api/imports/lstep/{batchId}/finish': {
       post: {
         tags: ['Imports'],

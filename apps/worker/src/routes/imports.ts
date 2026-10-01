@@ -4,6 +4,7 @@ import {
   ImportError,
   applyFormConfigs,
   applyFriends,
+  applyMessages,
   applySubmissions,
   finishImport,
   listImports,
@@ -12,12 +13,14 @@ import {
   planDefinitions,
   planFormConfigs,
   planFriends,
+  planMessages,
   planSubmissions,
   startImport,
   undoImport,
   validateDefinitions,
   validateFormConfigs,
   validateFriends,
+  validateMessages,
   validateSubmissions,
 } from '../services/lstep-import.js';
 import type { Env } from '../index.js';
@@ -46,13 +49,14 @@ imports.get('/api/imports', requireRole('owner'), async (c) => {
 // 計画: 取り込み用データを検証し、何が作られ・何が変わるかを数える(書き込みなし)
 imports.post('/api/imports/lstep/plan', requireRole('owner'), async (c) => {
   try {
-    const body = await c.req.json<{ definitions?: unknown; friends?: unknown; forms?: { configs?: unknown; submissions?: unknown } }>();
+    const body = await c.req.json<{ definitions?: unknown; friends?: unknown; forms?: { configs?: unknown; submissions?: unknown }; messages?: unknown }>();
     const defs = validateDefinitions(body.definitions);
     const plan = await planDefinitions(c.env.DB, defs);
     const friends = validateFriends(body.friends ?? [], new Set(defs.fields.map((f) => f.key)));
     const tagIds = await loadTagIds(c.env.DB);
     const configs = validateFormConfigs(body.forms?.configs);
     const submissions = validateSubmissions(body.forms?.submissions);
+    const messages = validateMessages(body.messages);
     return c.json({
       success: true,
       data: {
@@ -60,6 +64,7 @@ imports.post('/api/imports/lstep/plan', requireRole('owner'), async (c) => {
         friends: await planFriends(c.env.DB, defs.accountId, friends, tagIds),
         forms: configs.length ? await planFormConfigs(c.env.DB, configs) : null,
         submissions: submissions.length ? await planSubmissions(c.env.DB, submissions) : null,
+        messages: messages.length ? await planMessages(c.env.DB, defs.accountId, messages) : null,
       },
     });
   } catch (err) {
@@ -102,6 +107,15 @@ imports.post('/api/imports/lstep/:batchId/submissions', requireRole('owner'), as
   try {
     const body = await c.req.json<{ submissions?: unknown }>();
     return c.json({ success: true, data: await applySubmissions(c.env.DB, c.req.param('batchId')!, validateSubmissions(body.submissions)) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+imports.post('/api/imports/lstep/:batchId/messages', requireRole('owner'), async (c) => {
+  try {
+    const body = await c.req.json<{ messages?: unknown }>();
+    return c.json({ success: true, data: await applyMessages(c.env.DB, c.req.param('batchId')!, validateMessages(body.messages)) });
   } catch (err) {
     return fail(c, err);
   }

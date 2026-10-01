@@ -6,8 +6,10 @@ import {
   ImportError,
   applyFormConfigs,
   applyFriends,
+  applyMessages,
   applySubmissions,
   finishImport,
+  planMessages,
   planDefinitions,
   planFriends,
   loadTagIds,
@@ -16,6 +18,7 @@ import {
   validateDefinitions,
   validateFormConfigs,
   validateFriends,
+  validateMessages,
   validateSubmissions,
 } from './lstep-import.js';
 
@@ -218,5 +221,51 @@ describe('フォーム(代入先の是正・回答結果の取り込み)', () =>
     expect(() => validateSubmissions([{ formId: 'f', createdAt: '2025-10-28T13:07:04.000+09:00', data: {} }])).toThrow(/形式/);
     expect(() => validateFormConfigs([{ formId: 'f', fields: { a: { registrationTargets: [{ type: 'bogus' }] } } }])).toThrow(/代入先/);
     expect(() => validateFormConfigs([{ formId: 'f', fields: {}, addFields: [{ name: 'bad name', label: 'x' }] }])).toThrow(/名前/);
+  });
+});
+
+describe('トーク履歴の取り込み', () => {
+  const msgs = () => [
+    { id: '1001', beyondFriendId: 'f1', direction: 'outgoing', messageType: 'text', content: 'こんにちは', source: 'manual', createdAt: '2025-10-28T13:07:04.000+09:00' },
+    { id: '1002', beyondFriendId: 'f1', direction: 'incoming', messageType: 'text', content: '予約したいです', source: 'user', createdAt: '2025-10-28T13:09:00.000+09:00' },
+    { id: '1003', beyondFriendId: 'f1', direction: 'outgoing', messageType: 'flex', content: JSON.stringify({ type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } }), source: 'broadcast', createdAt: '2025-11-01T10:00:00.000+09:00' },
+    { id: '1004', beyondFriendId: 'fb', direction: 'incoming', messageType: 'text', content: '別アカウントの人', source: 'user', createdAt: '2025-11-02T10:00:00.000+09:00' },
+  ];
+
+  test('取り込み: 別アカウントの友だちは入れない。印が付き、未読・チャットには触れない', async () => {
+    const { db, sqlite } = setup();
+    sqlite.exec("INSERT INTO chats (id, friend_id, status) VALUES ('c1', 'f1', 'resolved')");
+    const plan = await planMessages(db, 'acc-a', validateMessages(msgs()));
+    expect(plan).toMatchObject({ total: 4, text: 3, flex: 1, outgoing: 2, incoming: 2, friendNotInAccount: 1, alreadyImported: 0 });
+    const { batchId } = await startImport(db, validateDefinitions(DEFS), 'o');
+    const r = await applyMessages(db, batchId, validateMessages(msgs()));
+    expect(r).toEqual({ added: 3, skipped: 0, nearDuplicates: 0, friendNotInAccount: 1 });
+    const rows = sqlite.prepare('SELECT id, friend_id, direction, message_type, source, line_account_id, import_batch_id FROM messages_log ORDER BY created_at').all() as Array<Record<string, string>>;
+    expect(rows.map((x) => x.id)).toEqual(['lstep:1001', 'lstep:1002', 'lstep:1003']);
+    expect(rows.every((x) => x.line_account_id === 'acc-a' && x.import_batch_id === batchId)).toBe(true);
+    expect(sqlite.prepare("SELECT status FROM chats WHERE id='c1'").get()).toEqual({ status: 'resolved' });
+    // 2回目は入らない
+    expect(await applyMessages(db, batchId, validateMessages(msgs()))).toMatchObject({ added: 0, skipped: 3 });
+    // 元に戻す
+    await finishImport(db, batchId, {});
+    expect((await undoImport(db, batchId)).removedMessages).toBe(3);
+    expect(sqlite.prepare('SELECT COUNT(*) c FROM messages_log').get()).toEqual({ c: 0 });
+  });
+
+  test('並行運用の期間にすでに記録されている受信メッセージは、重複して入れない(送信側は入れる)', async () => {
+    const { db, sqlite } = setup();
+    sqlite.prepare("INSERT INTO messages_log (id, friend_id, direction, message_type, content, source, line_account_id, created_at) VALUES ('existing', 'f1', 'incoming', 'text', 'こんにちは', 'user', 'acc-a', '2026-09-30T20:05:30.000+09:00')").run();
+    const { batchId } = await startImport(db, validateDefinitions(DEFS), 'o');
+    const r = await applyMessages(db, batchId, validateMessages([
+      { id: '2001', beyondFriendId: 'f1', direction: 'incoming', messageType: 'text', content: 'こんにちは', source: 'user', createdAt: '2026-09-30T20:05:28.000+09:00' },
+      { id: '2002', beyondFriendId: 'f1', direction: 'outgoing', messageType: 'text', content: '返信', source: 'manual', createdAt: '2026-09-30T20:06:00.000+09:00' },
+    ]));
+    expect(r).toMatchObject({ added: 1, nearDuplicates: 1 });
+  });
+
+  test('形式の不正を拒否する', () => {
+    expect(() => validateMessages([{ id: 'x', beyondFriendId: 'f1', direction: 'incoming', messageType: 'text', content: 'a', source: 'user', createdAt: '2025-10-28T13:07:04.000+09:00' }])).toThrow(/ID/);
+    expect(() => validateMessages([{ id: '1', beyondFriendId: 'f1', direction: 'incoming', messageType: 'flex', content: 'not json', source: 'user', createdAt: '2025-10-28T13:07:04.000+09:00' }])).toThrow(/JSON/);
+    expect(() => validateMessages(new Array(201).fill({}))).toThrow(/200件/);
   });
 });
