@@ -8,6 +8,7 @@ import {
   applyFriends,
   applyMessages,
   applySubmissions,
+  planSubmissions,
   finishImport,
   planMessages,
   planDefinitions,
@@ -201,12 +202,12 @@ describe('フォーム(代入先の是正・回答結果の取り込み)', () =>
     const { db, sqlite } = setupForm();
     const { batchId } = await startImport(db, validateDefinitions(DEFS), 'o');
     const r = await applySubmissions(db, batchId, validateSubmissions(subs()));
-    expect(r).toEqual({ added: 2, skipped: 0, detached: 1 });
+    expect(r).toEqual({ added: 2, skipped: 0, detached: 1, attached: 0 });
     expect(sqlite.prepare('SELECT friend_id FROM form_submissions WHERE id != ? ORDER BY created_at, friend_id').all('old')).toEqual([{ friend_id: null }, { friend_id: 'f1' }]);
     expect(sqlite.prepare("SELECT submit_count c FROM forms WHERE id='form-1'").get()).toEqual({ c: 3 });
     // 同じ回答は入らない
     const again = await applySubmissions(db, batchId, validateSubmissions(subs()));
-    expect(again).toEqual({ added: 0, skipped: 2, detached: 0 });
+    expect(again).toEqual({ added: 0, skipped: 2, detached: 0, attached: 0 });
     expect(sqlite.prepare("SELECT COUNT(*) c FROM form_submissions").get()).toEqual({ c: 3 });
     // 元に戻すと、取り込んだ分だけ消え、既存の回答と件数は残る
     await finishImport(db, batchId, {});
@@ -214,6 +215,23 @@ describe('フォーム(代入先の是正・回答結果の取り込み)', () =>
     expect(u.removedSubmissions).toBe(2);
     expect(sqlite.prepare("SELECT COUNT(*) c FROM form_submissions").get()).toEqual({ c: 1 });
     expect(sqlite.prepare("SELECT submit_count c FROM forms WHERE id='form-1'").get()).toEqual({ c: 1 });
+  });
+
+  test('先に「持ち主なし」で入った回答に、後から友だちを付けられる(元に戻すと持ち主なしに戻る)', async () => {
+    const { db, sqlite } = setupForm();
+    sqlite.prepare("INSERT INTO form_submissions (id, form_id, friend_id, data) VALUES ('orphan', 'form-1', NULL, ?)").run(JSON.stringify({ _lstep: { key: 'lstep:1:7' } }));
+    const item = { formId: 'form-1', beyondFriendId: 'f1', createdAt: '2025-10-28T13:07:04.000+09:00', data: { name: '山田', _lstep: { key: 'lstep:1:7', answerId: '7' } } };
+    const plan = await planSubmissions(db, validateSubmissions([item]));
+    expect(plan).toMatchObject({ alreadyImported: 1, attachable: 1 });
+    const { batchId } = await startImport(db, validateDefinitions(DEFS), 'o');
+    expect(await applySubmissions(db, batchId, validateSubmissions([item]))).toEqual({ added: 0, skipped: 0, detached: 0, attached: 1 });
+    expect(sqlite.prepare("SELECT friend_id FROM form_submissions WHERE id='orphan'").get()).toEqual({ friend_id: 'f1' });
+    // 同じものをもう一度流しても、増えも変わりもしない
+    expect(await applySubmissions(db, batchId, validateSubmissions([item]))).toEqual({ added: 0, skipped: 1, detached: 0, attached: 0 });
+    await finishImport(db, batchId, {});
+    await undoImport(db, batchId);
+    expect(sqlite.prepare("SELECT friend_id FROM form_submissions WHERE id='orphan'").get()).toEqual({ friend_id: null });
+    expect(sqlite.prepare('SELECT COUNT(*) c FROM form_submissions').get()).toEqual({ c: 2 });
   });
 
   test('形式の不正を拒否する', () => {

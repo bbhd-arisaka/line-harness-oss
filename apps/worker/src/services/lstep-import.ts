@@ -313,7 +313,8 @@ export async function undoImport(db: D1Database, batchId: string): Promise<{ res
   const statements: D1PreparedStatement[] = [];
   const now = jstNow();
   for (const o of ops) {
-    if (o.op === 'added_friend_tag') { statements.push(db.prepare('DELETE FROM friend_tags WHERE friend_id = ? AND tag_id = ?').bind(o.ref1, o.ref2)); out.removedTags++; }
+    if (o.op === 'attached_submission' && o.ref1) { statements.push(db.prepare('UPDATE form_submissions SET friend_id = NULL WHERE id = ?').bind(o.ref1)); }
+    else if (o.op === 'added_friend_tag') { statements.push(db.prepare('DELETE FROM friend_tags WHERE friend_id = ? AND tag_id = ?').bind(o.ref1, o.ref2)); out.removedTags++; }
     else if (o.op === 'friend_before' && o.before) {
       const b = JSON.parse(o.before) as Record<string, string | null>;
       statements.push(db.prepare('UPDATE friends SET real_name = ?, system_display_name = ?, metadata = ?, created_at = COALESCE(?, created_at), first_followed_at = ?, updated_at = ? WHERE id = ?')
@@ -445,18 +446,21 @@ export async function planFormConfigs(db: D1Database, configs: FormConfig[]): Pr
   return plan;
 }
 
-export interface SubmissionsPlan { total: number; withFriend: number; alreadyImported: number; formsMissing: number }
+export interface SubmissionsPlan { total: number; withFriend: number; alreadyImported: number; formsMissing: number; attachable: number }
 
 export async function planSubmissions(db: D1Database, items: DatasetSubmission[]): Promise<SubmissionsPlan> {
-  const plan: SubmissionsPlan = { total: items.length, withFriend: items.filter((i) => i.beyondFriendId).length, alreadyImported: 0, formsMissing: 0 };
+  const plan: SubmissionsPlan = { total: items.length, withFriend: items.filter((i) => i.beyondFriendId).length, alreadyImported: 0, formsMissing: 0, attachable: 0 };
   const byForm = new Map<string, DatasetSubmission[]>();
   for (const i of items) byForm.set(i.formId, [...(byForm.get(i.formId) ?? []), i]);
   for (const [formId, list] of byForm) {
     const exists = await db.prepare('SELECT id FROM forms WHERE id = ?').bind(formId).first();
     if (!exists) { plan.formsMissing += list.length; continue; }
     const keys = list.map((i) => i.data._lstep.key);
-    const rows = (await db.prepare(`SELECT json_extract(data, '$._lstep.key') AS k FROM form_submissions WHERE form_id = ? AND json_extract(data, '$._lstep.key') IN (${keys.map(() => '?').join(',')})`).bind(formId, ...keys).all<{ k: string }>()).results ?? [];
+    const rows = (await db.prepare(`SELECT json_extract(data, '$._lstep.key') AS k, friend_id FROM form_submissions WHERE form_id = ? AND json_extract(data, '$._lstep.key') IN (${keys.map(() => '?').join(',')})`).bind(formId, ...keys).all<{ k: string; friend_id: string | null }>()).results ?? [];
     plan.alreadyImported += rows.length;
+    // 先に「持ち主なし」で取り込まれた回答に、持ち主が決まった場合は、持ち主を付ける
+    const detached = new Set(rows.filter((r) => !r.friend_id).map((r) => r.k));
+    plan.attachable += list.filter((i) => i.beyondFriendId && detached.has(i.data._lstep.key)).length;
   }
   return plan;
 }
@@ -496,9 +500,9 @@ export async function applyFormConfigs(db: D1Database, batchId: string, configs:
 }
 
 /** Lステップの回答結果を「回答履歴」に取り込む(同じ回答は2回入らない)。 */
-export async function applySubmissions(db: D1Database, batchId: string, items: DatasetSubmission[]): Promise<{ added: number; skipped: number; detached: number }> {
+export async function applySubmissions(db: D1Database, batchId: string, items: DatasetSubmission[]): Promise<{ added: number; skipped: number; detached: number; attached: number }> {
   const batch = await assertRunning(db, batchId);
-  const out = { added: 0, skipped: 0, detached: 0 };
+  const out = { added: 0, skipped: 0, detached: 0, attached: 0 };
   const friendIds = [...new Set(items.map((i) => i.beyondFriendId).filter((x): x is string => !!x))];
   const okFriends = new Set<string>();
   for (let i = 0; i < friendIds.length; i += 50) {
@@ -509,8 +513,17 @@ export async function applySubmissions(db: D1Database, batchId: string, items: D
   const addedByForm = new Map<string, number>();
   const statements: D1PreparedStatement[] = [];
   for (const it of items) {
-    const exists = await db.prepare("SELECT 1 AS x FROM form_submissions WHERE form_id = ? AND json_extract(data, '$._lstep.key') = ?").bind(it.formId, it.data._lstep.key).first();
+    const exists = await db.prepare("SELECT id, friend_id FROM form_submissions WHERE form_id = ? AND json_extract(data, '$._lstep.key') = ?").bind(it.formId, it.data._lstep.key).first<{ id: string; friend_id: string | null }>();
     const form = await db.prepare('SELECT 1 AS x FROM forms WHERE id = ?').bind(it.formId).first();
+    if (exists && !exists.friend_id && it.beyondFriendId && okFriends.has(it.beyondFriendId) && form) {
+      // 先の取り込みで「持ち主なし」になっていた回答に、持ち主を付ける(元に戻すと、また持ち主なしに戻る)
+      statements.push(
+        db.prepare('UPDATE form_submissions SET friend_id = ? WHERE id = ? AND friend_id IS NULL').bind(it.beyondFriendId, exists.id),
+        db.prepare('INSERT INTO import_batch_ops (batch_id, op, ref1, ref2) VALUES (?, ?, ?, ?)').bind(batchId, 'attached_submission', exists.id, it.formId),
+      );
+      out.attached++;
+      continue;
+    }
     if (exists || !form) { out.skipped++; continue; }
     const friendId = it.beyondFriendId && okFriends.has(it.beyondFriendId) ? it.beyondFriendId : null;
     if (!friendId) out.detached++;

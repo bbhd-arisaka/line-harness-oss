@@ -25,7 +25,7 @@ interface Loaded {
 }
 interface MessagesPlan { total: number; text: number; flex: number; outgoing: number; incoming: number; alreadyImported: number; nearDuplicates: number; friendNotInAccount: number }
 interface FormsPlan { formsFound: number; formsMissing: string[]; fieldsToPatch: number; fieldsMissing: string[]; hiddenToAdd: number }
-interface SubmissionsPlan { total: number; withFriend: number; alreadyImported: number; formsMissing: number }
+interface SubmissionsPlan { total: number; withFriend: number; alreadyImported: number; formsMissing: number; attachable: number }
 interface DefinitionsPlan {
   account: { id: string; name: string }
   folders: { total: number; toCreate: number }
@@ -120,7 +120,7 @@ export default function ImportsPage() {
     try {
       let definitions: DefinitionsPlan | null = null
       let formsPlan: FormsPlan | null = null
-      const subTotal: SubmissionsPlan = { total: 0, withFriend: 0, alreadyImported: 0, formsMissing: 0 }
+      const subTotal: SubmissionsPlan = { total: 0, withFriend: 0, alreadyImported: 0, formsMissing: 0, attachable: 0 }
       const total: FriendsPlan = { total: 0, inAccount: 0, notFoundOrOtherAccount: 0, willSetRealName: 0, willOverwriteRealName: 0, willSetSystemDisplayName: 0, withValues: 0, overwritingValues: 0, withTags: 0, newTagAssignments: 0 }
       for (let i = 0; i < Math.max(loaded.friends.length, 1); i += PLAN_CHUNK) {
         const r = await post<{ definitions: DefinitionsPlan; friends: FriendsPlan; forms: FormsPlan | null }>('/api/imports/lstep/plan', {
@@ -286,7 +286,7 @@ export default function ImportsPage() {
               )}
               {plan.submissions && (
                 <>
-                  <tr><td>取り込む回答(回答履歴)</td><td className="text-right">{plan.submissions.total - plan.submissions.alreadyImported}件(取り込み済みで飛ばす {plan.submissions.alreadyImported}件)</td></tr>
+                  <tr><td>取り込む回答(回答履歴)</td><td className="text-right">{plan.submissions.total - plan.submissions.alreadyImported}件(取り込み済みで飛ばす {plan.submissions.alreadyImported - plan.submissions.attachable}件{plan.submissions.attachable ? `、持ち主なしの回答に友だちを付ける ${plan.submissions.attachable}件` : ''})</td></tr>
                   <tr><td>　うち、友だちに紐づく</td><td className="text-right">{plan.submissions.withFriend}件(残りは友だち不明のまま保存)</td></tr>
                 </>
               )}
