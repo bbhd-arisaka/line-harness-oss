@@ -303,12 +303,12 @@ export async function listImports(db: D1Database) {
 }
 
 /** 取り込みを丸ごと元に戻す(記録を逆向きにたどる)。 */
-export async function undoImport(db: D1Database, batchId: string): Promise<{ restoredFriends: number; removedTags: number; removedDefinitions: number }> {
+export async function undoImport(db: D1Database, batchId: string): Promise<{ restoredFriends: number; removedTags: number; removedDefinitions: number; removedSubmissions: number; restoredForms: number }> {
   const batch = await db.prepare('SELECT id, status FROM import_batches WHERE id = ?').bind(batchId).first<{ id: string; status: string }>();
   if (!batch) throw new ImportError('取り込みの記録が見つかりません', 404);
   if (batch.status === 'undone') throw new ImportError('すでに取り消し済みです', 409);
   const ops = (await db.prepare('SELECT op, ref1, ref2, before FROM import_batch_ops WHERE batch_id = ? ORDER BY id DESC').bind(batchId).all<{ op: string; ref1: string | null; ref2: string | null; before: string | null }>()).results ?? [];
-  const out = { restoredFriends: 0, removedTags: 0, removedDefinitions: 0 };
+  const out = { restoredFriends: 0, removedTags: 0, removedDefinitions: 0, removedSubmissions: ops.filter((o) => o.op === 'added_submission').length, restoredForms: ops.filter((o) => o.op === 'form_before').length };
   const statements: D1PreparedStatement[] = [];
   const now = jstNow();
   for (const o of ops) {
@@ -320,6 +320,18 @@ export async function undoImport(db: D1Database, batchId: string): Promise<{ res
       out.restoredFriends++;
     }
   }
+  // フォーム: 取り込んだ回答を消し、フォーム定義を元に戻す
+  const removedCount = new Map<string, number>();
+  for (const o of ops) {
+    if (o.op === 'added_submission' && o.ref1) {
+      statements.push(db.prepare('DELETE FROM form_submissions WHERE id = ?').bind(o.ref1));
+      if (o.ref2) removedCount.set(o.ref2, (removedCount.get(o.ref2) ?? 0) + 1);
+    } else if (o.op === 'form_before' && o.before) {
+      const b = JSON.parse(o.before) as { fields: string; save_to_metadata: number };
+      statements.push(db.prepare('UPDATE forms SET fields = ?, save_to_metadata = ?, updated_at = ? WHERE id = ?').bind(b.fields, b.save_to_metadata, now, o.ref1));
+    }
+  }
+  for (const [formId, n] of removedCount) statements.push(db.prepare('UPDATE forms SET submit_count = MAX(submit_count - ?, 0) WHERE id = ?').bind(n, formId));
   await chunked(db, statements);
   // 作ったタグ・項目・フォルダは、まだ使われていなければ消す(他で使われ始めたものは残す)
   for (const o of ops) {
@@ -334,5 +346,180 @@ export async function undoImport(db: D1Database, batchId: string): Promise<{ res
     }
   }
   await db.prepare("UPDATE import_batches SET status = 'undone', undone_at = ? WHERE id = ?").bind(now, batchId).run();
+  return out;
+}
+
+// ── フォーム(代入先の是正 + 回答結果) ─────────────────────────────────────
+
+export interface FormFieldPatch {
+  registrationTargets?: Array<{ type: 'real_name' | 'display_name' | 'memo' } | { type: 'friend_field'; fieldKey: string }>;
+  friendFieldKey?: string;
+  optionFriendFieldValues?: Record<string, string>;
+}
+export interface FormAddField { name: string; label: string; type: 'text' | 'textarea'; hidden: true }
+export interface FormConfig {
+  formId: string;
+  formName?: string;
+  saveToMetadata?: boolean;
+  fields: Record<string, FormFieldPatch>;
+  addFields?: FormAddField[];
+}
+export interface DatasetSubmission {
+  formId: string;
+  beyondFriendId: string | null;
+  /** JST 例: 2025-10-28T13:07:04.000+09:00 */
+  createdAt: string;
+  data: Record<string, unknown> & { _lstep: { key: string } };
+}
+
+export function validateFormConfigs(x: unknown): FormConfig[] {
+  if (x === undefined || x === null) return [];
+  if (!Array.isArray(x)) throw new ImportError('forms.configs は配列で指定してください');
+  return x.map((c) => {
+    const formId = str(c?.formId, 64);
+    if (!formId) throw new ImportError('formId がありません');
+    const fields: Record<string, FormFieldPatch> = {};
+    for (const [name, p] of Object.entries((c?.fields ?? {}) as Record<string, FormFieldPatch>)) {
+      const patch: FormFieldPatch = {};
+      if (Array.isArray(p?.registrationTargets)) {
+        patch.registrationTargets = p.registrationTargets.map((t) => {
+          if (t?.type === 'friend_field' && typeof t.fieldKey === 'string' && /^[A-Za-z0-9_]+$/.test(t.fieldKey)) return { type: 'friend_field' as const, fieldKey: t.fieldKey };
+          if (t?.type === 'real_name' || t?.type === 'display_name' || t?.type === 'memo') return { type: t.type };
+          throw new ImportError(`代入先の指定が不正です: ${name}`);
+        });
+      }
+      if (typeof p?.friendFieldKey === 'string') {
+        if (p.friendFieldKey && !/^[A-Za-z0-9_]+$/.test(p.friendFieldKey)) throw new ImportError(`友だち情報欄のキーが不正です: ${name}`);
+        patch.friendFieldKey = p.friendFieldKey;
+      }
+      if (p?.optionFriendFieldValues && typeof p.optionFriendFieldValues === 'object') {
+        patch.optionFriendFieldValues = Object.fromEntries(Object.entries(p.optionFriendFieldValues).map(([k, v]) => [str(k, 200), str(v, 200)]));
+      }
+      fields[str(name, 100)] = patch;
+    }
+    const addFields = Array.isArray(c?.addFields)
+      ? c.addFields.map((f: FormAddField) => {
+          const name = str(f?.name, 100);
+          if (!/^[A-Za-z0-9_]+$/.test(name)) throw new ImportError(`追加項目の名前が不正です: ${name}`);
+          return { name, label: str(f?.label, 200) || name, type: f?.type === 'textarea' ? ('textarea' as const) : ('text' as const), hidden: true as const };
+        })
+      : [];
+    return { formId, formName: c?.formName ? str(c.formName, 200) : undefined, saveToMetadata: typeof c?.saveToMetadata === 'boolean' ? c.saveToMetadata : undefined, fields, addFields };
+  });
+}
+
+export function validateSubmissions(x: unknown): DatasetSubmission[] {
+  if (x === undefined || x === null) return [];
+  if (!Array.isArray(x)) throw new ImportError('forms.submissions は配列で指定してください');
+  if (x.length > 100) throw new ImportError('一度に反映できる回答は100件までです');
+  return x.map((s) => {
+    const key = s?.data?._lstep?.key;
+    if (typeof s?.formId !== 'string' || typeof key !== 'string' || !key) throw new ImportError('回答の形式が正しくありません(formId / data._lstep.key)');
+    if (typeof s.createdAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+09:00$/.test(s.createdAt)) throw new ImportError('回答日時の形式が正しくありません');
+    if (!s.data || typeof s.data !== 'object' || JSON.stringify(s.data).length > 200_000) throw new ImportError('回答データが不正、または大きすぎます');
+    return { formId: s.formId, beyondFriendId: typeof s.beyondFriendId === 'string' && s.beyondFriendId ? s.beyondFriendId : null, createdAt: s.createdAt, data: s.data };
+  });
+}
+
+export interface FormsPlan {
+  formsFound: number;
+  formsMissing: string[];
+  fieldsToPatch: number;
+  fieldsMissing: string[];
+  hiddenToAdd: number;
+}
+
+export async function planFormConfigs(db: D1Database, configs: FormConfig[]): Promise<FormsPlan> {
+  const plan: FormsPlan = { formsFound: 0, formsMissing: [], fieldsToPatch: 0, fieldsMissing: [], hiddenToAdd: 0 };
+  for (const c of configs) {
+    const row = await db.prepare('SELECT name, fields FROM forms WHERE id = ?').bind(c.formId).first<{ name: string; fields: string }>();
+    if (!row) { plan.formsMissing.push(c.formName ?? c.formId); continue; }
+    plan.formsFound++;
+    const names = new Set((JSON.parse(row.fields) as Array<{ name: string }>).map((f) => f.name));
+    for (const name of Object.keys(c.fields)) { if (names.has(name)) plan.fieldsToPatch++; else plan.fieldsMissing.push(`${row.name}/${name}`); }
+    plan.hiddenToAdd += (c.addFields ?? []).filter((f) => !names.has(f.name)).length;
+  }
+  return plan;
+}
+
+export interface SubmissionsPlan { total: number; withFriend: number; alreadyImported: number; formsMissing: number }
+
+export async function planSubmissions(db: D1Database, items: DatasetSubmission[]): Promise<SubmissionsPlan> {
+  const plan: SubmissionsPlan = { total: items.length, withFriend: items.filter((i) => i.beyondFriendId).length, alreadyImported: 0, formsMissing: 0 };
+  const byForm = new Map<string, DatasetSubmission[]>();
+  for (const i of items) byForm.set(i.formId, [...(byForm.get(i.formId) ?? []), i]);
+  for (const [formId, list] of byForm) {
+    const exists = await db.prepare('SELECT id FROM forms WHERE id = ?').bind(formId).first();
+    if (!exists) { plan.formsMissing += list.length; continue; }
+    const keys = list.map((i) => i.data._lstep.key);
+    const rows = (await db.prepare(`SELECT json_extract(data, '$._lstep.key') AS k FROM form_submissions WHERE form_id = ? AND json_extract(data, '$._lstep.key') IN (${keys.map(() => '?').join(',')})`).bind(formId, ...keys).all<{ k: string }>()).results ?? [];
+    plan.alreadyImported += rows.length;
+  }
+  return plan;
+}
+
+async function assertRunning(db: D1Database, batchId: string): Promise<{ line_account_id: string }> {
+  const batch = await db.prepare('SELECT status, line_account_id FROM import_batches WHERE id = ?').bind(batchId).first<{ status: string; line_account_id: string }>();
+  if (!batch) throw new ImportError('取り込みの記録が見つかりません', 404);
+  if (batch.status !== 'running') throw new ImportError('この取り込みはすでに完了または取り消し済みです', 409);
+  return batch;
+}
+
+/** フォームの代入先・保存設定を直し、足りない(隠し)項目を足す。変更前のフォーム定義を記録する。 */
+export async function applyFormConfigs(db: D1Database, batchId: string, configs: FormConfig[]): Promise<{ formsUpdated: number; fieldsPatched: number; hiddenAdded: number }> {
+  await assertRunning(db, batchId);
+  const out = { formsUpdated: 0, fieldsPatched: 0, hiddenAdded: 0 };
+  const now = jstNow();
+  for (const c of configs) {
+    const row = await db.prepare('SELECT fields, save_to_metadata FROM forms WHERE id = ?').bind(c.formId).first<{ fields: string; save_to_metadata: number }>();
+    if (!row) continue;
+    const fields = JSON.parse(row.fields) as Array<Record<string, unknown>>;
+    for (const f of fields) {
+      const patch = c.fields[f.name as string];
+      if (!patch) continue;
+      if (patch.registrationTargets !== undefined) f.registrationTargets = patch.registrationTargets;
+      if (patch.friendFieldKey !== undefined) f.friendFieldKey = patch.friendFieldKey;
+      if (patch.optionFriendFieldValues !== undefined) f.optionFriendFieldValues = patch.optionFriendFieldValues;
+      out.fieldsPatched++;
+    }
+    const names = new Set(fields.map((f) => f.name as string));
+    for (const a of c.addFields ?? []) { if (!names.has(a.name)) { fields.push({ name: a.name, label: a.label, type: a.type, required: false, hidden: true }); out.hiddenAdded++; } }
+    await logOp(db, batchId, 'form_before', c.formId, null, JSON.stringify({ fields: row.fields, save_to_metadata: row.save_to_metadata }));
+    await db.prepare('UPDATE forms SET fields = ?, save_to_metadata = COALESCE(?, save_to_metadata), updated_at = ? WHERE id = ?')
+      .bind(JSON.stringify(fields), c.saveToMetadata === undefined ? null : c.saveToMetadata ? 1 : 0, now, c.formId).run();
+    out.formsUpdated++;
+  }
+  return out;
+}
+
+/** Lステップの回答結果を「回答履歴」に取り込む(同じ回答は2回入らない)。 */
+export async function applySubmissions(db: D1Database, batchId: string, items: DatasetSubmission[]): Promise<{ added: number; skipped: number; detached: number }> {
+  const batch = await assertRunning(db, batchId);
+  const out = { added: 0, skipped: 0, detached: 0 };
+  const friendIds = [...new Set(items.map((i) => i.beyondFriendId).filter((x): x is string => !!x))];
+  const okFriends = new Set<string>();
+  for (let i = 0; i < friendIds.length; i += 50) {
+    const part = friendIds.slice(i, i + 50);
+    const rows = (await db.prepare(`SELECT id FROM friends WHERE line_account_id = ? AND id IN (${part.map(() => '?').join(',')})`).bind(batch.line_account_id, ...part).all<{ id: string }>()).results ?? [];
+    for (const r of rows) okFriends.add(r.id);
+  }
+  const addedByForm = new Map<string, number>();
+  const statements: D1PreparedStatement[] = [];
+  for (const it of items) {
+    const exists = await db.prepare("SELECT 1 AS x FROM form_submissions WHERE form_id = ? AND json_extract(data, '$._lstep.key') = ?").bind(it.formId, it.data._lstep.key).first();
+    const form = await db.prepare('SELECT 1 AS x FROM forms WHERE id = ?').bind(it.formId).first();
+    if (exists || !form) { out.skipped++; continue; }
+    const friendId = it.beyondFriendId && okFriends.has(it.beyondFriendId) ? it.beyondFriendId : null;
+    if (!friendId) out.detached++;
+    const id = crypto.randomUUID();
+    statements.push(
+      db.prepare('INSERT INTO form_submissions (id, form_id, friend_id, data, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, it.formId, friendId, JSON.stringify(it.data), it.createdAt),
+      db.prepare('INSERT INTO import_batch_ops (batch_id, op, ref1, ref2) VALUES (?, ?, ?, ?)').bind(batchId, 'added_submission', id, it.formId),
+    );
+    addedByForm.set(it.formId, (addedByForm.get(it.formId) ?? 0) + 1);
+    out.added++;
+  }
+  for (const [formId, n] of addedByForm) statements.push(db.prepare('UPDATE forms SET submit_count = submit_count + ? WHERE id = ?').bind(n, formId));
+  await chunked(db, statements);
   return out;
 }

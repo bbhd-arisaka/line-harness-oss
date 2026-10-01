@@ -2,17 +2,23 @@ import { Hono } from 'hono';
 import { requireRole } from '../middleware/role-guard.js';
 import {
   ImportError,
+  applyFormConfigs,
   applyFriends,
+  applySubmissions,
   finishImport,
   listImports,
   loadFieldKeys,
   loadTagIds,
   planDefinitions,
+  planFormConfigs,
   planFriends,
+  planSubmissions,
   startImport,
   undoImport,
   validateDefinitions,
+  validateFormConfigs,
   validateFriends,
+  validateSubmissions,
 } from '../services/lstep-import.js';
 import type { Env } from '../index.js';
 
@@ -40,12 +46,22 @@ imports.get('/api/imports', requireRole('owner'), async (c) => {
 // 計画: 取り込み用データを検証し、何が作られ・何が変わるかを数える(書き込みなし)
 imports.post('/api/imports/lstep/plan', requireRole('owner'), async (c) => {
   try {
-    const body = await c.req.json<{ definitions?: unknown; friends?: unknown }>();
+    const body = await c.req.json<{ definitions?: unknown; friends?: unknown; forms?: { configs?: unknown; submissions?: unknown } }>();
     const defs = validateDefinitions(body.definitions);
     const plan = await planDefinitions(c.env.DB, defs);
     const friends = validateFriends(body.friends ?? [], new Set(defs.fields.map((f) => f.key)));
     const tagIds = await loadTagIds(c.env.DB);
-    return c.json({ success: true, data: { definitions: plan, friends: await planFriends(c.env.DB, defs.accountId, friends, tagIds) } });
+    const configs = validateFormConfigs(body.forms?.configs);
+    const submissions = validateSubmissions(body.forms?.submissions);
+    return c.json({
+      success: true,
+      data: {
+        definitions: plan,
+        friends: await planFriends(c.env.DB, defs.accountId, friends, tagIds),
+        forms: configs.length ? await planFormConfigs(c.env.DB, configs) : null,
+        submissions: submissions.length ? await planSubmissions(c.env.DB, submissions) : null,
+      },
+    });
   } catch (err) {
     return fail(c, err);
   }
@@ -68,6 +84,24 @@ imports.post('/api/imports/lstep/:batchId/friends', requireRole('owner'), async 
     const keys = await loadFieldKeys(c.env.DB);
     const friends = validateFriends(body.friends, keys);
     return c.json({ success: true, data: await applyFriends(c.env.DB, c.req.param('batchId')!, friends) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+imports.post('/api/imports/lstep/:batchId/forms', requireRole('owner'), async (c) => {
+  try {
+    const body = await c.req.json<{ configs?: unknown }>();
+    return c.json({ success: true, data: await applyFormConfigs(c.env.DB, c.req.param('batchId')!, validateFormConfigs(body.configs)) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+imports.post('/api/imports/lstep/:batchId/submissions', requireRole('owner'), async (c) => {
+  try {
+    const body = await c.req.json<{ submissions?: unknown }>();
+    return c.json({ success: true, data: await applySubmissions(c.env.DB, c.req.param('batchId')!, validateSubmissions(body.submissions)) });
   } catch (err) {
     return fail(c, err);
   }

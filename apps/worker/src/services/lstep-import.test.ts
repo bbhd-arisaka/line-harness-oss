@@ -4,7 +4,9 @@ import { describe, expect, test } from 'vitest';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
 import {
   ImportError,
+  applyFormConfigs,
   applyFriends,
+  applySubmissions,
   finishImport,
   planDefinitions,
   planFriends,
@@ -12,7 +14,9 @@ import {
   startImport,
   undoImport,
   validateDefinitions,
+  validateFormConfigs,
   validateFriends,
+  validateSubmissions,
 } from './lstep-import.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
@@ -143,5 +147,76 @@ describe('Lステップ引き継ぎ', () => {
     await finishImport(db, batchId, {});
     await expect(applyFriends(db, batchId, [])).rejects.toThrow(/完了/);
     await expect(applyFriends(db, 'missing', [])).rejects.toThrow(/見つかりません/);
+  });
+});
+
+describe('フォーム(代入先の是正・回答結果の取り込み)', () => {
+  const FORM_FIELDS = [
+    { name: 'name', label: 'お名前', type: 'text', registrationTargets: [{ type: 'real_name' }] },
+    { name: 'q1', label: '経験', type: 'radio', options: ['はい', 'いいえ'] },
+  ];
+  function setupForm() {
+    const s = setup();
+    s.sqlite.prepare("INSERT INTO forms (id, name, fields, save_to_metadata, submit_count) VALUES ('form-1', 'カウンセリング', ?, 1, 1)").run(JSON.stringify(FORM_FIELDS));
+    s.sqlite.prepare("INSERT INTO form_submissions (id, form_id, friend_id, data) VALUES ('old', 'form-1', 'f1', '{}')").run();
+    return s;
+  }
+  const CONFIGS = [{
+    formId: 'form-1', saveToMetadata: false,
+    fields: {
+      name: { registrationTargets: [{ type: 'friend_field', fieldKey: 'ls_name' }] },
+      q1: { friendFieldKey: 'ls_first', optionFriendFieldValues: { はい: 'あり', いいえ: 'なし' } },
+    },
+    addFields: [{ name: 'lstep_extra_1', label: '追加(Lステップ)', type: 'text', hidden: true }],
+  }];
+  const subs = (n = 2) => Array.from({ length: n }, (_, i) => ({
+    formId: 'form-1', beyondFriendId: i === 0 ? 'f1' : 'fb', createdAt: '2025-10-28T13:07:04.000+09:00',
+    data: { name: '山田', q1: 'はい', _lstep: { key: 'lstep:1:' + i, answerId: String(i) } },
+  }));
+
+  test('代入先を直し(本名への誤登録をやめる)、隠し項目を足し、保存設定を切る。元に戻せる', async () => {
+    const { db, sqlite } = setupForm();
+    const defs = validateDefinitions(DEFS);
+    const { batchId } = await startImport(db, defs, 'o');
+    const r = await applyFormConfigs(db, batchId, validateFormConfigs(CONFIGS));
+    expect(r).toEqual({ formsUpdated: 1, fieldsPatched: 2, hiddenAdded: 1 });
+    const row = sqlite.prepare('SELECT fields, save_to_metadata FROM forms WHERE id=?').get('form-1') as { fields: string; save_to_metadata: number };
+    const fields = JSON.parse(row.fields) as Array<Record<string, unknown>>;
+    expect(row.save_to_metadata).toBe(0);
+    expect(fields[0].registrationTargets).toEqual([{ type: 'friend_field', fieldKey: 'ls_name' }]);
+    expect(fields[1]).toMatchObject({ friendFieldKey: 'ls_first', optionFriendFieldValues: { はい: 'あり', いいえ: 'なし' } });
+    expect(fields[2]).toMatchObject({ name: 'lstep_extra_1', hidden: true });
+    await finishImport(db, batchId, {});
+    const u = await undoImport(db, batchId);
+    expect(u.restoredForms).toBe(1);
+    const back = sqlite.prepare('SELECT fields, save_to_metadata FROM forms WHERE id=?').get('form-1') as { fields: string; save_to_metadata: number };
+    expect(JSON.parse(back.fields)).toEqual(FORM_FIELDS);
+    expect(back.save_to_metadata).toBe(1);
+  });
+
+  test('回答の取り込み: 友だちに紐づけ(別アカウントの友だちは未紐づけ)、2回目は重複しない、件数が合う', async () => {
+    const { db, sqlite } = setupForm();
+    const { batchId } = await startImport(db, validateDefinitions(DEFS), 'o');
+    const r = await applySubmissions(db, batchId, validateSubmissions(subs()));
+    expect(r).toEqual({ added: 2, skipped: 0, detached: 1 });
+    expect(sqlite.prepare('SELECT friend_id FROM form_submissions WHERE id != ? ORDER BY created_at, friend_id').all('old')).toEqual([{ friend_id: null }, { friend_id: 'f1' }]);
+    expect(sqlite.prepare("SELECT submit_count c FROM forms WHERE id='form-1'").get()).toEqual({ c: 3 });
+    // 同じ回答は入らない
+    const again = await applySubmissions(db, batchId, validateSubmissions(subs()));
+    expect(again).toEqual({ added: 0, skipped: 2, detached: 0 });
+    expect(sqlite.prepare("SELECT COUNT(*) c FROM form_submissions").get()).toEqual({ c: 3 });
+    // 元に戻すと、取り込んだ分だけ消え、既存の回答と件数は残る
+    await finishImport(db, batchId, {});
+    const u = await undoImport(db, batchId);
+    expect(u.removedSubmissions).toBe(2);
+    expect(sqlite.prepare("SELECT COUNT(*) c FROM form_submissions").get()).toEqual({ c: 1 });
+    expect(sqlite.prepare("SELECT submit_count c FROM forms WHERE id='form-1'").get()).toEqual({ c: 1 });
+  });
+
+  test('形式の不正を拒否する', () => {
+    expect(() => validateSubmissions([{ formId: 'f', createdAt: '2025-10-28 13:07:04', data: { _lstep: { key: 'k' } } }])).toThrow(/日時/);
+    expect(() => validateSubmissions([{ formId: 'f', createdAt: '2025-10-28T13:07:04.000+09:00', data: {} }])).toThrow(/形式/);
+    expect(() => validateFormConfigs([{ formId: 'f', fields: { a: { registrationTargets: [{ type: 'bogus' }] } } }])).toThrow(/代入先/);
+    expect(() => validateFormConfigs([{ formId: 'f', fields: {}, addFields: [{ name: 'bad name', label: 'x' }] }])).toThrow(/名前/);
   });
 });

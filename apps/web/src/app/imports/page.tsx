@@ -20,7 +20,10 @@ interface Loaded {
   fileName: string
   definitions: Definitions
   friends: unknown[]
+  forms: { configs: unknown[]; submissions: unknown[] }
 }
+interface FormsPlan { formsFound: number; formsMissing: string[]; fieldsToPatch: number; fieldsMissing: string[]; hiddenToAdd: number }
+interface SubmissionsPlan { total: number; withFriend: number; alreadyImported: number; formsMissing: number }
 interface DefinitionsPlan {
   account: { id: string; name: string }
   folders: { total: number; toCreate: number }
@@ -50,6 +53,7 @@ interface BatchRow {
 
 const PLAN_CHUNK = 100
 const APPLY_CHUNK = 40
+const SUBMISSION_CHUNK = 40
 
 const STATUS_LABEL: Record<BatchRow['status'], string> = { running: '途中', applied: '反映済み', undone: '取り消し済み' }
 
@@ -66,7 +70,7 @@ function errorText(err: unknown): string {
 
 export default function ImportsPage() {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
-  const [plan, setPlan] = useState<{ definitions: DefinitionsPlan; friends: FriendsPlan } | null>(null)
+  const [plan, setPlan] = useState<{ definitions: DefinitionsPlan; friends: FriendsPlan; forms: FormsPlan | null; submissions: SubmissionsPlan | null } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -90,7 +94,7 @@ export default function ImportsPage() {
     setLoaded(null)
     if (!file) return
     try {
-      const json = JSON.parse(await file.text()) as { source?: string; accountId?: string; accountName?: string; folders?: unknown[]; fields?: unknown[]; tags?: unknown[]; friends?: unknown[] }
+      const json = JSON.parse(await file.text()) as { source?: string; accountId?: string; accountName?: string; folders?: unknown[]; fields?: unknown[]; tags?: unknown[]; friends?: unknown[]; forms?: { configs?: unknown[]; submissions?: unknown[] } }
       if (json.source !== 'lstep' || !json.accountId || !Array.isArray(json.fields) || !Array.isArray(json.friends)) {
         throw new Error('取り込み用データの形式ではありません')
       }
@@ -98,6 +102,7 @@ export default function ImportsPage() {
         fileName: file.name,
         definitions: { source: 'lstep', accountId: json.accountId, accountName: json.accountName, folders: json.folders ?? [], fields: json.fields, tags: json.tags ?? [] },
         friends: json.friends,
+        forms: { configs: json.forms?.configs ?? [], submissions: json.forms?.submissions ?? [] },
       })
     } catch (err) {
       setMessage({ kind: 'error', text: `ファイルを読み込めませんでした: ${errorText(err)}` })
@@ -110,16 +115,28 @@ export default function ImportsPage() {
     setMessage(null)
     try {
       let definitions: DefinitionsPlan | null = null
+      let formsPlan: FormsPlan | null = null
+      const subTotal: SubmissionsPlan = { total: 0, withFriend: 0, alreadyImported: 0, formsMissing: 0 }
       const total: FriendsPlan = { total: 0, inAccount: 0, notFoundOrOtherAccount: 0, willSetRealName: 0, willOverwriteRealName: 0, willSetSystemDisplayName: 0, withValues: 0, overwritingValues: 0, withTags: 0, newTagAssignments: 0 }
       for (let i = 0; i < Math.max(loaded.friends.length, 1); i += PLAN_CHUNK) {
-        const r = await post<{ definitions: DefinitionsPlan; friends: FriendsPlan }>('/api/imports/lstep/plan', {
+        const r = await post<{ definitions: DefinitionsPlan; friends: FriendsPlan; forms: FormsPlan | null }>('/api/imports/lstep/plan', {
           definitions: loaded.definitions,
           friends: loaded.friends.slice(i, i + PLAN_CHUNK),
+          forms: i === 0 ? { configs: loaded.forms.configs } : undefined,
         })
         definitions = r.definitions
+        if (r.forms) formsPlan = r.forms
         for (const k of Object.keys(total) as Array<keyof FriendsPlan>) total[k] += r.friends[k]
       }
-      if (definitions) setPlan({ definitions, friends: total })
+      for (let i = 0; i < loaded.forms.submissions.length; i += PLAN_CHUNK) {
+        const r = await post<{ submissions: SubmissionsPlan | null }>('/api/imports/lstep/plan', {
+          definitions: loaded.definitions,
+          friends: [],
+          forms: { submissions: loaded.forms.submissions.slice(i, i + PLAN_CHUNK) },
+        })
+        if (r.submissions) for (const k of Object.keys(subTotal) as Array<keyof SubmissionsPlan>) subTotal[k] += r.submissions[k]
+      }
+      if (definitions) setPlan({ definitions, friends: total, forms: formsPlan, submissions: loaded.forms.submissions.length ? subTotal : null })
     } catch (err) {
       setMessage({ kind: 'error', text: errorText(err) })
     } finally {
@@ -136,17 +153,32 @@ export default function ImportsPage() {
     try {
       const started = await post<{ batchId: string; created: { folders: number; fields: number; tags: number } }>('/api/imports/lstep/start', { definitions: loaded.definitions })
       batchId = started.batchId
-      setProgress({ done: 0, total: loaded.friends.length })
-      const sum = { updated: 0, skipped: 0, tagsAdded: 0 }
+      const totalSteps = loaded.friends.length + loaded.forms.submissions.length
+      setProgress({ done: 0, total: totalSteps })
+      const sum = { updated: 0, skipped: 0, tagsAdded: 0, formsUpdated: 0, submissionsAdded: 0, submissionsSkipped: 0 }
       for (let i = 0; i < loaded.friends.length; i += APPLY_CHUNK) {
         const r = await post<{ updated: number; skipped: number; tagsAdded: number }>(`/api/imports/lstep/${batchId}/friends`, { friends: loaded.friends.slice(i, i + APPLY_CHUNK) })
         sum.updated += r.updated
         sum.skipped += r.skipped
         sum.tagsAdded += r.tagsAdded
-        setProgress({ done: Math.min(i + APPLY_CHUNK, loaded.friends.length), total: loaded.friends.length })
+        setProgress({ done: Math.min(i + APPLY_CHUNK, loaded.friends.length), total: totalSteps })
+      }
+      if (loaded.forms.configs.length > 0) {
+        const f = await post<{ formsUpdated: number }>(`/api/imports/lstep/${batchId}/forms`, { configs: loaded.forms.configs })
+        sum.formsUpdated = f.formsUpdated
+      }
+      for (let i = 0; i < loaded.forms.submissions.length; i += SUBMISSION_CHUNK) {
+        const r = await post<{ added: number; skipped: number }>(`/api/imports/lstep/${batchId}/submissions`, { submissions: loaded.forms.submissions.slice(i, i + SUBMISSION_CHUNK) })
+        sum.submissionsAdded += r.added
+        sum.submissionsSkipped += r.skipped
+        setProgress({ done: loaded.friends.length + Math.min(i + SUBMISSION_CHUNK, loaded.forms.submissions.length), total: totalSteps })
       }
       await post(`/api/imports/lstep/${batchId}/finish`, { summary: { ...sum, created: started.created, file: loaded.fileName } })
-      setMessage({ kind: 'ok', text: `反映しました。友だち ${sum.updated}人(スキップ ${sum.skipped}人)、タグの付与 ${sum.tagsAdded}件、新しく作った友だち情報欄 ${started.created.fields}件・タグ ${started.created.tags}件。` })
+      setMessage({
+        kind: 'ok',
+        text: `反映しました。友だち ${sum.updated}人(スキップ ${sum.skipped}人)、タグの付与 ${sum.tagsAdded}件、新しく作った友だち情報欄 ${started.created.fields}件・タグ ${started.created.tags}件。` +
+          (loaded.forms.configs.length || loaded.forms.submissions.length ? ` フォーム ${sum.formsUpdated}件の代入先を修正、回答 ${sum.submissionsAdded}件を取り込み(重複で飛ばした分 ${sum.submissionsSkipped}件)。` : ''),
+      })
       setPlan(null)
     } catch (err) {
       setMessage({
@@ -166,8 +198,8 @@ export default function ImportsPage() {
     setUndoTarget(null)
     setBusy('元に戻しています…')
     try {
-      const r = await post<{ restoredFriends: number; removedTags: number; removedDefinitions: number }>(`/api/imports/${target.id}/undo`, {})
-      setMessage({ kind: 'ok', text: `元に戻しました。友だち ${r.restoredFriends}人、タグの付与 ${r.removedTags}件、作った定義 ${r.removedDefinitions}件を取り消しました。` })
+      const r = await post<{ restoredFriends: number; removedTags: number; removedDefinitions: number; removedSubmissions: number; restoredForms: number }>(`/api/imports/${target.id}/undo`, {})
+      setMessage({ kind: 'ok', text: `元に戻しました。友だち ${r.restoredFriends}人、タグの付与 ${r.removedTags}件、作った定義 ${r.removedDefinitions}件、取り込んだ回答 ${r.removedSubmissions}件、フォーム ${r.restoredForms}件を取り消しました。` })
     } catch (err) {
       setMessage({ kind: 'error', text: errorText(err) })
     } finally {
@@ -200,6 +232,7 @@ export default function ImportsPage() {
         {loaded && (
           <p className="mt-3 text-sm text-[#333]">
             {loaded.fileName}: 取り込み先「{loaded.definitions.accountName ?? loaded.definitions.accountId}」 / 友だち情報欄 {loaded.definitions.fields.length}件・タグ {loaded.definitions.tags.length}件・友だち {loaded.friends.length}人
+            {(loaded.forms.configs.length > 0 || loaded.forms.submissions.length > 0) && ` / フォーム ${loaded.forms.configs.length}件・回答 ${loaded.forms.submissions.length}件`}
           </p>
         )}
         <button type="button" className={`${btn} mt-3 border border-[#069e04] text-[#069e04] hover:bg-[#f1fbf1]`} disabled={!loaded || !!busy} onClick={() => void runPlan()}>
@@ -221,6 +254,21 @@ export default function ImportsPage() {
               <tr><td>　うち、システム表示名を入れる</td><td className="text-right">{plan.friends.willSetSystemDisplayName}人</td></tr>
               <tr><td>　うち、友だち情報の値を入れる</td><td className="text-right">{plan.friends.withValues}人(上書き {plan.friends.overwritingValues}人)</td></tr>
               <tr><td>　タグを付ける(新規の付与)</td><td className="text-right">{plan.friends.newTagAssignments}件({plan.friends.withTags}人)</td></tr>
+              {plan.forms && (
+                <>
+                  <tr><td>代入先を修正するフォーム</td><td className="text-right">{plan.forms.formsFound}件(項目 {plan.forms.fieldsToPatch}件を修正)</td></tr>
+                  <tr><td>　足す隠し項目(フォームに足りない質問の受け皿)</td><td className="text-right">{plan.forms.hiddenToAdd}件</td></tr>
+                  {(plan.forms.formsMissing.length > 0 || plan.forms.fieldsMissing.length > 0) && (
+                    <tr className="text-[#b45309]"><td>見つからないフォーム・項目</td><td className="text-right">{plan.forms.formsMissing.length + plan.forms.fieldsMissing.length}件</td></tr>
+                  )}
+                </>
+              )}
+              {plan.submissions && (
+                <>
+                  <tr><td>取り込む回答(回答履歴)</td><td className="text-right">{plan.submissions.total - plan.submissions.alreadyImported}件(取り込み済みで飛ばす {plan.submissions.alreadyImported}件)</td></tr>
+                  <tr><td>　うち、友だちに紐づく</td><td className="text-right">{plan.submissions.withFriend}件(残りは友だち不明のまま保存)</td></tr>
+                </>
+              )}
               <tr className="text-[#b45309]"><td>反映されない友だち(見つからない/別アカウント)</td><td className="text-right">{plan.friends.notFoundOrOtherAccount}人</td></tr>
             </tbody>
           </table>
@@ -228,7 +276,7 @@ export default function ImportsPage() {
             <p className="mt-2 text-xs text-[#757578]">すでにある友だち情報欄は作り直しません: {plan.definitions.fields.existing.join('、')}</p>
           )}
           <p className="mt-3 text-xs text-[#757578]">反映は、あとから「元に戻す」で取り消せます(変更前の値を記録します)。</p>
-          <button type="button" className={`${btn} mt-3 bg-[#069e04] text-white hover:bg-[#058a03]`} disabled={!!busy || plan.friends.inAccount === 0} onClick={() => setConfirmOpen(true)}>
+          <button type="button" className={`${btn} mt-3 bg-[#069e04] text-white hover:bg-[#058a03]`} disabled={!!busy || (plan.friends.inAccount === 0 && !plan.forms && !plan.submissions)} onClick={() => setConfirmOpen(true)}>
             この内容で反映する
           </button>
         </section>
@@ -278,7 +326,7 @@ export default function ImportsPage() {
         <div className="p-5">
           <h2 className="text-base font-bold text-[#333]">反映しますか？</h2>
           <p className="mt-2 text-sm text-[#555]">
-            「{plan?.definitions.account.name}」の友だち {plan?.friends.inAccount}人に、本名・友だち情報・タグを反映します。お客様への通知やメッセージ送信は行いません。あとから「元に戻す」で取り消せます。
+            「{plan?.definitions.account.name}」に、取り込みを反映します(友だち {plan?.friends.inAccount}人{plan?.forms ? `、フォーム ${plan.forms.formsFound}件` : ''}{plan?.submissions ? `、回答 ${plan.submissions.total - plan.submissions.alreadyImported}件` : ''})。お客様への通知やメッセージ送信は行いません。あとから「元に戻す」で取り消せます。
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" className={`${btn} border border-[#cacace] text-[#333]`} onClick={() => setConfirmOpen(false)}>キャンセル</button>

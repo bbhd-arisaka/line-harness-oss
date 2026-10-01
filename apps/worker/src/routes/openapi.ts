@@ -493,6 +493,25 @@ const spec = {
         responses: { '200': { description: 'Applied counts' }, '400': { description: 'Invalid friends' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
       },
     },
+    '/api/imports/lstep/{batchId}/forms': {
+      post: {
+        tags: ['Imports'],
+        summary: 'フォームの代入先(登録先)を直し、足りない隠し項目を足す(オーナー専用)',
+        description: '変更前のフォーム定義を記録し、「元に戻す」で復元できる。',
+        parameters: [{ name: 'batchId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['configs'], properties: { configs: { type: 'array', items: { type: 'object' } } } } } } },
+        responses: { '200': { description: 'Applied counts' }, '400': { description: 'Invalid configs' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
+      },
+    },
+    '/api/imports/lstep/{batchId}/submissions': {
+      post: {
+        tags: ['Imports'],
+        summary: 'Lステップの回答結果を回答履歴に取り込む(1回100件まで・同じ回答は2回入らない・オーナー専用)',
+        parameters: [{ name: 'batchId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['submissions'], properties: { submissions: { type: 'array', items: { type: 'object' } } } } } } },
+        responses: { '200': { description: 'Added / skipped / detached counts' }, '400': { description: 'Invalid submissions' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
+      },
+    },
     '/api/imports/lstep/{batchId}/finish': {
       post: {
         tags: ['Imports'],
