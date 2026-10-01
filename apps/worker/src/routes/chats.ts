@@ -360,7 +360,7 @@ chats.get('/api/chats', async (c) => {
     let data = result.results.map((ch: Record<string, unknown>) => ({
       id: ch.id as string,
       friendId: ch.friend_id,
-      friendName: (ch.system_display_name as string | null) || (ch.real_name as string | null) || (ch.display_name as string | null) || '名前なし',
+      friendName: (ch.real_name as string | null)?.trim() || (ch.system_display_name as string | null)?.trim() || (ch.display_name as string | null) || '名前なし',
       friendPictureUrl: ch.picture_url || null,
       operatorId: ch.operator_id,
       status: ch.status,
@@ -458,7 +458,7 @@ chats.get('/api/chats/:id', async (c) => {
       data: {
         id: responseId,
         friendId: resolvedFriendId,
-        friendName: friend?.system_display_name || friend?.real_name || friend?.display_name || '名前なし',
+        friendName: friend?.real_name?.trim() || friend?.system_display_name?.trim() || friend?.display_name || '名前なし',
         friendPictureUrl: friend?.picture_url || null,
         operatorId,
         status,

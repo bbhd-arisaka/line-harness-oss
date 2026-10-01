@@ -10,7 +10,9 @@ import { Select } from '@cloudflare/kumo/components/select'
 import type { Tag } from '@line-crm/shared'
 import type { FriendListItem } from '@/lib/api'
 import { api } from '@/lib/api'
-import FriendListRow from './friend-list-row'
+import { useEffect } from 'react'
+import { fetchApi } from '@/lib/api'
+import FriendListRow, { type FavoriteField } from './friend-list-row'
 import TagBadge from './tag-badge'
 
 interface Props {
@@ -30,6 +32,14 @@ export default function FriendListTable({ friends, allTags, onRefresh }: Props) 
   const [selectedTagId, setSelectedTagId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [favoriteFields, setFavoriteFields] = useState<FavoriteField[]>([])
+
+  // ★(お気に入り)の友だち情報欄の定義は、一覧全体で共通なので1回だけ取得する
+  useEffect(() => {
+    fetchApi<{ success: boolean; data: Array<FavoriteField & { isFavorite?: boolean }> }>('/api/friend-fields/definitions')
+      .then((res) => { if (res.success) setFavoriteFields(res.data.filter((d) => d.isFavorite)) })
+      .catch(() => {})
+  }, [])
 
   const toggleExpand = (id: string) => {
     setExpandedId(expandedId === id ? null : id)
@@ -102,6 +112,7 @@ export default function FriendListTable({ friends, allTags, onRefresh }: Props) 
                 <FriendListRow
                   friend={friend}
                   onTagEditClick={() => toggleExpand(friend.id)}
+                  favoriteFields={favoriteFields}
                 />
 
                 {isExpanded && (

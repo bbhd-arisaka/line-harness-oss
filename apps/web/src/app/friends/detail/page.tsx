@@ -338,6 +338,46 @@ export default function FriendDetailPage() {
                   </div>
                 )}
               </LayerCard>
+
+              {/* 友だち情報(値が入っているものだけ、フォルダごとに表示。編集はフォルダのタブから) */}
+              <LayerCard className="p-5 lg:col-span-2">
+                <h2 className="mb-3 text-sm font-semibold text-kumo-strong">友だち情報</h2>
+                {(() => {
+                  const groups = [
+                    ...folders.slice().sort((a, b) => a.displayOrder - b.displayOrder).map((f) => ({ id: f.id as string | null, name: f.name })),
+                    { id: null as string | null, name: '未分類' },
+                  ]
+                    .map((g) => ({
+                      ...g,
+                      rows: fieldsForFolder(g.id).filter((d) => {
+                        const v = friend.metadata?.[d.fieldKey]
+                        return v !== undefined && v !== null && v !== ''
+                      }),
+                    }))
+                    .filter((g) => g.rows.length > 0)
+                  if (groups.length === 0) return <p className="text-sm text-kumo-subtle">友だち情報はまだ入っていません</p>
+                  return (
+                    <div className="space-y-5">
+                      {groups.map((g) => (
+                        <div key={g.id ?? 'none'}>
+                          <div className="mb-2 flex items-center justify-between">
+                            <h3 className="text-xs font-semibold text-kumo-subtle">{g.name}</h3>
+                            <button type="button" className="text-xs text-kumo-link hover:underline" onClick={() => setTab(g.id ?? UNASSIGNED_FOLDER_ID)}>編集</button>
+                          </div>
+                          <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                            {g.rows.map((d) => (
+                              <div key={d.id} className="flex justify-between gap-4 border-b border-kumo-line pb-1.5">
+                                <dt className="text-kumo-subtle">{d.label}</dt>
+                                <dd className="break-words text-right text-kumo-strong"><FieldValue value={friend.metadata?.[d.fieldKey]} def={d} /></dd>
+                              </div>
+                            ))}
+                          </dl>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </LayerCard>
             </div>
           )}
 

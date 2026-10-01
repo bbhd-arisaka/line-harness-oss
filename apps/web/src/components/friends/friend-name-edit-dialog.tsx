@@ -8,9 +8,9 @@ import { api } from '@/lib/api'
 
 export const FRIEND_NAME_MAX_LENGTH = 20
 
-/** 表示優先順位: システム表示名 > 本名 > LINE登録名(Lステップと同じ) */
+/** 表示優先順位: 本名 > システム表示名 > LINE登録名(Lステップの友だちリストの名前と同じ。本名を入れると、その名前で表示される) */
 export function resolveFriendName(f: { systemDisplayName?: string | null; realName?: string | null; displayName?: string | null }): string {
-  return f.systemDisplayName || f.realName || f.displayName || '名前なし'
+  return f.realName?.trim() || f.systemDisplayName?.trim() || f.displayName || '名前なし'
 }
 
 export interface FriendNameFields {

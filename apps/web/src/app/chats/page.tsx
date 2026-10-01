@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { TaggedText } from '@/components/forms/tagged-text'
 import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
 import { FormTagPicker } from '@/components/forms/form-tag-picker'
@@ -1019,13 +1020,19 @@ export default function ChatsPage() {
                     </svg>
                   </Button>
                   {chatDetail.friendPictureUrl && (
-                    <img src={chatDetail.friendPictureUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
+                    <Link href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`} title="友だち詳細を開く" className="flex-shrink-0">
+                      <img src={chatDetail.friendPictureUrl} alt="" className="w-8 h-8 rounded-full" />
+                    </Link>
                   )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <Link
+                        href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`}
+                        title="友だち詳細を開く"
+                        className="truncate text-sm font-medium text-[#2b7bb9] hover:underline"
+                      >
                         {chatDetail.friendName}
-                      </p>
+                      </Link>
                       <NameEditPencil onClick={() => void openHeaderNameEdit(chatDetail.friendId ?? chatDetail.id)} />
                     </div>
                     <span
@@ -1036,6 +1043,12 @@ export default function ChatsPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`}
+                    className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    友だち詳細 →
+                  </Link>
                   {/* メモはPC(xl+)では右サイドバーに常設。狭い画面のみトグルで表示する */}
                   <Button type="button" size="sm" variant={showMobileMemo ? 'primary' : 'secondary'}
                     onClick={() => setShowMobileMemo((v) => !v)}

@@ -7,6 +7,14 @@ import { Badge } from '@cloudflare/kumo/components/badge'
 import { Button } from '@cloudflare/kumo/components/button'
 import type { FriendListItem } from '@/lib/api'
 import TagBadge from './tag-badge'
+import { resolveFriendName } from './friend-name-edit-dialog'
+import { FieldValue, type FieldValueDef } from './field-value'
+
+/** ★(お気に入り)が付いた友だち情報欄。友だち一覧の「★つきタグ・友だち情報」に値を出す。 */
+export interface FavoriteField extends FieldValueDef {
+  fieldKey: string
+  label: string
+}
 
 interface Props {
   friend: FriendListItem
@@ -15,6 +23,7 @@ interface Props {
   // to the row body — the row body navigates to /chats and we don't want
   // the tag-edit affordance to compete with that primary click target.
   onTagEditClick?: () => void
+  favoriteFields?: FavoriteField[]
 }
 
 // Single row of the L-step style friend list. Renders 5 columns:
@@ -23,12 +32,16 @@ interface Props {
 // `/chats?friend=<id>` so the operator can read history / reply / mark as
 // resolved without leaving the list. The "タグ" button at the end of the
 // last column opens an inline tag editor (handled by the parent table).
-export default function FriendListRow({ friend, onTagEditClick }: Props) {
+export default function FriendListRow({ friend, onTagEditClick, favoriteFields = [] }: Props) {
   const router = useRouter()
   const navigateToChat = () => router.push(`/chats?friend=${friend.id}`)
   const incoming = friend.latestIncomingMessage
   const scenario = friend.activeScenario
   const isFollowing = friend.isFollowing
+  // 名前は本名(無ければシステム表示名、LINE登録名)。Lステップの友だちリストと同じ。
+  const name = resolveFriendName(friend)
+  const meta = ((friend as unknown as { metadata?: Record<string, unknown> }).metadata ?? {}) as Record<string, unknown>
+  const favoriteValues = favoriteFields.filter((f) => meta[f.fieldKey] !== undefined && meta[f.fieldKey] !== null && meta[f.fieldKey] !== '')
 
   return (
     <div
@@ -64,12 +77,12 @@ export default function FriendListRow({ friend, onTagEditClick }: Props) {
         {friend.pictureUrl ? (
           <img
             src={friend.pictureUrl}
-            alt={friend.displayName}
+            alt={name}
             className="h-9 w-9 flex-shrink-0 rounded-full bg-kumo-tint object-cover"
           />
         ) : (
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-medium text-kumo-subtle">
-            {friend.displayName?.charAt(0) ?? '?'}
+            {name.charAt(0) || '?'}
           </div>
         )}
         <div className="min-w-0">
@@ -81,8 +94,11 @@ export default function FriendListRow({ friend, onTagEditClick }: Props) {
             onClick={(e) => e.stopPropagation()}
             className="truncate text-sm font-medium text-kumo-link hover:underline"
           >
-            {friend.displayName}
+            {name}
           </Link>
+          {name !== friend.displayName && friend.displayName && (
+            <p className="mt-0.5 truncate text-[10px] text-kumo-subtle" title="LINE登録名">LINE名: {friend.displayName}</p>
+          )}
           <p className="mt-0.5 text-[10px] text-kumo-subtle">登録: {formatJstDate(friend.createdAt)}</p>
           {!isFollowing && (
             <p className="mt-0.5 text-[10px] text-kumo-danger">ブロック / 退会</p>
@@ -131,6 +147,12 @@ export default function FriendListRow({ friend, onTagEditClick }: Props) {
             ))}
           </div>
         )}
+        {favoriteValues.map((f) => (
+          <p key={f.fieldKey} className="text-[10px] text-kumo-default">
+            <span className="text-kumo-subtle">{f.label}：</span>
+            <FieldValue value={meta[f.fieldKey]} def={f} />
+          </p>
+        ))}
         {friend.firstTrackedLinkName && (
           <p className="text-[10px] text-kumo-default">
             <span className="text-kumo-subtle">ASP_LP名：</span>
@@ -156,7 +178,7 @@ export default function FriendListRow({ friend, onTagEditClick }: Props) {
             </p>
           )
         })()}
-        {friend.tags.length === 0 && !friend.firstTrackedLinkName && !friend.refCode &&
+        {friend.tags.length === 0 && favoriteValues.length === 0 && !friend.firstTrackedLinkName && !friend.refCode &&
           !(friend as unknown as { metadata?: Record<string, unknown> }).metadata?.ig_account_username &&
           !(friend as unknown as { metadata?: Record<string, unknown> }).metadata?.ig_account_id && (
           <span className="text-[10px] text-kumo-inactive">—</span>
