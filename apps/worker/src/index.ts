@@ -114,6 +114,11 @@ export type Env = {
     // feature is entirely absent unless an operator opts in. ≥32 chars, shared
     // with the token issuer. See routes/admin-sso.ts and docs/ADMIN-AUTH.md.
     ADMIN_SSO_SECRET?: string;
+    // beyond admin のID・パスワードでログイン(services/external-auth.ts)。3つとも任意で、
+    // BEYOND_ADMIN_URL と BEYOND_ADMIN_INTERNAL_TOKEN が揃ったときだけ有効になる。
+    BEYOND_ADMIN_URL?: string;
+    BEYOND_ADMIN_INTERNAL_TOKEN?: string;
+    BEYOND_ADMIN_ALLOWED_TENANT_IDS?: string;
     X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
     IG_HARNESS_URL?: string;  // Optional: IG Harness API URL for cross-platform linking
     IG_HARNESS_LINK_SECRET?: string;  // Shared secret for IG Harness link-line webhook

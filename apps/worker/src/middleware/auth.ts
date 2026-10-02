@@ -3,6 +3,12 @@ import { getStaffByApiKey } from '@line-crm/db';
 import type { Env } from '../index.js';
 import type { AdminSameSite } from './admin-auth-config.js';
 import { safeDecode } from '../utils/safe-decode.js';
+import {
+  ADMIN_SESSION_COOKIE,
+  externalAuthEnabled,
+  resolveExternalStaff,
+  verifyAdminSession,
+} from '../services/external-auth.js';
 
 export const ADMIN_AUTH_COOKIE = 'lh_admin_session';
 export const CSRF_COOKIE = 'lh_csrf';
@@ -76,6 +82,8 @@ export type AuthenticatedStaff = {
   id: string;
   name: string;
   role: 'owner' | 'admin' | 'staff';
+  /** beyond admin のログインで入った(ログアウトも beyond admin 側で行う) */
+  external?: boolean;
 };
 
 /**
@@ -114,6 +122,20 @@ export async function authenticateApiToken(
   }
 
   return null;
+}
+
+/**
+ * beyond admin のログイン(共通の bap_session Cookie)からスタッフを決める。
+ * 無効(環境変数なし・Cookieなし・確認できない・停止中)なら null。
+ */
+async function authenticateExternal(c: Context<Env>): Promise<AuthenticatedStaff | null> {
+  if (!externalAuthEnabled(c.env)) return null;
+  const sessionId = parseCookieHeader(c.req.header('Cookie'))[ADMIN_SESSION_COOKIE];
+  if (!sessionId) return null;
+  const profile = await verifyAdminSession(c.env, sessionId);
+  if (!profile) return null;
+  const member = await resolveExternalStaff(c.env.DB, profile);
+  return member ? { id: member.id, name: member.name, role: member.role, external: true } : null;
 }
 
 export async function authMiddleware(c: Context<Env>, next: Next): Promise<Response | void> {
@@ -184,6 +206,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path.startsWith('/api/liff/') ||
     // Admin login/logout — issue/clear the session cookie before auth exists.
     path === '/api/auth/login' ||
+    // ログイン画面が、beyond admin のログインを案内するための設定(秘密は含まない)
+    path === '/api/auth/config' ||
     path === '/api/auth/logout' ||
     path.startsWith('/auth/') ||
     path === '/setup' ||
@@ -204,7 +228,13 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   const cookie = cookieToken(c);
   const token = bearer ?? cookie;
 
-  const staff = await authenticateApiToken(c, token);
+  let staff = await authenticateApiToken(c, token);
+  // beyond admin のログイン(Authorization ヘッダの API キーが無いときだけ)
+  let viaExternal = false;
+  if (!staff && !bearer) {
+    staff = await authenticateExternal(c);
+    viaExternal = !!staff;
+  }
   if (!staff) {
     return c.json({ success: false, error: 'Unauthorized' }, 401);
   }
@@ -213,7 +243,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   // requests. Bearer callers (SDK/MCP) cannot be driven cross-site by a
   // browser (an attacker cannot set the Authorization header), so they are
   // exempt. Safe methods (GET/HEAD/OPTIONS) never mutate, so they are exempt.
-  if (!bearer && cookie && !SAFE_METHODS.has(c.req.method.toUpperCase())) {
+  if (!bearer && (cookie || viaExternal) && !SAFE_METHODS.has(c.req.method.toUpperCase())) {
     const header = c.req.header(CSRF_HEADER);
     const expected = csrfTokenFromCookie(c);
     if (!header || !expected || header !== expected) {

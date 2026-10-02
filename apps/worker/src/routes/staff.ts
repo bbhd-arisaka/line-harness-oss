@@ -22,15 +22,26 @@ function maskApiKey(key: string): string {
   return `lh_****${key.slice(-4)}`;
 }
 
+const EXTERNAL_MANAGED = 'beyond admin で管理されているユーザーです。名前・メール・役割・パスワードは beyond admin で変更してください。';
+
+/** 見られるアカウント。beyond admin から入った人(オーナー以外)は、許可するまで空(どのアカウントも見られない) */
+function effectiveAccountIds(row: StaffMember, rows: string[] | null): string[] | null {
+  if (rows && rows.length > 0) return rows;
+  return row.access_restricted && row.role !== 'owner' ? [] : null;
+}
+
 function serializeStaff(row: StaffMember, masked = true, accountIds: string[] | null = null) {
+  const external = !!row.external_id;
   return {
+    /** beyond admin のユーザー(名前・役割・パスワードは beyond admin で管理) */
+    external,
     /** 見られるアカウント。null = 制限なし(全アカウント) */
     accountIds,
     id: row.id,
     name: row.name,
     email: row.email,
     role: row.role,
-    apiKey: masked ? maskApiKey(row.api_key) : row.api_key,
+    apiKey: external ? null : masked ? maskApiKey(row.api_key) : row.api_key,
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -82,7 +93,7 @@ staff.get('/api/staff', requireRole('owner'), async (c) => {
   try {
     const members = await getStaffMembers(c.env.DB);
     const access = await getAllStaffAccountAccess(c.env.DB);
-    return c.json({ success: true, data: members.map((m) => serializeStaff(m, true, access.get(m.id) ?? null)) });
+    return c.json({ success: true, data: members.map((m) => serializeStaff(m, true, effectiveAccountIds(m, access.get(m.id) ?? null))) });
   } catch (err) {
     console.error('GET /api/staff error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -97,7 +108,7 @@ staff.get('/api/staff/:id', requireRole('owner'), async (c) => {
     if (!member) {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
     }
-    return c.json({ success: true, data: serializeStaff(member, true, await getStaffAllowedAccountIds(c.env.DB, member.id)) });
+    return c.json({ success: true, data: serializeStaff(member, true, effectiveAccountIds(member, await getStaffAllowedAccountIds(c.env.DB, member.id))) });
   } catch (err) {
     console.error('GET /api/staff/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -133,7 +144,7 @@ staff.post('/api/staff', requireRole('owner'), async (c) => {
 });
 
 // PUT /api/staff/:id/accounts — owner only. スタッフが見られる公式アカウントを設定する。
-// accountIds が空 = 制限なし(全アカウント)。オーナーは常に全アカウントなので設定不可。
+// accountIds が空 = 制限なし(全アカウント)。ただし beyond admin から入った人は、空 = どのアカウントも見られない。オーナーは常に全アカウントなので設定不可。
 staff.put('/api/staff/:id/accounts', requireRole('owner'), async (c) => {
   try {
     const id = c.req.param('id')!;
@@ -184,6 +195,9 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
     if (!target) {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
     }
+    if (target.external_id && (body.name !== undefined || body.email !== undefined || body.role !== undefined)) {
+      return c.json({ success: false, error: EXTERNAL_MANAGED }, 400);
+    }
     if (target.role === 'owner' && target.is_active === 1) {
       const willLoseOwner =
         (body.role !== undefined && body.role !== 'owner') ||
@@ -207,7 +221,7 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
     }
 
-    return c.json({ success: true, data: serializeStaff(updated, true) });
+    return c.json({ success: true, data: serializeStaff(updated, true, effectiveAccountIds(updated, await getStaffAllowedAccountIds(c.env.DB, updated.id))) });
   } catch (err) {
     console.error('PATCH /api/staff/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -227,6 +241,10 @@ staff.delete('/api/staff/:id', requireRole('owner'), async (c) => {
     const target = await getStaffById(c.env.DB, id);
     if (!target) {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
+    }
+
+    if (target.external_id) {
+      return c.json({ success: false, error: 'beyond admin で管理されているユーザーは削除できません(次にログインしたとき、また作られます)。入れたくないときは「無効にする」にするか、beyond admin 側でユーザーを止めてください。' }, 400);
     }
 
     if (target.role === 'owner' && target.is_active === 1) {
@@ -251,6 +269,9 @@ staff.post('/api/staff/:id/regenerate-key', requireRole('owner'), async (c) => {
     const exists = await getStaffById(c.env.DB, id);
     if (!exists) {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
+    }
+    if (exists.external_id) {
+      return c.json({ success: false, error: 'beyond admin で管理されているユーザーは、API キーを使いません' }, 400);
     }
     const newKey = await regenerateStaffApiKey(c.env.DB, id);
     return c.json({ success: true, data: { apiKey: newKey } });

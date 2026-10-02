@@ -78,14 +78,15 @@ export default function StaffPage() {
 
   const openAccess = (member: StaffMember) => {
     setAccessTarget(member)
-    setAccessAll(!member.accountIds || member.accountIds.length === 0)
+    // beyond admin から入った人は「制限しない」を選べない(許可したアカウントだけ。空 = 何も見られない)
+    setAccessAll(!member.external && (!member.accountIds || member.accountIds.length === 0))
     setAccessIds(member.accountIds ?? [])
     setAccessError('')
   }
 
   const saveAccess = async () => {
     if (!accessTarget) return
-    if (!accessAll && accessIds.length === 0) {
+    if (!accessAll && accessIds.length === 0 && !accessTarget.external) {
       setAccessError('見られるアカウントを1つ以上選んでください')
       return
     }
@@ -182,7 +183,7 @@ export default function StaffPage() {
     <div>
       <Header
         title="スタッフ管理"
-        description="操作権限とスタッフ用APIキーを管理します。"
+        description="操作権限を管理します。beyond admin のユーザーは、ログインすると自動でここに入ります(名前・役割・パスワードは beyond admin で変更します)。"
         action={(
           <Button type="button" variant="primary" icon={PlusIcon} onClick={() => setShowForm((current) => !current)}>
             スタッフを追加
@@ -296,11 +297,15 @@ export default function StaffPage() {
                   <Table.Cell className="hidden text-kumo-subtle sm:table-cell">{member.email ?? '—'}</Table.Cell>
                   <Table.Cell><RoleBadge role={member.role} /></Table.Cell>
                   <Table.Cell className="hidden text-sm text-kumo-subtle md:table-cell">
-                    {member.role === 'owner' || !member.accountIds || member.accountIds.length === 0
+                    {member.role === 'owner'
+                      ? '全アカウント'
+                      : member.external && (!member.accountIds || member.accountIds.length === 0)
+                        ? <span className="text-amber-700">なし(許可が必要)</span>
+                        : !member.accountIds || member.accountIds.length === 0
                       ? '全アカウント'
                       : member.accountIds.map((id) => accounts.find((a) => a.id === id)?.name ?? '(削除済み)').join('、')}
                   </Table.Cell>
-                  <Table.Cell className="hidden font-mono text-xs text-kumo-subtle md:table-cell">{maskKey(member.apiKey ?? '')}</Table.Cell>
+                  <Table.Cell className="hidden font-mono text-xs text-kumo-subtle md:table-cell">{member.external ? 'beyond admin のログイン' : maskKey(member.apiKey ?? '')}</Table.Cell>
                   <Table.Cell>
                     <Badge variant={member.isActive ? 'success' : 'neutral'} appearance="dot">
                       {member.isActive ? '有効' : '無効'}
@@ -316,24 +321,28 @@ export default function StaffPage() {
                           <Button type="button" size="xs" variant="secondary" onClick={() => handleToggleActive(member)}>
                             {member.isActive ? '無効化' : '有効化'}
                           </Button>
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="secondary"
-                            icon={KeyIcon}
-                            onClick={() => setPendingAction({ kind: 'regenerate', member })}
-                          >
-                            キー再生成
-                          </Button>
-                          <Button
-                            type="button"
-                            size="xs"
-                            variant="secondary-destructive"
-                            icon={TrashIcon}
-                            onClick={() => setPendingAction({ kind: 'delete', member })}
-                          >
-                            削除
-                          </Button>
+                          {member.external ? null : (
+                            <>
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="secondary"
+                                icon={KeyIcon}
+                                onClick={() => setPendingAction({ kind: 'regenerate', member })}
+                              >
+                                キー再生成
+                              </Button>
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="secondary-destructive"
+                                icon={TrashIcon}
+                                onClick={() => setPendingAction({ kind: 'delete', member })}
+                              >
+                                削除
+                              </Button>
+                            </>
+                          )}
                         </>
                       ) : null}
                     </div>
@@ -352,11 +361,15 @@ export default function StaffPage() {
             選んだアカウントの友だち・トークだけを扱えます。他のアカウント(別の会社・事業を含む)は表示も操作もできません。
           </p>
           <div className="mt-4 space-y-2">
-            <Checkbox
-              label="全アカウント(制限しない)"
-              checked={accessAll}
-              onCheckedChange={(checked) => setAccessAll(Boolean(checked))}
-            />
+            {accessTarget?.external ? (
+              <p className="text-xs text-kumo-subtle">beyond admin から入った人は、ここで許可したアカウントだけを見られます(1つも選ばなければ、何も見られません)。</p>
+            ) : (
+              <Checkbox
+                label="全アカウント(制限しない)"
+                checked={accessAll}
+                onCheckedChange={(checked) => setAccessAll(Boolean(checked))}
+              />
+            )}
             {!accessAll ? (
               <div className="ml-6 space-y-2 rounded border border-kumo-line p-3">
                 <p className="text-xs text-kumo-subtle">見られるアカウントを選んでください</p>

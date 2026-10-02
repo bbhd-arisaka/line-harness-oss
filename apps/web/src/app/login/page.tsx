@@ -1,7 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getApiBase } from '@/lib/api-base'
+import { withBasePath } from '@/lib/base-path'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input } from '@cloudflare/kumo/components/input'
@@ -12,6 +13,48 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  // beyond admin のID・パスワードでのログイン(サーバーで有効なときだけ案内する)
+  const [beyondAdminLogin, setBeyondAdminLogin] = useState<string | null>(null)
+  const [showApiKey, setShowApiKey] = useState(true)
+
+  useEffect(() => {
+    const apiUrl = getApiBase()
+    if (!apiUrl) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        // すでに beyond admin でログイン済みなら、そのまま入る
+        const session = await fetch(`${apiUrl}/api/auth/session`, { credentials: 'include' })
+        if (session.ok) {
+          const data = await session.json()
+          if (data?.success && data?.data) {
+            if (data.data.name) localStorage.setItem('lh_staff_name', data.data.name)
+            if (data.data.role) localStorage.setItem('lh_staff_role', data.data.role)
+            if (data.data.external) localStorage.setItem('lh_login_via', 'beyond-admin')
+            if (data.csrfToken) localStorage.setItem('lh_csrf', data.csrfToken)
+            if (!cancelled) router.replace('/')
+            return
+          }
+        }
+        const res = await fetch(`${apiUrl}/api/auth/config`)
+        const cfg = await res.json()
+        if (!cancelled && cfg?.data?.beyondAdmin?.loginUrl) {
+          setBeyondAdminLogin(cfg.data.beyondAdmin.loginUrl as string)
+          setShowApiKey(false)
+        }
+      } catch {
+        // 設定が読めなければ、従来どおり API キーのログインだけ
+      }
+    })()
+    return () => { cancelled = true }
+  }, [router])
+
+  const goBeyondAdmin = () => {
+    if (!beyondAdminLogin) return
+    // ログインしたあと、この管理画面のトップに戻ってくる
+    const back = `${window.location.origin}${withBasePath('/')}`
+    window.location.href = `${beyondAdminLogin}?next=${encodeURIComponent(back)}`
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -39,6 +82,7 @@ export default function LoginPage() {
         try {
           const loginData = await res.json()
           if (loginData.success && loginData.data) {
+            localStorage.removeItem('lh_login_via')
             localStorage.setItem('lh_staff_name', loginData.data.name)
             localStorage.setItem('lh_staff_role', loginData.data.role)
           }
@@ -81,6 +125,21 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mt-1">管理画面にログイン</p>
         </div>
 
+        {beyondAdminLogin ? (
+          <div className="mb-4">
+            <Button type="button" variant="primary" className="w-full" onClick={goBeyondAdmin}>
+              ID・パスワードでログイン
+            </Button>
+            <p className="mt-2 text-center text-xs text-gray-500">beyond admin と同じメールアドレス・パスワードでログインします</p>
+            {!showApiKey ? (
+              <Button type="button" variant="secondary" size="xs" className="mt-4 w-full" onClick={() => setShowApiKey(true)}>
+                APIキーでログイン(管理者用)
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showApiKey ? (
         <form onSubmit={handleLogin}>
           <div className="mb-4">
             <Input
@@ -105,6 +164,7 @@ export default function LoginPage() {
             ログイン
           </Button>
         </form>
+        ) : null}
       </LayerCard>
     </div>
   )

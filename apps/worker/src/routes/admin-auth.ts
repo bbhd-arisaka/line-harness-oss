@@ -10,6 +10,7 @@ import {
   expiredCookie,
 } from '../middleware/auth.js';
 import { resolveAdminAuthConfig } from '../middleware/admin-auth-config.js';
+import { externalAuthLinks } from '../services/external-auth.js';
 
 export const adminAuth = new Hono<Env>();
 
@@ -47,6 +48,14 @@ adminAuth.post('/api/auth/login', async (c) => {
   c.header('Set-Cookie', adminSessionCookie(apiKey, config.sameSite), { append: true });
   c.header('Set-Cookie', csrfCookie(csrfToken, config.sameSite), { append: true });
   return c.json({ success: true, data: staff, csrfToken });
+});
+
+/**
+ * GET /api/auth/config — ログイン画面用(認証なし・秘密は含まない)。
+ * beyond admin のログインが有効なら、そのログイン・ログアウトの URL を返す。無効なら null。
+ */
+adminAuth.get('/api/auth/config', (c) => {
+  return c.json({ success: true, data: { beyondAdmin: externalAuthLinks(c.env) } });
 });
 
 /**

@@ -4,7 +4,10 @@
  * 行が無い(=制限なし)スタッフは null を返し、全アカウントを扱える。
  */
 
-/** 制限があればアカウントIDの配列、制限なし(全アカウント)なら null。 */
+/**
+ * 制限があればアカウントIDの配列、制限なし(全アカウント)なら null。
+ * beyond admin から入った人(access_restricted=1)は、許可するまで空の配列(どのアカウントも見られない)。
+ */
 export async function getStaffAllowedAccountIds(
   db: D1Database,
   staffId: string,
@@ -14,7 +17,12 @@ export async function getStaffAllowedAccountIds(
     .bind(staffId)
     .all<{ line_account_id: string }>();
   const ids = (result.results ?? []).map((r) => r.line_account_id);
-  return ids.length > 0 ? ids : null;
+  if (ids.length > 0) return ids;
+  const row = await db
+    .prepare('SELECT access_restricted FROM staff_members WHERE id = ?')
+    .bind(staffId)
+    .first<{ access_restricted: number | null }>();
+  return row?.access_restricted ? [] : null;
 }
 
 /** 全スタッフ分の制限をまとめて取得(制限なしのスタッフはキーが無い)。 */

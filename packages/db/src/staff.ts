@@ -9,6 +9,11 @@ export interface StaffMember {
   is_active: number;
   created_at: string;
   updated_at: string;
+  /** beyond admin のユーザーID。あれば、名前・役割・停止は beyond admin 側で管理する */
+  external_id?: string | null;
+  external_tenant_id?: string | null;
+  /** 1 = 見られるアカウントを許可するまで、どのアカウントも見られない */
+  access_restricted?: number;
 }
 
 export interface CreateStaffInput {
@@ -39,6 +44,45 @@ export async function getStaffByApiKey(
     .prepare('SELECT * FROM staff_members WHERE api_key = ? AND is_active = 1')
     .bind(apiKey)
     .first<StaffMember>();
+}
+
+/** beyond admin のユーザーIDからスタッフを探す(停止中も含む) */
+export async function getStaffByExternalId(db: D1Database, externalId: string): Promise<StaffMember | null> {
+  return db.prepare('SELECT * FROM staff_members WHERE external_id = ?').bind(externalId).first<StaffMember>();
+}
+
+export interface ExternalStaffInput {
+  externalId: string;
+  tenantId: string;
+  name: string;
+  email: string | null;
+  role: 'owner' | 'admin' | 'staff';
+}
+
+/**
+ * beyond admin のユーザーを、スタッフとして作る/更新する(ログインのたびに呼ぶ)。
+ * 名前・メール・役割は beyond admin を正とする。見られるアカウントは、ここでは触らない
+ * (新しく作る人は、オーナー以外は「許可するまで、どのアカウントも見られない」)。
+ */
+export async function upsertExternalStaff(db: D1Database, input: ExternalStaffInput): Promise<StaffMember> {
+  const now = jstNow();
+  const existing = await getStaffByExternalId(db, input.externalId);
+  if (existing) {
+    await db
+      .prepare('UPDATE staff_members SET name = ?, email = ?, role = ?, external_tenant_id = ?, updated_at = ? WHERE id = ?')
+      .bind(input.name, input.email, input.role, input.tenantId, now, existing.id)
+      .run();
+  } else {
+    // API キーは使わない(ログインは beyond admin 経由)が、列が必須なので、誰にも知らされない乱数を入れる
+    await db
+      .prepare(
+        `INSERT INTO staff_members (id, name, email, role, api_key, is_active, created_at, updated_at, external_id, external_tenant_id, access_restricted)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1)`,
+      )
+      .bind(crypto.randomUUID(), input.name, input.email, input.role, generateApiKey(), now, now, input.externalId, input.tenantId)
+      .run();
+  }
+  return (await getStaffByExternalId(db, input.externalId))!;
 }
 
 export async function getStaffMembers(db: D1Database): Promise<StaffMember[]> {

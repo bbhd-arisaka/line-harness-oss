@@ -84,9 +84,15 @@ function AccountSwitcher() {
 }
 
 async function logout() {
+  let beyondAdminLogoutUrl: string | null = null
   try {
     const apiUrl = getApiBase()
     if (apiUrl) {
+      // beyond admin のログインで入っていた人は、beyond admin 側のログインも終わらせる(終わらせないと、すぐ戻ってしまう)
+      if (localStorage.getItem('lh_login_via') === 'beyond-admin') {
+        const cfg = await fetch(`${apiUrl}/api/auth/config`).then((r) => r.json()).catch(() => null)
+        beyondAdminLogoutUrl = cfg?.data?.beyondAdmin?.logoutUrl ?? null
+      }
       await fetch(`${apiUrl}/api/auth/logout`, { method: 'POST', credentials: 'include' })
     }
   } catch {
@@ -96,6 +102,12 @@ async function logout() {
   localStorage.removeItem('lh_csrf')
   localStorage.removeItem('lh_staff_name')
   localStorage.removeItem('lh_staff_role')
+  localStorage.removeItem('lh_login_via')
+  if (beyondAdminLogoutUrl) {
+    const back = `${window.location.origin}${withBasePath('/login')}`
+    window.location.href = `${beyondAdminLogoutUrl}?next=${encodeURIComponent(back)}`
+    return
+  }
   window.location.href = withBasePath('/login')
 }
 

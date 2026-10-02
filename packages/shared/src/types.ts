@@ -869,8 +869,11 @@ export interface StaffMember {
   name: string;
   email: string | null;
   role: 'owner' | 'admin' | 'staff';
-  apiKey: string;
-  /** 見られる公式アカウント。null/未設定 = 制限なし(全アカウント) */
+  /** beyond admin のユーザーは API キーを持たない(null) */
+  apiKey: string | null;
+  /** beyond admin のユーザー(名前・役割・パスワードは beyond admin で管理) */
+  external?: boolean;
+  /** 見られる公式アカウント。null/未設定 = 制限なし(全アカウント)。beyond admin のユーザーは、空 = どのアカウントも見られない */
   accountIds?: string[] | null;
   isActive: boolean;
   createdAt: string;

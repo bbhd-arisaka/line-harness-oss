@@ -970,7 +970,7 @@ CREATE TABLE IF NOT EXISTS staff_members (
   is_active  INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-);
+, external_id TEXT, external_tenant_id TEXT, access_restricted INTEGER NOT NULL DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS staff_menus (
   staff_id                  TEXT NOT NULL,
@@ -1439,6 +1439,8 @@ CREATE INDEX IF NOT EXISTS idx_staff_availability_rules_staff
   ON staff_availability_rules (staff_id, weekday, is_active);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_members_api_key ON staff_members(api_key);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_members_external_id ON staff_members(external_id);
 
 CREATE INDEX IF NOT EXISTS idx_staff_members_role ON staff_members(role);
 
