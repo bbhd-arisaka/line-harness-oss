@@ -7,7 +7,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { accountAccessGuard } from '../middleware/account-access.js';
 import { adminAuth } from '../routes/admin-auth.js';
 import { staff as staffRoutes } from '../routes/staff.js';
-import { clearExternalAuthCache, verifyAdminSession } from './external-auth.js';
+import { clearExternalAuthCache, syncExternalUsers, verifyAdminSession } from './external-auth.js';
 import type { Env } from '../index.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
@@ -114,7 +114,7 @@ describe('beyond admin のログインで入る(認証〜アカウント権限�
     expect((await call('/api/auth/session', { headers: { ...cookie('sid-2'), Authorization: 'Bearer wrong' } })).status).toBe(401);
   });
 
-  test('こちらで無効にした人は、beyond admin で有効でも入れない', async () => {
+  test('beyond admin で無効にされた人は(一覧の同期で)無効になり、確認の結果が古くて「有効」と返っても入れない', async () => {
     mockAdmin();
     const { call, sqlite } = setup();
     await call('/api/auth/session', { headers: cookie() });
@@ -148,8 +148,85 @@ describe('beyond admin のログインで入る(認証〜アカウント権限�
     expect((await call(`/api/staff/${id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ role: 'owner' }) })).status).toBe(400);
     expect((await call(`/api/staff/${id}`, { method: 'DELETE', headers: h })).status).toBe(400);
     expect((await call(`/api/staff/${id}/regenerate-key`, { method: 'POST', headers: h })).status).toBe(400);
-    expect((await call(`/api/staff/${id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ isActive: false }) })).status).toBe(200);
+    expect((await call(`/api/staff/${id}`, { method: 'PATCH', headers: h, body: JSON.stringify({ isActive: false }) })).status).toBe(400);
     const list = await (await call('/api/staff', { headers: h })).json() as { data: Array<{ id: string; external: boolean; apiKey: string | null; accountIds: string[] | null }> };
     expect(list.data.find((s) => s.id === id)).toMatchObject({ external: true, apiKey: null, accountIds: [] });
+  });
+});
+
+describe('beyond admin のユーザー一覧の同期(スタッフ管理に、まだ一度もログインしていない人も出す)', () => {
+  const USERS = {
+    ok: true,
+    users: [
+      { userId: 'u-1', tenantId: 't-1', tenantName: 'エクラブロウ', name: '有坂 将希', email: 'a@example.test', role: 'owner', isActive: true },
+      { userId: 'u-2', tenantId: 't-1', tenantName: 'エクラブロウ', name: '山田 花子', email: 'h@example.test', role: 'manager', isActive: true },
+      { userId: 'u-3', tenantId: 't-1', tenantName: 'エクラブロウ', name: '退職 太郎', email: 't@example.test', role: 'staff', isActive: false },
+      { userId: 'u-9', tenantId: 't-2', tenantName: '別会社', name: '別会社の人', email: 'x@example.test', role: 'staff', isActive: true },
+    ],
+  };
+  function db() {
+    const { db: d, sqlite } = sqliteD1();
+    sqlite.exec(schema);
+    return { d, sqlite };
+  }
+  const f = (body: unknown, status = 200) => vi.fn(async () => okResponse(body, status)) as unknown as typeof fetch;
+
+  test('一覧にいる全員がスタッフに入る(ログイン前でも)。見られるアカウントは空から。無効の人は無効', async () => {
+    const { d, sqlite } = db();
+    const fetchSpy = f(USERS);
+    expect(await syncExternalUsers(d, ENV, fetchSpy)).toEqual({ synced: 4, deactivated: 0 });
+    const [url, init] = (fetchSpy as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0];
+    expect(url).toBe('https://admin.example.test/api/internal/line/users');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer internal-secret');
+    const rows = sqlite.prepare('SELECT external_id, role, is_active, access_restricted FROM staff_members ORDER BY external_id').all();
+    expect(rows).toEqual([
+      { external_id: 'u-1', role: 'owner', is_active: 1, access_restricted: 1 },
+      { external_id: 'u-2', role: 'admin', is_active: 1, access_restricted: 1 },
+      { external_id: 'u-3', role: 'staff', is_active: 0, access_restricted: 1 },
+      { external_id: 'u-9', role: 'staff', is_active: 1, access_restricted: 1 },
+    ]);
+  });
+
+  test('beyond admin から居なくなった人は無効になる。見られるアカウントの設定は同期で消えない', async () => {
+    const { d, sqlite } = db();
+    sqlite.exec("INSERT INTO line_accounts(id,channel_id,name,channel_secret,channel_access_token) VALUES('acc-a','ch-a','A店','s','t')");
+    await syncExternalUsers(d, ENV, f(USERS));
+    const id = (sqlite.prepare("SELECT id FROM staff_members WHERE external_id='u-2'").get() as { id: string }).id;
+    sqlite.prepare("INSERT INTO staff_account_access(staff_id, line_account_id) VALUES(?, 'acc-a')").run(id);
+    const r = await syncExternalUsers(d, ENV, f({ ok: true, users: USERS.users.filter((u) => u.userId !== 'u-2' && u.userId !== 'u-3') }));
+    expect(r).toEqual({ synced: 2, deactivated: 1 });
+    expect(sqlite.prepare("SELECT is_active FROM staff_members WHERE external_id='u-2'").get()).toEqual({ is_active: 0 });
+    expect(sqlite.prepare('SELECT COUNT(*) c FROM staff_account_access').get()).toEqual({ c: 1 });
+  });
+
+  test('入れてよい会社を指定したときは、それ以外の会社の人は入れない', async () => {
+    const { d, sqlite } = db();
+    await syncExternalUsers(d, { ...ENV, BEYOND_ADMIN_ALLOWED_TENANT_IDS: 't-1' }, f(USERS));
+    expect(sqlite.prepare("SELECT COUNT(*) c FROM staff_members WHERE external_id = 'u-9'").get()).toEqual({ c: 0 });
+  });
+
+  test('取れなかったとき(通信失敗・拒否・形が崩れた応答・設定なし)は、何も変えない', async () => {
+    const { d, sqlite } = db();
+    await syncExternalUsers(d, ENV, f(USERS));
+    const before = sqlite.prepare('SELECT COUNT(*) c FROM staff_members WHERE is_active = 1').get();
+    expect(await syncExternalUsers(d, ENV, f({ error: 'unauthorized' }, 401))).toBeNull();
+    expect(await syncExternalUsers(d, ENV, f({ ok: true }))).toBeNull();
+    expect(await syncExternalUsers(d, ENV, (async () => { throw new Error('net'); }) as unknown as typeof fetch)).toBeNull();
+    expect(await syncExternalUsers(d, {}, f(USERS))).toBeNull();
+    expect(sqlite.prepare('SELECT COUNT(*) c FROM staff_members WHERE is_active = 1').get()).toEqual(before);
+  });
+
+  test('スタッフ管理の一覧を開くと、同期されて、全員が出る(API キーの人も残る)', async () => {
+    const { d, sqlite } = db();
+    sqlite.prepare("INSERT INTO staff_members(id,name,role,api_key) VALUES('own','Owner','owner','owner-key')").run();
+    const app = new Hono<Env>();
+    app.use('*', authMiddleware);
+    app.route('/', staffRoutes);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((async () => okResponse(USERS)) as unknown as typeof fetch);
+    const res = await app.request('/api/staff', { headers: { Authorization: 'Bearer owner-key' } }, { DB: d, API_KEY: 'env-key', ...ENV } as unknown as Env['Bindings']);
+    const list = (await res.json() as { data: Array<{ name: string; external: boolean; isActive: boolean }> }).data;
+    expect(list.filter((s) => s.external).map((s) => s.name).sort()).toEqual(['別会社の人', '山田 花子', '有坂 将希', '退職 太郎'].sort());
+    expect(list.find((s) => s.name === 'Owner')).toMatchObject({ external: false });
+    expect(list.find((s) => s.name === '退職 太郎')).toMatchObject({ isActive: false });
   });
 });

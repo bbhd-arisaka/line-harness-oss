@@ -14,6 +14,7 @@ import {
 } from '@line-crm/db';
 import type { StaffMember } from '@line-crm/db';
 import { requireRole } from '../middleware/role-guard.js';
+import { syncExternalUsers } from '../services/external-auth.js';
 import type { Env } from '../index.js';
 
 const staff = new Hono<Env>();
@@ -22,7 +23,7 @@ function maskApiKey(key: string): string {
   return `lh_****${key.slice(-4)}`;
 }
 
-const EXTERNAL_MANAGED = 'beyond admin で管理されているユーザーです。名前・メール・役割・パスワードは beyond admin で変更してください。';
+const EXTERNAL_MANAGED = 'beyond admin で管理されているユーザーです。名前・メール・役割・パスワード・停止は beyond admin で変更してください。';
 
 /** 見られるアカウント。beyond admin から入った人(オーナー以外)は、許可するまで空(どのアカウントも見られない) */
 function effectiveAccountIds(row: StaffMember, rows: string[] | null): string[] | null {
@@ -91,6 +92,8 @@ staff.get('/api/staff/me', async (c) => {
 // GET /api/staff — owner only. List all staff with masked API keys.
 staff.get('/api/staff', requireRole('owner'), async (c) => {
   try {
+    // beyond admin のユーザー(まだ一度もログインしていない人も)を、先に映す。取れなくても一覧は返す
+    await syncExternalUsers(c.env.DB, c.env).catch((err) => console.error('syncExternalUsers failed:', err));
     const members = await getStaffMembers(c.env.DB);
     const access = await getAllStaffAccountAccess(c.env.DB);
     return c.json({ success: true, data: members.map((m) => serializeStaff(m, true, effectiveAccountIds(m, access.get(m.id) ?? null))) });
@@ -195,7 +198,7 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
     if (!target) {
       return c.json({ success: false, error: 'Staff member not found' }, 404);
     }
-    if (target.external_id && (body.name !== undefined || body.email !== undefined || body.role !== undefined)) {
+    if (target.external_id && (body.name !== undefined || body.email !== undefined || body.role !== undefined || body.isActive !== undefined)) {
       return c.json({ success: false, error: EXTERNAL_MANAGED }, 400);
     }
     if (target.role === 'owner' && target.is_active === 1) {
@@ -244,7 +247,7 @@ staff.delete('/api/staff/:id', requireRole('owner'), async (c) => {
     }
 
     if (target.external_id) {
-      return c.json({ success: false, error: 'beyond admin で管理されているユーザーは削除できません(次にログインしたとき、また作られます)。入れたくないときは「無効にする」にするか、beyond admin 側でユーザーを止めてください。' }, 400);
+      return c.json({ success: false, error: 'beyond admin で管理されているユーザーは削除できません(次にログインしたとき、また作られます)。入れたくないときは、beyond admin 側でユーザーを止めてください。' }, 400);
     }
 
     if (target.role === 'owner' && target.is_active === 1) {

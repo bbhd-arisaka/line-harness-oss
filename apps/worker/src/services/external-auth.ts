@@ -1,4 +1,4 @@
-import { upsertExternalStaff } from '@line-crm/db';
+import { deactivateExternalStaffNotIn, upsertExternalStaff } from '@line-crm/db';
 import type { StaffMember } from '@line-crm/db';
 
 /**
@@ -135,4 +135,79 @@ export async function resolveExternalStaff(db: D1Database, profile: ExternalProf
     role: ROLE_MAP[profile.role],
   });
   return member.is_active ? member : null;
+}
+
+// ── ユーザー一覧の同期(スタッフ管理に、まだ一度もログインしていない人も出すため) ──
+
+export interface ExternalUser {
+  userId: string;
+  tenantId: string;
+  tenantName: string | null;
+  name: string;
+  email: string | null;
+  role: ExternalProfile['role'];
+  isActive: boolean;
+}
+
+function parseUsers(x: unknown): ExternalUser[] | null {
+  const v = x as { ok?: unknown; users?: unknown } | null;
+  if (!v || v.ok !== true || !Array.isArray(v.users)) return null;
+  const out: ExternalUser[] = [];
+  for (const u of v.users as Array<Record<string, unknown>>) {
+    if (typeof u?.userId !== 'string' || !u.userId || typeof u.tenantId !== 'string' || !u.tenantId) continue;
+    if (u.role !== 'owner' && u.role !== 'manager' && u.role !== 'staff') continue;
+    out.push({
+      userId: u.userId,
+      tenantId: u.tenantId,
+      tenantName: typeof u.tenantName === 'string' ? u.tenantName : null,
+      name: typeof u.name === 'string' && u.name.trim() ? u.name.trim() : '(名前なし)',
+      email: typeof u.email === 'string' && u.email ? u.email : null,
+      role: u.role,
+      isActive: u.isActive !== false,
+    });
+  }
+  return out;
+}
+
+/**
+ * beyond admin のユーザー(beyond line を契約している会社の全員)を、スタッフとして映す。
+ * 無効のユーザー・居なくなったユーザーは、無効にする。取れなかったとき(通信失敗など)は何も変えず null。
+ */
+export async function syncExternalUsers(
+  db: D1Database,
+  env: ExternalAuthEnv,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ synced: number; deactivated: number } | null> {
+  if (!externalAuthEnabled(env)) return null;
+  let users: ExternalUser[] | null;
+  try {
+    const res = await fetchImpl(`${baseUrl(env)}/api/internal/line/users`, {
+      headers: { Authorization: `Bearer ${(env.BEYOND_ADMIN_INTERNAL_TOKEN ?? '').trim()}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      console.error(`[external-auth] user list failed: HTTP ${res.status}`);
+      return null;
+    }
+    users = parseUsers(await res.json().catch(() => null));
+  } catch (err) {
+    console.error('[external-auth] user list error:', err instanceof Error ? err.message : err);
+    return null;
+  }
+  if (!users) return null;
+
+  const allowed = (env.BEYOND_ADMIN_ALLOWED_TENANT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const targets = allowed.length > 0 ? users.filter((u) => allowed.includes(u.tenantId)) : users;
+  for (const u of targets) {
+    await upsertExternalStaff(db, {
+      externalId: u.userId,
+      tenantId: u.tenantId,
+      name: u.name,
+      email: u.email,
+      role: ROLE_MAP[u.role],
+      isActive: u.isActive,
+    });
+  }
+  const deactivated = await deactivateExternalStaffNotIn(db, targets.filter((u) => u.isActive).map((u) => u.userId));
+  return { synced: targets.length, deactivated };
 }

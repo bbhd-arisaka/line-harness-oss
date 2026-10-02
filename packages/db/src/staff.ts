@@ -57,6 +57,8 @@ export interface ExternalStaffInput {
   name: string;
   email: string | null;
   role: 'owner' | 'admin' | 'staff';
+  /** beyond admin 側で有効か。一覧の同期では必ず渡して映す。ログイン時は省略(既存の人の有効・無効は変えない。新しい人は有効) */
+  isActive?: boolean;
 }
 
 /**
@@ -67,22 +69,35 @@ export interface ExternalStaffInput {
 export async function upsertExternalStaff(db: D1Database, input: ExternalStaffInput): Promise<StaffMember> {
   const now = jstNow();
   const existing = await getStaffByExternalId(db, input.externalId);
+  const active = input.isActive === undefined ? null : input.isActive ? 1 : 0;
   if (existing) {
     await db
-      .prepare('UPDATE staff_members SET name = ?, email = ?, role = ?, external_tenant_id = ?, updated_at = ? WHERE id = ?')
-      .bind(input.name, input.email, input.role, input.tenantId, now, existing.id)
+      .prepare('UPDATE staff_members SET name = ?, email = ?, role = ?, is_active = COALESCE(?, is_active), external_tenant_id = ?, updated_at = ? WHERE id = ?')
+      .bind(input.name, input.email, input.role, active, input.tenantId, now, existing.id)
       .run();
   } else {
     // API キーは使わない(ログインは beyond admin 経由)が、列が必須なので、誰にも知らされない乱数を入れる
     await db
       .prepare(
         `INSERT INTO staff_members (id, name, email, role, api_key, is_active, created_at, updated_at, external_id, external_tenant_id, access_restricted)
-         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       )
-      .bind(crypto.randomUUID(), input.name, input.email, input.role, generateApiKey(), now, now, input.externalId, input.tenantId)
+      .bind(crypto.randomUUID(), input.name, input.email, input.role, generateApiKey(), active ?? 1, now, now, input.externalId, input.tenantId)
       .run();
   }
   return (await getStaffByExternalId(db, input.externalId))!;
+}
+
+/** beyond admin に居なくなった(契約が終わった・削除された)ユーザーを、無効にする。生きている externalId の一覧を渡す */
+export async function deactivateExternalStaffNotIn(db: D1Database, liveExternalIds: string[]): Promise<number> {
+  const rows = (await db.prepare('SELECT id, external_id FROM staff_members WHERE external_id IS NOT NULL AND is_active = 1').all<{ id: string; external_id: string }>()).results ?? [];
+  const live = new Set(liveExternalIds);
+  const gone = rows.filter((r) => !live.has(r.external_id));
+  const now = jstNow();
+  for (const r of gone) {
+    await db.prepare('UPDATE staff_members SET is_active = 0, updated_at = ? WHERE id = ?').bind(now, r.id).run();
+  }
+  return gone.length;
 }
 
 export async function getStaffMembers(db: D1Database): Promise<StaffMember[]> {

@@ -179,12 +179,16 @@ export default function StaffPage() {
     }
   }
 
+  const externalMembers = members.filter((m) => m.external)
+  const apiMembers = members.filter((m) => !m.external)
+  const hasExternal = externalMembers.length > 0
+
   return (
     <div>
       <Header
-        title="スタッフ管理"
-        description="操作権限を管理します。beyond admin のユーザーは、ログインすると自動でここに入ります(名前・役割・パスワードは beyond admin で変更します)。"
-        action={(
+        title="ユーザー管理"
+        description="ログインできるユーザーと、見られるアカウントの権限を管理します。"
+        action={hasExternal ? undefined : (
           <Button type="button" variant="primary" icon={PlusIcon} onClick={() => setShowForm((current) => !current)}>
             スタッフを追加
           </Button>
@@ -206,7 +210,7 @@ export default function StaffPage() {
 
       {showForm ? (
         <LayerCard className="mb-6 p-5">
-          <h2 className="mb-4 text-sm font-semibold text-kumo-strong">新しいスタッフを追加</h2>
+          <h2 className="mb-4 text-sm font-semibold text-kumo-strong">{hasExternal ? "新しいAPIキーを追加" : "新しいスタッフを追加"}</h2>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <Input
@@ -254,6 +258,72 @@ export default function StaffPage() {
         <Banner className="mb-4" variant="error" title="操作を完了できませんでした" description={error} />
       ) : null}
 
+      {hasExternal ? (
+        <>
+          <h2 className="mb-1 text-sm font-semibold text-kumo-strong">ログインできるユーザー(beyond admin と連携)</h2>
+          <p className="mb-3 text-xs text-kumo-subtle">
+            beyond admin のメールアドレス・パスワードでログインします。ユーザーの追加・停止・役割・パスワードの変更は beyond admin で行います。
+            新しいユーザーは、「アカウント権限」で許可するまで、どのアカウントも見られません。
+          </p>
+      <LayerCard className="mb-8 overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <Table className="min-w-[680px]">
+            <Table.Header>
+              <Table.Row>
+                <Table.Head>名前</Table.Head>
+                <Table.Head className="hidden sm:table-cell">メール(ログインID)</Table.Head>
+                <Table.Head>ロール</Table.Head>
+                <Table.Head className="hidden md:table-cell">見られるアカウント</Table.Head>
+                <Table.Head>状態</Table.Head>
+                <Table.Head className="text-right">操作</Table.Head>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {externalMembers.map((member) => (
+                <Table.Row key={member.id}>
+                  <Table.Cell className="font-medium text-kumo-strong">{member.name}</Table.Cell>
+                  <Table.Cell className="hidden text-kumo-subtle sm:table-cell">{member.email ?? '—'}</Table.Cell>
+                  <Table.Cell><RoleBadge role={member.role} /></Table.Cell>
+                  <Table.Cell className="hidden text-sm text-kumo-subtle md:table-cell">
+                    {member.role === 'owner'
+                      ? '全アカウント'
+                      : !member.accountIds || member.accountIds.length === 0
+                        ? <span className="text-amber-700">なし(許可が必要)</span>
+                        : member.accountIds.map((id) => accounts.find((a) => a.id === id)?.name ?? '(削除済み)').join('、')}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Badge variant={member.isActive ? 'success' : 'neutral'} appearance="dot">
+                      {member.isActive ? '有効' : '無効(beyond admin で停止)'}
+                    </Badge>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center justify-end gap-2">
+                      {member.role !== 'owner' ? (
+                        <Button type="button" size="xs" variant="secondary" onClick={() => openAccess(member)}>
+                          アカウント権限
+                        </Button>
+                      ) : null}
+                    </div>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table>
+        </div>
+      </LayerCard>
+
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-kumo-strong">APIキー(外部ツール・システム連携用)</h2>
+              <p className="text-xs text-kumo-subtle">人のログインには使いません。外部ツールや自動処理から beyond line を呼ぶためのキーです。</p>
+            </div>
+            <Button type="button" size="sm" variant="secondary" icon={PlusIcon} onClick={() => setShowForm((current) => !current)}>
+              APIキーを追加
+            </Button>
+          </div>
+        </>
+      ) : null}
+
       <LayerCard className="overflow-hidden p-0">
         <div className="overflow-x-auto">
           <Table className="min-w-[760px]">
@@ -275,7 +345,7 @@ export default function StaffPage() {
                     <span className="inline-flex items-center gap-2 text-sm text-kumo-subtle"><Loader size="sm" /> 読み込み中</span>
                   </Table.Cell>
                 </Table.Row>
-              ) : members.length === 0 ? (
+              ) : apiMembers.length === 0 ? (
                 <Table.Row>
                   <Table.Cell colSpan={7} className="p-0">
                     <Empty
@@ -291,7 +361,7 @@ export default function StaffPage() {
                     />
                   </Table.Cell>
                 </Table.Row>
-              ) : members.map((member) => (
+              ) : apiMembers.map((member) => (
                 <Table.Row key={member.id}>
                   <Table.Cell className="font-medium text-kumo-strong">{member.name}</Table.Cell>
                   <Table.Cell className="hidden text-kumo-subtle sm:table-cell">{member.email ?? '—'}</Table.Cell>
