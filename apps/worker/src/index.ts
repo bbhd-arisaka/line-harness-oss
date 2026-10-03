@@ -128,7 +128,7 @@ export type Env = {
     BEYOND_ADMIN_URL?: string;
     BEYOND_ADMIN_INTERNAL_TOKEN?: string;
     BEYOND_ADMIN_ALLOWED_TENANT_IDS?: string;
-    // 公開ページ(/privacy, /support)に載せる問い合わせ先メール。無ければ載せない
+    // 公開ページ(/privacy, /support)の問い合わせ先メール。無ければ routes/legal.ts の既定値
     SUPPORT_EMAIL?: string;
     X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
     IG_HARNESS_URL?: string;  // Optional: IG Harness API URL for cross-platform linking

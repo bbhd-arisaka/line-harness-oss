@@ -10,17 +10,16 @@ export const legal = new Hono<Env>();
 
 const OPERATOR = 'beyond beauty holding株式会社';
 const UPDATED = '2026年10月4日';
+/** 問い合わせ先(2026-10-04 ユーザー承認済み)。変えたいときは Worker の変数 SUPPORT_EMAIL で上書きできる */
+const DEFAULT_SUPPORT_EMAIL = 'info@bb-holdings.co.jp';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function contactBlock(email: string | undefined): string {
-  const mail = email?.trim();
-  if (mail) {
-    return `<p>メール: <a href="mailto:${escapeHtml(mail)}">${escapeHtml(mail)}</a></p>`;
-  }
-  return '<p>お使いの店舗・事業者の担当者へご連絡ください。</p>';
+  const mail = email?.trim() || DEFAULT_SUPPORT_EMAIL;
+  return `<p>メール: <a href="mailto:${escapeHtml(mail)}">${escapeHtml(mail)}</a></p>`;
 }
 
 function page(title: string, body: string): string {
