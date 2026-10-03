@@ -1,10 +1,13 @@
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { authStore, useAccounts, useAuth } from '../../../src/state/session';
 import { Button, Card, confirmAsync, SectionTitle } from '../../../src/components/ui';
 import { accountLabel } from '../../../src/lib/accounts';
 import { usePushStatus } from '../../../src/state/push';
+import { api } from '../../../src/state/services';
+import { describeError } from '../../../src/lib/errors';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 
 const ROLE_LABEL: Record<string, string> = { owner: 'オーナー', admin: '管理者', staff: 'スタッフ' };
@@ -28,6 +31,33 @@ export default function SettingsScreen() {
   const staff = auth.staff;
   const push = usePushStatus();
   const version = Constants.expoConfig?.version ?? '-';
+
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function requestDeletion() {
+    const ok = await confirmAsync(
+      'アカウントの削除を申請しますか?',
+      '申請すると、すべての端末からログアウトされ、以後ログインできなくなります。ユーザー情報の削除は、会社の管理者が行います。',
+      '削除を申請',
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.requestAccountDeletion();
+      await authStore.logout();
+      Alert.alert('削除を申請しました', 'ログアウトしました。ユーザー情報の削除は、会社の管理者が行います。');
+    } catch (e) {
+      setDeleteError(describeError(e, '申請できませんでした'));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function openPage(path: string) {
+    void Linking.openURL(`${api.baseUrl}${path}`);
+  }
 
   async function logout() {
     const ok = await confirmAsync('ログアウトしますか?', 'このスマートフォンのログインを終了します。', 'ログアウト');
@@ -82,7 +112,35 @@ export default function SettingsScreen() {
         <Row label="バージョン" value={version} />
       </Card>
 
+      <SectionTitle>サポート</SectionTitle>
+      <Card>
+        <Pressable onPress={() => openPage('/privacy')} accessibilityRole="link" accessibilityLabel="プライバシーポリシーを開く" style={styles.pageLink}>
+          <Text style={{ color: c.primaryText, fontSize: 15, fontWeight: '600' }}>プライバシーポリシー</Text>
+          <Ionicons name="open-outline" size={16} color={c.primaryText} />
+        </Pressable>
+        <Pressable onPress={() => openPage('/support')} accessibilityRole="link" accessibilityLabel="サポートを開く" style={styles.pageLink}>
+          <Text style={{ color: c.primaryText, fontSize: 15, fontWeight: '600' }}>サポート・お問い合わせ</Text>
+          <Ionicons name="open-outline" size={16} color={c.primaryText} />
+        </Pressable>
+      </Card>
+
       <Button title="ログアウト" variant="danger" onPress={logout} style={{ marginTop: 28 }} />
+
+      <SectionTitle>アカウントの削除</SectionTitle>
+      <Card>
+        <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19 }}>
+          アカウントの削除を申請できます。申請するとすべての端末からログアウトされ、以後ログインできなくなります。
+          {staff?.role === 'owner' ? '\nオーナーのアカウントは、beyond admin の管理画面から、または別のオーナーに依頼して削除します。' : ''}
+        </Text>
+        {staff?.role !== 'owner' ? (
+          <Button title="アカウントの削除を申請" variant="secondary" loading={deleting} onPress={() => void requestDeletion()} style={{ marginTop: 10 }} />
+        ) : null}
+        {deleteError ? (
+          <Text style={{ color: c.danger, fontSize: 13, marginTop: 8 }} accessibilityRole="alert">
+            {deleteError}
+          </Text>
+        ) : null}
+      </Card>
     </ScrollView>
   );
 }
@@ -90,6 +148,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 48 },
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 8 },
+  pageLink: { minHeight: MIN_TAP, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   link: {
     minHeight: MIN_TAP + 12,
     flexDirection: 'row',

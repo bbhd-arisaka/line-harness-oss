@@ -14,6 +14,8 @@ export interface StaffMember {
   external_tenant_id?: string | null;
   /** 1 = 見られるアカウントを許可するまで、どのアカウントも見られない */
   access_restricted?: number;
+  /** アプリから削除を申請した時刻。入っている間は beyond line に入れない */
+  deletion_requested_at?: string | null;
 }
 
 export interface CreateStaffInput {
@@ -86,6 +88,24 @@ export async function upsertExternalStaff(db: D1Database, input: ExternalStaffIn
       .run();
   }
   return (await getStaffByExternalId(db, input.externalId))!;
+}
+
+/**
+ * アカウント削除の申請(App Store の要件)。その場で全端末のアプリのログインを取り消し、
+ * 以後は入れなくする。すでに申請済みなら時刻は変えない。
+ */
+export async function requestStaffDeletion(db: D1Database, staffId: string): Promise<void> {
+  const now = jstNow();
+  await db
+    .prepare('UPDATE staff_members SET deletion_requested_at = COALESCE(deletion_requested_at, ?), updated_at = ? WHERE id = ?')
+    .bind(now, now, staffId)
+    .run();
+  await db.prepare('UPDATE app_sessions SET revoked_at = ? WHERE staff_id = ? AND revoked_at IS NULL').bind(now, staffId).run();
+}
+
+/** 削除の申請を取り消す(オーナーが、誤って申請された人を戻すとき) */
+export async function cancelStaffDeletionRequest(db: D1Database, staffId: string): Promise<void> {
+  await db.prepare('UPDATE staff_members SET deletion_requested_at = NULL, updated_at = ? WHERE id = ?').bind(jstNow(), staffId).run();
 }
 
 /** beyond admin に居なくなった(契約が終わった・削除された)ユーザーを、無効にする。生きている externalId の一覧を渡す */

@@ -134,7 +134,8 @@ export async function resolveExternalStaff(db: D1Database, profile: ExternalProf
     email: profile.email,
     role: ROLE_MAP[profile.role],
   });
-  return member.is_active ? member : null;
+  // 削除を申請した人も入れない(実際の削除は beyond admin 側で行う)
+  return member.is_active && !member.deletion_requested_at ? member : null;
 }
 
 // ── ユーザー一覧の同期(スタッフ管理に、まだ一度もログインしていない人も出すため) ──

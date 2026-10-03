@@ -349,6 +349,8 @@ const KNOWN_GAPS: readonly string[] = [
   'POST /api/app/login',
   'POST /api/app/logout',
   'PUT /api/app/device',
+  'POST /api/app/account-deletion',
+  'POST /api/staff/{id}/deletion-request/cancel',
   'GET /api/auth/session',
   'POST /api/auth/login',
   'POST /api/auth/logout',

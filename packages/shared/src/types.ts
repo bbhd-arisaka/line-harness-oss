@@ -876,6 +876,8 @@ export interface StaffMember {
   /** 見られる公式アカウント。null/未設定 = 制限なし(全アカウント)。beyond admin のユーザーは、空 = どのアカウントも見られない */
   accountIds?: string[] | null;
   isActive: boolean;
+  /** アプリから削除を申請した時刻(申請中は beyond line に入れない)。実際の削除は beyond admin で行う */
+  deletionRequestedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

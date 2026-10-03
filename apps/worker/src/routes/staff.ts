@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import {
+  cancelStaffDeletionRequest,
   getStaffMembers,
   getStaffById,
   createStaffMember,
@@ -44,6 +45,8 @@ function serializeStaff(row: StaffMember, masked = true, accountIds: string[] | 
     role: row.role,
     apiKey: external ? null : masked ? maskApiKey(row.api_key) : row.api_key,
     isActive: Boolean(row.is_active),
+    /** アプリから削除を申請した時刻(申請中は入れない)。オーナーが beyond admin で削除する */
+    deletionRequestedAt: row.deletion_requested_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -227,6 +230,20 @@ staff.patch('/api/staff/:id', requireRole('owner'), async (c) => {
     return c.json({ success: true, data: serializeStaff(updated, true, effectiveAccountIds(updated, await getStaffAllowedAccountIds(c.env.DB, updated.id))) });
   } catch (err) {
     console.error('PATCH /api/staff/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// POST /api/staff/:id/deletion-request/cancel — owner only. アプリからの削除申請を取り消す(誤って申請された人を戻す)
+staff.post('/api/staff/:id/deletion-request/cancel', requireRole('owner'), async (c) => {
+  try {
+    const id = c.req.param('id')!;
+    const target = await getStaffById(c.env.DB, id);
+    if (!target) return c.json({ success: false, error: 'Staff member not found' }, 404);
+    await cancelStaffDeletionRequest(c.env.DB, id);
+    return c.json({ success: true, data: null });
+  } catch (err) {
+    console.error('POST /api/staff/:id/deletion-request/cancel error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

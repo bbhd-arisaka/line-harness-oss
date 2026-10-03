@@ -194,6 +194,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   if (
     path === '/webhook' ||
     path === '/docs' ||
+    // プライバシーポリシー・サポート(App Store 審査用の公開ページ)
+    (method === 'GET' && (path === '/privacy' || path === '/support')) ||
     path === '/openapi.json' ||
     path === '/api/affiliates/click' ||
     path.startsWith('/t/') ||

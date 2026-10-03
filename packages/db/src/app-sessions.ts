@@ -65,7 +65,7 @@ export async function getStaffByAppToken(
     .prepare(
       `SELECT s.id AS session_id, s.expires_at, s.last_used_at, m.*
          FROM app_sessions s INNER JOIN staff_members m ON m.id = s.staff_id
-        WHERE s.token_hash = ? AND s.revoked_at IS NULL AND m.is_active = 1`,
+        WHERE s.token_hash = ? AND s.revoked_at IS NULL AND m.is_active = 1 AND m.deletion_requested_at IS NULL`,
     )
     .bind(await sha256Hex(token))
     .first<StaffMember & { session_id: string; expires_at: string; last_used_at: string | null }>();

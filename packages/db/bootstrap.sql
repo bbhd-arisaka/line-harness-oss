@@ -1000,7 +1000,7 @@ CREATE TABLE IF NOT EXISTS staff_members (
   is_active  INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-, external_id TEXT, external_tenant_id TEXT, access_restricted INTEGER NOT NULL DEFAULT 0);
+, external_id TEXT, external_tenant_id TEXT, access_restricted INTEGER NOT NULL DEFAULT 0, deletion_requested_at TEXT);
 
 CREATE TABLE IF NOT EXISTS staff_menus (
   staff_id                  TEXT NOT NULL,

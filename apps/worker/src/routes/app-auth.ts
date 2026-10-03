@@ -5,6 +5,7 @@ import {
   createAppSession,
   hashForKey,
   recordLoginFailure,
+  requestStaffDeletion,
   revokeAppSession,
   setAppSessionApnsToken,
 } from '@line-crm/db';
@@ -17,6 +18,7 @@ import type { Env } from '../index.js';
  *  POST /api/app/login   メール・パスワード → アプリ用トークン(端末ごと・90日・取り消し可能)
  *  POST /api/app/logout  この端末のトークンを取り消す
  *  PUT  /api/app/device  プッシュ通知(APNs)の送り先を登録する
+ *  POST /api/app/account-deletion  アカウント削除の申請(App Store の要件)。全端末からログアウトされ、以後入れなくなる
  * トークンは Authorization: Bearer で使う(Cookie ではないので、CSRF の対象外)。
  */
 export const appAuth = new Hono<Env>();
@@ -83,5 +85,19 @@ appAuth.put('/api/app/device', async (c) => {
     return c.json({ success: false, error: 'apnsToken が正しくありません' }, 400);
   }
   await setAppSessionApnsToken(c.env.DB, sessionId, token as string | null);
+  return c.json({ success: true, data: null });
+});
+
+// アカウント削除の申請。ユーザー本体は beyond admin にあるため、ここでは「その場で入れなくする」ことと
+// 「申請の記録(スタッフ管理に表示)」までを行い、実際の削除はオーナーが beyond admin で行う。
+appAuth.post('/api/app/account-deletion', async (c) => {
+  const sessionId = c.get('appSessionId');
+  const staff = c.get('staff');
+  if (!sessionId || !staff) return c.json({ success: false, error: 'アプリのログインで呼び出してください' }, 400);
+  if (staff.role === 'owner') {
+    // オーナーが自分を消すと、誰も管理できなくなる恐れがある。別のオーナーに依頼してもらう
+    return c.json({ success: false, error: 'オーナーのアカウントは、アプリからは削除を申請できません。beyond admin の管理画面から、または別のオーナーに依頼してください' }, 403);
+  }
+  await requestStaffDeletion(c.env.DB, staff.id);
   return c.json({ success: true, data: null });
 });

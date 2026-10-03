@@ -135,3 +135,35 @@ describe('アプリのトークンの扱い', () => {
     expect((await call('/api/app/device', { method: 'PUT', headers: { Authorization: 'Bearer env-key', 'Content-Type': 'application/json' }, body: JSON.stringify({ apnsToken: 'a'.repeat(64) }) })).status).toBe(400);
   });
 });
+
+describe('POST /api/app/account-deletion(アカウント削除の申請)', () => {
+  test('申請すると全端末からログアウトされ、再ログインもできない。オーナーが取り消すと戻れる', async () => {
+    mockVerify(() => json(VERIFIED));
+    const { call, login, sqlite } = setup();
+    const t1 = await tokenOf(await login());
+    const t2 = await tokenOf(await login());
+    const res = await call('/api/app/account-deletion', { method: 'POST', headers: auth(t1) });
+    expect(res.status).toBe(200);
+    // 両方の端末のトークンが使えなくなる
+    expect((await call('/api/staff/me', { headers: auth(t1) })).status).toBe(401);
+    expect((await call('/api/staff/me', { headers: auth(t2) })).status).toBe(401);
+    // 再ログインも拒否される
+    const again = await login();
+    expect(again.status).toBe(403);
+    const row = sqlite.prepare("SELECT id, deletion_requested_at FROM staff_members WHERE external_id = 'u-1'").get() as { id: string; deletion_requested_at: string | null };
+    expect(row.deletion_requested_at).toBeTruthy();
+    // オーナー(環境の API キー)が取り消すと、また入れる
+    const cancel = await call(`/api/staff/${row.id}/deletion-request/cancel`, { method: 'POST', headers: { Authorization: 'Bearer env-key' } });
+    expect(cancel.status).toBe(200);
+    expect((await login()).status).toBe(200);
+  });
+
+  test('アプリのログインでない呼び出し・オーナーは申請できない', async () => {
+    mockVerify(() => json({ ...VERIFIED, role: 'owner' }));
+    const { call, login } = setup();
+    expect((await call('/api/app/account-deletion', { method: 'POST', headers: { Authorization: 'Bearer env-key' } })).status).toBe(400);
+    const t = await tokenOf(await login());
+    expect((await call('/api/app/account-deletion', { method: 'POST', headers: auth(t) })).status).toBe(403);
+    expect((await call('/api/staff/me', { headers: auth(t) })).status).toBe(200);
+  });
+});

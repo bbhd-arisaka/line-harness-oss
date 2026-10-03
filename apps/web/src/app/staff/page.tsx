@@ -151,6 +151,15 @@ export default function StaffPage() {
     }
   }
 
+  const handleCancelDeletion = async (member: StaffMember) => {
+    try {
+      await fetchApi<ApiResponse<null>>(`/api/staff/${member.id}/deletion-request/cancel`, { method: 'POST' })
+      await loadMembers()
+    } catch {
+      setError('申請の取り消しに失敗しました')
+    }
+  }
+
   const handleConfirmedAction = async () => {
     if (!pendingAction || confirming) return
     setConfirming(true)
@@ -295,9 +304,19 @@ export default function StaffPage() {
                     <Badge variant={member.isActive ? 'success' : 'neutral'} appearance="dot">
                       {member.isActive ? '有効' : '無効(beyond admin で停止)'}
                     </Badge>
+                    {member.deletionRequestedAt ? (
+                      <p className="mt-1 text-xs text-amber-700">
+                        削除を申請中({member.deletionRequestedAt.slice(0, 10)})。beyond admin でユーザーを削除してください
+                      </p>
+                    ) : null}
                   </Table.Cell>
                   <Table.Cell>
                     <div className="flex items-center justify-end gap-2">
+                      {member.deletionRequestedAt ? (
+                        <Button type="button" size="xs" variant="secondary" onClick={() => void handleCancelDeletion(member)}>
+                          申請を取り消す
+                        </Button>
+                      ) : null}
                       {member.role !== 'owner' ? (
                         <Button type="button" size="xs" variant="secondary" onClick={() => openAccess(member)}>
                           アカウント権限

@@ -112,6 +112,8 @@ export function createApiClient(options: ApiClientOptions) {
     login: (email: string, password: string, deviceName: string) =>
       request<LoginResult>('POST', '/api/app/login', { body: { email, password, deviceName }, auth: false }),
     logout: () => request<null>('POST', '/api/app/logout'),
+    /** アカウント削除の申請(App Store の要件)。申請するとサーバー側で全端末のログインが取り消される */
+    requestAccountDeletion: () => request<null>('POST', '/api/app/account-deletion'),
     /** プッシュ通知の送り先(APNs デバイストークン)を登録。null で解除。 */
     setApnsToken: (apnsToken: string | null) => request<null>('PUT', '/api/app/device', { body: { apnsToken } }),
 

@@ -66,6 +66,7 @@ import { setup } from './routes/setup.js';
 import { autoReplies } from './routes/auto-replies.js';
 import { adminAuth } from './routes/admin-auth.js';
 import { appAuth } from './routes/app-auth.js';
+import { legal } from './routes/legal.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import { defaultCachePolicyMiddleware } from './middleware/cache-policy.js';
 import booking from './routes/booking.js';
@@ -127,6 +128,8 @@ export type Env = {
     BEYOND_ADMIN_URL?: string;
     BEYOND_ADMIN_INTERNAL_TOKEN?: string;
     BEYOND_ADMIN_ALLOWED_TENANT_IDS?: string;
+    // 公開ページ(/privacy, /support)に載せる問い合わせ先メール。無ければ載せない
+    SUPPORT_EMAIL?: string;
     X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
     IG_HARNESS_URL?: string;  // Optional: IG Harness API URL for cross-platform linking
     IG_HARNESS_LINK_SECRET?: string;  // Shared secret for IG Harness link-line webhook
@@ -269,6 +272,7 @@ app.route('/', setup);
 app.route('/', autoReplies);
 app.route('/', adminAuth);
 app.route('/', appAuth);
+app.route('/', legal);
 app.route('/', trafficPools);
 app.route('/', booking);
 app.route('/', events);
