@@ -47,6 +47,16 @@ export const api = createApiClient({
 export const authStore = createAuthStore({
   storage,
   login: (email, password, name) => api.login(email, password, name),
-  logout: () => api.logout(),
+  logout: async () => {
+    // プッシュ通知の送り先を先に解除する(失敗しても、ログアウト自体は続ける)
+    if (Platform.OS === 'ios') {
+      try {
+        await api.setApnsToken(null);
+      } catch {
+        // 通信できなくても端末側は必ずログアウトする
+      }
+    }
+    return api.logout();
+  },
   deviceName,
 });

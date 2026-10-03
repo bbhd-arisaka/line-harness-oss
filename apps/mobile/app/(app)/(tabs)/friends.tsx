@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { AccountBar } from '../../../src/components/account-bar';
 import { Avatar, EmptyView, ErrorView, LoadingView } from '../../../src/components/ui';
 import { api } from '../../../src/state/services';
@@ -9,6 +9,7 @@ import { useDebounced } from '../../../src/state/hooks';
 import { resolveFriendName } from '../../../src/lib/format';
 import type { Friend } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
+import { describeError } from '../../../src/lib/errors';
 
 const PAGE_SIZE = 30;
 
@@ -64,13 +65,13 @@ export default function FriendsScreen() {
   const moreLock = useRef(false);
 
   const fetchFirst = useCallback(
-    async (mode: 'initial' | 'refresh') => {
+    async (mode: 'initial' | 'refresh' | 'silent') => {
       if (!accountId) return;
       const id = ++seq.current;
       if (mode === 'initial') {
         setLoading(true);
         setItems([]);
-      } else {
+      } else if (mode === 'refresh') {
         setRefreshing(true);
       }
       try {
@@ -82,7 +83,8 @@ export default function FriendsScreen() {
         setError(null);
       } catch (e) {
         if (id !== seq.current) return;
-        setError(e instanceof Error ? e.message : '読み込めませんでした');
+        // 画面にデータがあるときの裏の更新失敗は、表示を消さない
+        if (mode !== 'silent') setError(describeError(e, '読み込めませんでした'));
       } finally {
         if (id === seq.current) {
           setLoading(false);
@@ -96,6 +98,18 @@ export default function FriendsScreen() {
   useEffect(() => {
     queueMicrotask(() => void fetchFirst('initial'));
   }, [fetchFirst]);
+
+  // 友だち詳細で名前を直して戻ったときに、一覧の名前を最新にする
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      void fetchFirst('silent');
+    }, [fetchFirst]),
+  );
 
   async function loadMore() {
     if (!accountId || !hasMore || moreLock.current || loading) return;
@@ -127,7 +141,7 @@ export default function FriendsScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="LINE名で検索"
+          placeholder="名前で検索"
           placeholderTextColor={c.textMuted}
           returnKeyType="search"
           autoCapitalize="none"
@@ -163,7 +177,7 @@ export default function FriendsScreen() {
           ListEmptyComponent={
             <EmptyView
               title={search ? '見つかりませんでした' : '友だちがいません'}
-              message={search ? 'LINE名の一部で検索できます。ひらがな・漢字は表記が違うと見つからないことがあります。' : undefined}
+              message={search ? '名前の一部で検索できます。ひらがな・漢字は表記が違うと見つからないことがあります。' : undefined}
             />
           }
           ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}

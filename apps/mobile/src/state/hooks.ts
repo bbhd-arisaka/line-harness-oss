@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
+import { describeError } from '../lib/errors';
 
 export interface Loader<T> {
   data: T | null;
@@ -45,7 +46,7 @@ export function useLoader<T>(fn: () => Promise<T>, deps: unknown[], enabled = tr
       setError(null);
     } catch (e) {
       if (id !== seq.current) return;
-      setError(e instanceof Error ? e.message : '読み込めませんでした');
+      setError(describeError(e, '読み込めませんでした'));
     } finally {
       if (id === seq.current) {
         setLoading(false);

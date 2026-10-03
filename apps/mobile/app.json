@@ -35,14 +35,24 @@
           "backgroundColor": "#06c755"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-notifications",
+      "expo-updates"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "router": {},
-      "eas": {}
+      "eas": {
+        "projectId": "959aad6e-128e-4235-980c-13d68e14e78f"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/959aad6e-128e-4235-980c-13d68e14e78f"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }

@@ -8,6 +8,7 @@ import { useAccounts } from '../../../src/state/session';
 import { formatListTime, messagePreview } from '../../../src/lib/format';
 import type { ChatStatus, ChatSummary } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
+import { describeError } from '../../../src/lib/errors';
 
 const PAGE_SIZE = 50;
 
@@ -85,7 +86,7 @@ export default function ChatListScreen() {
       } catch (e) {
         if (id !== seq.current) return;
         // 画面にデータがあるときの裏の更新失敗は、表示を消さない
-        if (mode !== 'silent') setError(e instanceof Error ? e.message : '読み込めませんでした');
+        if (mode !== 'silent') setError(describeError(e, '読み込めませんでした'));
       } finally {
         if (id === seq.current) {
           setLoading(false);

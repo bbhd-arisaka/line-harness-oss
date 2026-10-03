@@ -7,6 +7,7 @@ import {
 } from '../lib/accounts';
 import type { AuthState } from '../lib/auth';
 import type { LineAccount } from '../lib/types';
+import { describeError } from '../lib/errors';
 
 /** ログイン状態(保存済みのトークンの復元を起動時に1回行う) */
 export function useAuth(): AuthState {
@@ -66,7 +67,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         setStatus('ready');
       } catch (e) {
         if (cancelled) return;
-        setErrorMessage(e instanceof Error ? e.message : '読み込めませんでした');
+        setErrorMessage(describeError(e, '読み込めませんでした'));
         setStatus('error');
       }
     })();

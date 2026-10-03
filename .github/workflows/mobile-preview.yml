@@ -1,0 +1,44 @@
+name: Mobile Preview (Expo Go 配信)
+
+# iOSアプリ(apps/mobile)を、Expo Go(iPhoneのApp Storeの無料アプリ)で試せる形で配信する(EAS Update)。
+# 手動実行(Actions の「Run workflow」)。Apple の登録は要らない。
+# 事前に、リポジトリの Secrets に EXPO_TOKEN(expo.dev で発行したアクセストークン)を登録しておく。
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 配信のメモ(何を変えたか)
+        required: false
+        default: preview
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      # 配信する前に、型チェックとテストを必ず通す
+      - run: npx tsc --noEmit
+      - run: npm test
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Expo Go 向けに配信(preview ブランチ)
+        env:
+          MESSAGE: ${{ inputs.message }}
+        run: eas update --branch preview --message "$MESSAGE" --non-interactive
+      - name: 配信先を表示
+        run: |
+          echo "配信しました。Expo の Project > Updates から、iPhone の Expo Go で開けます。"

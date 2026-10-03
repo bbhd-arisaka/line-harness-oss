@@ -175,17 +175,25 @@ export interface Bubble {
   text: string;
   /** 画像メッセージで URL が取れたとき */
   imageUrl: string | null;
+  /** 拡大表示用の元画像の URL(取れなければ imageUrl と同じ) */
+  fullImageUrl?: string | null;
   time: string;
   createdAt: string;
 }
 
-function parseImageUrl(content: string): string | null {
+function safeUrl(v: unknown): string | null {
+  return typeof v === 'string' && /^https?:\/\//.test(v) ? v : null;
+}
+
+/** 画像メッセージの content(JSON)から、一覧用(preview)と拡大用(original)の URL を取り出す */
+function parseImageUrls(content: string): { preview: string | null; full: string | null } {
   try {
     const parsed = JSON.parse(content) as { originalContentUrl?: unknown; previewImageUrl?: unknown };
-    const url = parsed.previewImageUrl || parsed.originalContentUrl;
-    return typeof url === 'string' && /^https?:\/\//.test(url) ? url : null;
+    const preview = safeUrl(parsed.previewImageUrl) ?? safeUrl(parsed.originalContentUrl);
+    const full = safeUrl(parsed.originalContentUrl) ?? preview;
+    return { preview, full };
   } catch {
-    return null;
+    return { preview: null, full: null };
   }
 }
 
@@ -197,8 +205,8 @@ export function toBubble(m: ChatMessage): Bubble {
     case 'text':
       return { ...base, kind: 'text', text: m.content, imageUrl: null };
     case 'image': {
-      const imageUrl = parseImageUrl(m.content);
-      return { ...base, kind: 'image', text: '[画像]', imageUrl };
+      const { preview, full } = parseImageUrls(m.content);
+      return { ...base, kind: 'image', text: '[画像]', imageUrl: preview, fullImageUrl: full };
     }
     case 'sticker':
       return { ...base, kind: 'sticker', text: '[スタンプ]', imageUrl: null };

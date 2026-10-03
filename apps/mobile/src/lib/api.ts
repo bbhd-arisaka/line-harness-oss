@@ -6,10 +6,13 @@ import type {
   FriendDetail,
   FriendFieldDefinition,
   FriendPage,
+  FriendProfileInput,
   FriendRichMenu,
   LineAccount,
   LoginResult,
+  UpdatedChat,
 } from './types';
+import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
 
 /** 本番 API。EXPO_PUBLIC_API_URL で上書きできる。 */
 export const DEFAULT_API_URL = 'https://beyond-line.cms-manager.jp';
@@ -76,8 +79,10 @@ export function createApiClient(options: ApiClientOptions) {
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         signal: controller?.signal,
       });
-    } catch {
-      throw new ApiError('通信できませんでした。電波の良い場所でもう一度お試しください', 0);
+    } catch (e) {
+      // タイムアウト(AbortController による中断)と、それ以外の通信失敗を分ける
+      const aborted = e instanceof Error && e.name === 'AbortError';
+      throw new ApiError(aborted ? TIMEOUT_ERROR_MESSAGE : NETWORK_ERROR_MESSAGE, 0);
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -91,10 +96,11 @@ export function createApiClient(options: ApiClientOptions) {
 
     if (res.status === 401 && auth) {
       options.onUnauthorized?.();
-      throw new ApiError(json?.error ?? 'ログインの有効期限が切れました。もう一度ログインしてください', 401);
+      throw new ApiError(json?.error ? toJapaneseError(json.error, 401) : UNAUTHORIZED_MESSAGE, 401);
     }
     if (!res.ok || !json || json.success === false) {
-      throw new ApiError(json?.error ?? `サーバーでエラーが発生しました (${res.status})`, res.status);
+      // API の error は英語のことがあるので日本語にする(日本語ならそのまま)
+      throw new ApiError(toJapaneseError(json?.error, res.status), res.status);
     }
     return json.data as T;
   }
@@ -135,6 +141,10 @@ export function createApiClient(options: ApiClientOptions) {
         body: { messageType: 'text', content },
       }),
 
+    /** 対応状態の変更(未対応/対応中/対応済み)。id は friendId(chats.id でも可) */
+    updateChatStatus: (id: string, status: ChatStatus) =>
+      request<UpdatedChat>('PUT', `/api/chats/${encodeURIComponent(id)}`, { body: { status } }),
+
     // ── 友だち ──
     listFriends: (params: { lineAccountId: string; search?: string; limit?: number; offset?: number }) =>
       request<FriendPage>('GET', '/api/friends', {
@@ -146,6 +156,9 @@ export function createApiClient(options: ApiClientOptions) {
         },
       }),
     getFriend: (id: string) => request<FriendDetail>('GET', `/api/friends/${encodeURIComponent(id)}`),
+    /** 本名・システム表示名・個別メモの更新(空にするときは null)。更新後の友だちが返る */
+    updateFriendProfile: (id: string, profile: FriendProfileInput) =>
+      request<FriendDetail>('PUT', `/api/friends/${encodeURIComponent(id)}/profile`, { body: profile }),
     getFriendRichMenu: (id: string) =>
       request<FriendRichMenu>('GET', `/api/friends/${encodeURIComponent(id)}/rich-menu`),
     listFriendFieldDefinitions: () =>

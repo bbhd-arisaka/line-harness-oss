@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { AccountProvider, authStore, useAccounts } from '../../src/state/session';
 import { Button, EmptyView, ErrorView, LoadingView } from '../../src/components/ui';
 import { NO_ACCOUNTS_MESSAGE } from '../../src/lib/accounts';
+import { PushSetup } from '../../src/state/push';
 import { useColors } from '../../src/theme/theme';
 
 /** ログイン後の入口: 公式アカウントの一覧を取り、0件・エラー・選択待ちを振り分ける */
@@ -65,6 +66,7 @@ function Gate() {
 export default function AppLayout() {
   return (
     <AccountProvider>
+      <PushSetup />
       <Gate />
     </AccountProvider>
   );

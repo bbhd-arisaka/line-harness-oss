@@ -80,6 +80,22 @@ export interface ChatDetail {
   messages: ChatMessage[];
 }
 
+/** PUT /api/chats/:id の data */
+export interface UpdatedChat {
+  id: string;
+  friendId: string;
+  operatorId: string | null;
+  status: ChatStatus;
+  notes: string | null;
+}
+
+/** PUT /api/friends/:id/profile のリクエスト(送った項目だけ更新される。本名・システム表示名は20文字まで) */
+export interface FriendProfileInput {
+  realName?: string | null;
+  systemDisplayName?: string | null;
+  memo?: string | null;
+}
+
 export interface Tag {
   id: string;
   name: string;

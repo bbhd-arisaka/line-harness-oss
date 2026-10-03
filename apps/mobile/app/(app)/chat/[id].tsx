@@ -1,19 +1,26 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../../../src/state/services';
 import { useInterval } from '../../../src/state/hooks';
 import { buildChatItems, sameMessages, type Bubble, type ChatListItem } from '../../../src/lib/format';
-import type { ChatDetail } from '../../../src/lib/types';
-import { ErrorView, LoadingView, StatusBadge } from '../../../src/components/ui';
+import { STATUS_LABEL } from '../../../src/lib/format';
+import type { ChatDetail, ChatStatus } from '../../../src/lib/types';
+import { ImageViewer } from '../../../src/components/image-viewer';
+import { ErrorView, LoadingView } from '../../../src/components/ui';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
+import { describeError } from '../../../src/lib/errors';
 
 const POLL_MS = 10_000;
 const MAX_LENGTH = 5000; // LINE のテキストメッセージの上限
+/** API は新しい順に 1000 件までしか返さない(それより古い履歴は表示できない) */
+const HISTORY_LIMIT = 1000;
 
-const BubbleView = memo(function BubbleView({ bubble }: { bubble: Bubble }) {
+const STATUS_ORDER: ChatStatus[] = ['unread', 'in_progress', 'resolved'];
+
+const BubbleView = memo(function BubbleView({ bubble, onImagePress }: { bubble: Bubble; onImagePress: (url: string) => void }) {
   const c = useColors();
   const out = bubble.side === 'outgoing';
   const alt = bubble.kind !== 'text';
@@ -28,7 +35,13 @@ const BubbleView = memo(function BubbleView({ bubble }: { bubble: Bubble }) {
         ]}
       >
         {bubble.kind === 'image' && bubble.imageUrl ? (
-          <Image source={{ uri: bubble.imageUrl }} style={styles.image} resizeMode="cover" accessibilityLabel="画像" accessibilityIgnoresInvertColors />
+          <Pressable
+            onPress={() => onImagePress(bubble.fullImageUrl || bubble.imageUrl!)}
+            accessibilityRole="imagebutton"
+            accessibilityLabel="画像を拡大して見る"
+          >
+            <Image source={{ uri: bubble.imageUrl }} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
+          </Pressable>
         ) : (
           <Text
             selectable
@@ -60,6 +73,9 @@ export default function ChatScreen() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
   const sendLock = useRef(false);
   const seq = useRef(0);
   const chatRef = useRef<ChatDetail | null>(null);
@@ -86,7 +102,7 @@ export default function ChatScreen() {
         setError(null);
       } catch (e) {
         if (mine !== seq.current) return;
-        if (!silent || !chatRef.current) setError(e instanceof Error ? e.message : '読み込めませんでした');
+        if (!silent || !chatRef.current) setError(describeError(e, '読み込めませんでした'));
       } finally {
         if (mine === seq.current) setLoading(false);
       }
@@ -102,7 +118,19 @@ export default function ChatScreen() {
     return invalidate;
   }, [load, invalidate]);
 
-  // 新着の取得(プッシュ通知ができるまでは10秒ごとに確認)
+  // 友だち詳細で名前を直して戻ったときに、ヘッダーの名前を最新にする
+  const firstFocus = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstFocus.current) {
+        firstFocus.current = false;
+        return;
+      }
+      void load(true);
+    }, [load]),
+  );
+
+  // 新着の取得(プッシュ通知に加えて、開いている間は10秒ごとにも確認)
   useInterval(() => void load(true), POLL_MS, !!chat && !error);
 
   async function send() {
@@ -117,10 +145,29 @@ export default function ChatScreen() {
       await load(true);
     } catch (e) {
       // 送れなかった本文は消さない。理由を表示して、もう一度押せるようにする
-      setSendError(e instanceof Error ? e.message : '送信できませんでした');
+      setSendError(describeError(e, '送信できませんでした'));
     } finally {
       sendLock.current = false;
       setSending(false);
+    }
+  }
+
+  /** 対応状態の変更。先に画面へ反映し、失敗したら元に戻して理由を出す */
+  async function changeStatus(next: ChatStatus) {
+    const current = chatRef.current;
+    if (!current || current.status === next || statusBusy) return;
+    const prev = current.status;
+    seq.current++; // 変更前の状態を持ってくる取得中のポーリングの結果は捨てる
+    setStatusBusy(true);
+    setStatusError(null);
+    setChat({ ...current, status: next });
+    try {
+      await api.updateChatStatus(current.friendId, next);
+    } catch (e) {
+      setChat((c) => (c ? { ...c, status: prev } : c));
+      setStatusError(describeError(e, '対応状態を変更できませんでした'));
+    } finally {
+      setStatusBusy(false);
     }
   }
 
@@ -156,10 +203,36 @@ export default function ChatScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 : 0}
         >
-          {chat && chat.status !== 'resolved' ? (
+          {chat ? (
             <View style={[styles.statusBar, { backgroundColor: c.card, borderBottomColor: c.border }]}>
-              <StatusBadge status={chat.status} />
-              <Text style={{ color: c.textMuted, fontSize: 12 }}>返信すると「対応中」になります</Text>
+              <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: '700' }}>対応状態</Text>
+              <View style={styles.segments} accessibilityRole="radiogroup">
+                {STATUS_ORDER.map((s) => {
+                  const active = chat.status === s;
+                  const palette = s === 'unread' ? c.danger : s === 'in_progress' ? c.warning : c.primaryButton;
+                  return (
+                    <Pressable
+                      key={s}
+                      onPress={() => void changeStatus(s)}
+                      disabled={statusBusy}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active, disabled: statusBusy }}
+                      accessibilityLabel={STATUS_LABEL[s]}
+                      style={[
+                        styles.segment,
+                        { backgroundColor: active ? palette : c.inputBackground, opacity: statusBusy && !active ? 0.5 : 1 },
+                      ]}
+                    >
+                      <Text style={{ color: active ? '#ffffff' : c.textSub, fontSize: 13, fontWeight: '700' }}>{STATUS_LABEL[s]}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+          {statusError ? (
+            <View style={[styles.sendError, { backgroundColor: c.dangerSoft }]} accessibilityRole="alert">
+              <Text style={{ color: c.danger, fontSize: 13 }}>{statusError}</Text>
             </View>
           ) : null}
           <FlatList
@@ -175,8 +248,16 @@ export default function ChatScreen() {
                   <Text style={[styles.dateLabel, { color: c.textSub, backgroundColor: c.card }]}>{item.label}</Text>
                 </View>
               ) : (
-                <BubbleView bubble={item.bubble} />
+                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} />
               )
+            }
+            // inverted の末尾 = 画面の一番上
+            ListFooterComponent={
+              chat && chat.messages.length >= HISTORY_LIMIT ? (
+                <Text style={[styles.limitNote, { color: c.textMuted }]}>
+                  新しい{HISTORY_LIMIT.toLocaleString('ja-JP')}件までを表示しています(これより古いメッセージは表示できません)
+                </Text>
+              ) : null
             }
             ListEmptyComponent={
               <View style={{ transform: [{ scaleY: -1 }], padding: 40 }}>
@@ -215,13 +296,17 @@ export default function ChatScreen() {
           </View>
         </KeyboardAvoidingView>
       )}
+      <ImageViewer uri={viewerUri} onClose={() => setViewerUri(null)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   headerButton: { width: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
-  statusBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  statusBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  segments: { flex: 1, flexDirection: 'row', gap: 6 },
+  segment: { flex: 1, minHeight: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  limitNote: { fontSize: 11, textAlign: 'center', paddingVertical: 10, paddingHorizontal: 16 },
   bubbleRow: { flexDirection: 'row', alignItems: 'flex-end', marginVertical: 3, gap: 6 },
   bubble: { maxWidth: '75%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   bubbleIn: { borderTopLeftRadius: 4 },

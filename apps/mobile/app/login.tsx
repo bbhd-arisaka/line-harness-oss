@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { authStore } from '../src/state/session';
 import { Button } from '../src/components/ui';
 import { MIN_TAP, useColors } from '../src/theme/theme';
+import { describeError } from '../src/lib/errors';
 
 export default function LoginScreen() {
   const c = useColors();
@@ -35,7 +36,7 @@ export default function LoginScreen() {
       await authStore.login(email, password);
     } catch (e) {
       // API の error をそのまま表示(429 は「しばらく待つ」旨の文言が API から返る)
-      setError(e instanceof Error ? e.message : 'ログインできませんでした');
+      setError(describeError(e, 'ログインできませんでした'));
       setBusy(false);
     }
   }

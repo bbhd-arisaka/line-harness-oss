@@ -1,9 +1,10 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { authStore, useAccounts, useAuth } from '../../../src/state/session';
 import { Button, Card, confirmAsync, SectionTitle } from '../../../src/components/ui';
 import { accountLabel } from '../../../src/lib/accounts';
+import { usePushStatus } from '../../../src/state/push';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 
 const ROLE_LABEL: Record<string, string> = { owner: 'オーナー', admin: '管理者', staff: 'スタッフ' };
@@ -25,6 +26,7 @@ export default function SettingsScreen() {
   const auth = useAuth();
   const acc = useAccounts();
   const staff = auth.staff;
+  const push = usePushStatus();
   const version = Constants.expoConfig?.version ?? '-';
 
   async function logout() {
@@ -57,6 +59,23 @@ export default function SettingsScreen() {
         <Text style={{ color: c.primaryText, fontWeight: '700', marginRight: 4 }}>切り替え</Text>
         <Ionicons name="chevron-forward" size={18} color={c.primaryText} />
       </Pressable>
+
+      {push.state !== 'unsupported' ? (
+        <>
+          <SectionTitle>通知</SectionTitle>
+          <Card>
+            <Row
+              label="新着通知"
+              value={push.state === 'granted' ? 'オン' : push.state === 'denied' ? 'オフ(iPhone の設定で拒否されています)' : push.state === 'loading' ? '確認中…' : 'オフ'}
+            />
+            {push.state === 'denied' ? (
+              <Button title="iPhone の設定を開く" variant="secondary" onPress={() => void Linking.openSettings()} style={{ marginTop: 8 }} />
+            ) : push.state === 'undetermined' ? (
+              <Button title="通知を受け取る" variant="secondary" loading={push.busy} onPress={() => void push.enable()} style={{ marginTop: 8 }} />
+            ) : null}
+          </Card>
+        </>
+      ) : null}
 
       <SectionTitle>アプリ</SectionTitle>
       <Card>

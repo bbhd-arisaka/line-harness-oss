@@ -86,6 +86,19 @@ describe('認証つきの呼び出し', () => {
     await expect(api.listLineAccounts()).rejects.toMatchObject({ status: 0 });
   });
 
+  it('英語の error は日本語にして投げる', async () => {
+    const { api } = setup(jsonResponse({ success: false, error: 'LINE account credentials are unavailable' }, 500));
+    await expect(api.sendChatText('f1', 'x')).rejects.toMatchObject({ status: 500, message: expect.stringContaining('LINE と接続できない') });
+    const r2 = setup(jsonResponse({ success: false, error: 'Internal server error' }, 500));
+    await expect(r2.api.listLineAccounts()).rejects.toMatchObject({ message: expect.stringContaining('サーバーでエラー') });
+  });
+
+  it('タイムアウトは日本語のメッセージ', async () => {
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    const { api } = setup(() => Promise.reject(abort));
+    await expect(api.listLineAccounts()).rejects.toMatchObject({ status: 0, message: expect.stringContaining('時間がかかりすぎ') });
+  });
+
   it('JSON でない応答でも落ちず、状態コード入りのメッセージにする', async () => {
     const { api } = setup(new Response('<html>bad gateway</html>', { status: 502 }));
     await expect(api.listLineAccounts()).rejects.toMatchObject({ status: 502 });
@@ -108,6 +121,37 @@ describe('トーク', () => {
     const { url, init } = lastCall(fetchImpl);
     expect(url).toBe('https://example.test/api/chats/friend-1/send');
     expect(JSON.parse(init.body as string)).toEqual({ messageType: 'text', content: 'こんにちは' });
+  });
+});
+
+describe('対応状態・プロフィール・端末', () => {
+  it('対応状態: PUT /api/chats/:id に status だけ送る', async () => {
+    const { api, fetchImpl } = setup(jsonResponse({ success: true, data: { id: 'f1', friendId: 'f1', operatorId: null, status: 'resolved', notes: null } }));
+    const res = await api.updateChatStatus('f1', 'resolved');
+    expect(res.status).toBe('resolved');
+    const { url, init } = lastCall(fetchImpl);
+    expect(init.method).toBe('PUT');
+    expect(url).toBe('https://example.test/api/chats/f1');
+    expect(JSON.parse(init.body as string)).toEqual({ status: 'resolved' });
+  });
+
+  it('プロフィール: PUT /api/friends/:id/profile に変えた項目だけ送る', async () => {
+    const { api, fetchImpl } = setup(jsonResponse({ success: true, data: { id: 'f1', realName: '山田' } }));
+    await api.updateFriendProfile('f1', { realName: '山田', memo: null });
+    const { url, init } = lastCall(fetchImpl);
+    expect(init.method).toBe('PUT');
+    expect(url).toBe('https://example.test/api/friends/f1/profile');
+    expect(JSON.parse(init.body as string)).toEqual({ realName: '山田', memo: null });
+  });
+
+  it('APNs トークン: 登録と解除', async () => {
+    const { api, fetchImpl } = setup(jsonResponse({ success: true, data: null }));
+    await api.setApnsToken('ab'.repeat(32));
+    expect(JSON.parse(lastCall(fetchImpl).init.body as string)).toEqual({ apnsToken: 'ab'.repeat(32) });
+    await api.setApnsToken(null);
+    const { url, init } = lastCall(fetchImpl);
+    expect(url).toBe('https://example.test/api/app/device');
+    expect(JSON.parse(init.body as string)).toEqual({ apnsToken: null });
   });
 });
 

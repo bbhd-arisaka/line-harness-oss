@@ -96,7 +96,9 @@ describe('吹き出し', () => {
   });
   it('画像: URL が取れれば表示、取れなければ代替表示', () => {
     const json = JSON.stringify({ originalContentUrl: 'https://x.test/o.jpg', previewImageUrl: 'https://x.test/p.jpg' });
-    expect(toBubble(msg({ messageType: 'image', content: json }))).toMatchObject({ kind: 'image', imageUrl: 'https://x.test/p.jpg' });
+    expect(toBubble(msg({ messageType: 'image', content: json }))).toMatchObject({ kind: 'image', imageUrl: 'https://x.test/p.jpg', fullImageUrl: 'https://x.test/o.jpg' });
+    // 元画像が無ければ、拡大表示にも preview を使う
+    expect(toBubble(msg({ messageType: 'image', content: JSON.stringify({ previewImageUrl: 'https://x.test/p.jpg' }) }))).toMatchObject({ imageUrl: 'https://x.test/p.jpg', fullImageUrl: 'https://x.test/p.jpg' });
     expect(toBubble(msg({ messageType: 'image', content: '[画像]' }))).toMatchObject({ kind: 'image', imageUrl: null, text: '[画像]' });
     expect(toBubble(msg({ messageType: 'image', content: JSON.stringify({ originalContentUrl: 'javascript:alert(1)' }) })).imageUrl).toBeNull();
   });

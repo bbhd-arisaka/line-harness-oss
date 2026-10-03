@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Image, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { api } from '../../../src/state/services';
 import { useLoader } from '../../../src/state/hooks';
 import { Avatar, Button, Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
 import { buildInfoRows, describeRichMenu, formatDateTime, resolveFriendName } from '../../../src/lib/format';
+import { describeError } from '../../../src/lib/errors';
+import { charLength, draftFromFriend, NAME_MAX_LENGTH, planProfileUpdate, type ProfileDraft } from '../../../src/lib/profile';
 import type { Tag } from '../../../src/lib/types';
-import { useColors } from '../../../src/theme/theme';
+import { MIN_TAP, useColors } from '../../../src/theme/theme';
 
 function tagColor(color: string | undefined, fallback: string): string {
   return color && /^#[0-9a-f]{3,8}$/i.test(color) ? color : fallback;
@@ -20,6 +22,47 @@ function Field({ label, value }: { label: string; value: string | null | undefin
       <Text selectable style={{ color: value ? c.text : c.textMuted, fontSize: 15, marginTop: 2 }}>
         {value || '未設定'}
       </Text>
+    </View>
+  );
+}
+
+function EditField({
+  label,
+  hint,
+  value,
+  onChangeText,
+  editable,
+  multiline = false,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  editable: boolean;
+  multiline?: boolean;
+}) {
+  const c = useColors();
+  return (
+    <View style={styles.field}>
+      <View style={styles.editLabelRow}>
+        <Text style={{ color: c.textMuted, fontSize: 12 }}>{label}</Text>
+        {hint ? <Text style={{ color: c.textMuted, fontSize: 12 }}>{hint}</Text> : null}
+      </View>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        editable={editable}
+        multiline={multiline}
+        accessibilityLabel={label}
+        placeholder="未設定"
+        placeholderTextColor={c.textMuted}
+        autoCorrect={false}
+        style={[
+          styles.input,
+          multiline && styles.inputMultiline,
+          { backgroundColor: c.inputBackground, color: c.text, opacity: editable ? 1 : 0.6 },
+        ]}
+      />
     </View>
   );
 }
@@ -40,6 +83,11 @@ export default function FriendDetailScreen() {
   const router = useRouter();
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const [menuImageFailed, setMenuImageFailed] = useState(false);
+  // 本名・システム表示名・個別メモの編集
+  const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState(false);
 
   const friend = useLoader(() => api.getFriend(id), [id]);
   // 友だち情報欄の定義・リッチメニューは、取れなくても詳細そのものは見せる(個別に状態を持つ)
@@ -50,6 +98,33 @@ export default function FriendDetailScreen() {
   const infoRows = useMemo(() => (f ? buildInfoRows(f.metadata, defs.data ?? []) : []), [f, defs.data]);
   const menuView = menu.data ? describeRichMenu(menu.data) : null;
   const menuImage = menu.data?.id && menu.data.accountId && !menuImageFailed ? api.richMenuImageUrl(menu.data.id, menu.data.accountId) : null;
+
+  async function saveProfile() {
+    if (!f || !draft || saving) return;
+    const plan = planProfileUpdate(f, draft);
+    if (!plan.ok) {
+      setSaveError(plan.error);
+      return;
+    }
+    if (!plan.changed) {
+      setDraft(null);
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await api.updateFriendProfile(f.id, plan.input);
+      // 返ってきた最新の友だちで画面を置き換える(名前の表示も変わる)
+      friend.setData(updated);
+      setDraft(null);
+      setSavedNotice(true);
+    } catch (e) {
+      // 入力は消さない。理由を出して、もう一度保存できるようにする
+      setSaveError(describeError(e, '保存できませんでした'));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function refreshAll() {
     setMenuImageFailed(false);
@@ -65,9 +140,31 @@ export default function FriendDetailScreen() {
     <ScrollView
       style={{ backgroundColor: c.background }}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      automaticallyAdjustKeyboardInsets
       refreshControl={<RefreshControl refreshing={friend.refreshing} onRefresh={() => void refreshAll()} tintColor={c.primary} />}
     >
-      <Stack.Screen options={{ title: name }} />
+      <Stack.Screen
+        options={{
+          title: name,
+          headerRight: () =>
+            draft ? null : (
+              <Pressable
+                onPress={() => {
+                  setSaveError(null);
+                  setSavedNotice(false);
+                  setDraft(draftFromFriend(f));
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="名前とメモを編集する"
+                style={styles.headerButton}
+              >
+                <Text style={{ color: c.primaryText, fontSize: 16, fontWeight: '700' }}>編集</Text>
+              </Pressable>
+            ),
+        }}
+      />
 
       <View style={styles.header}>
         <Avatar uri={f.pictureUrl} name={name} size={80} />
@@ -80,19 +177,78 @@ export default function FriendDetailScreen() {
         <Button title="トークを開く" onPress={() => router.push({ pathname: '/chat/[id]', params: { id: f.id } })} style={{ marginTop: 16 }} />
       ) : null}
 
-      <SectionTitle>名前</SectionTitle>
-      <Card>
-        <Field label="本名" value={f.realName?.trim()} />
-        <Field label="システム表示名" value={f.systemDisplayName?.trim()} />
-        <Field label="LINE名" value={f.displayName} />
-      </Card>
+      {savedNotice && !draft ? (
+        <View style={[styles.notice, { backgroundColor: c.primarySoft }]} accessibilityRole="alert">
+          <Text style={{ color: c.primaryText, fontSize: 13, fontWeight: '700' }}>保存しました</Text>
+        </View>
+      ) : null}
 
-      <SectionTitle>メモ</SectionTitle>
-      <Card>
-        <Text selectable style={{ color: f.memo?.trim() ? c.text : c.textMuted, fontSize: 15, lineHeight: 22 }}>
-          {f.memo?.trim() || 'メモはありません'}
-        </Text>
-      </Card>
+      {draft ? (
+        <>
+          <SectionTitle>名前</SectionTitle>
+          <Card>
+            <EditField
+              label="本名"
+              hint={`${charLength(draft.realName.trim())}/${NAME_MAX_LENGTH}文字`}
+              value={draft.realName}
+              onChangeText={(v) => setDraft({ ...draft, realName: v })}
+              editable={!saving}
+            />
+            <EditField
+              label="システム表示名"
+              hint={`${charLength(draft.systemDisplayName.trim())}/${NAME_MAX_LENGTH}文字`}
+              value={draft.systemDisplayName}
+              onChangeText={(v) => setDraft({ ...draft, systemDisplayName: v })}
+              editable={!saving}
+            />
+            <Field label="LINE名(変更できません)" value={f.displayName} />
+          </Card>
+
+          <SectionTitle>メモ</SectionTitle>
+          <Card>
+            <EditField
+              label="個別メモ"
+              value={draft.memo}
+              onChangeText={(v) => setDraft({ ...draft, memo: v })}
+              editable={!saving}
+              multiline
+            />
+          </Card>
+
+          {saveError ? (
+            <View style={[styles.notice, { backgroundColor: c.dangerSoft }]} accessibilityRole="alert">
+              <Text style={{ color: c.danger, fontSize: 13, lineHeight: 19 }}>{saveError}</Text>
+            </View>
+          ) : null}
+          <Button title="保存する" onPress={() => void saveProfile()} loading={saving} style={{ marginTop: 16 }} />
+          <Button
+            title="キャンセル"
+            variant="secondary"
+            disabled={saving}
+            onPress={() => {
+              setDraft(null);
+              setSaveError(null);
+            }}
+            style={{ marginTop: 10 }}
+          />
+        </>
+      ) : (
+        <>
+          <SectionTitle>名前</SectionTitle>
+          <Card>
+            <Field label="本名" value={f.realName?.trim()} />
+            <Field label="システム表示名" value={f.systemDisplayName?.trim()} />
+            <Field label="LINE名" value={f.displayName} />
+          </Card>
+
+          <SectionTitle>メモ</SectionTitle>
+          <Card>
+            <Text selectable style={{ color: f.memo?.trim() ? c.text : c.textMuted, fontSize: 15, lineHeight: 22 }}>
+              {f.memo?.trim() || 'メモはありません'}
+            </Text>
+          </Card>
+        </>
+      )}
 
       <SectionTitle>タグ</SectionTitle>
       <Card>
@@ -175,6 +331,11 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', paddingTop: 8 },
   title: { fontSize: 22, fontWeight: '800', marginTop: 12, textAlign: 'center' },
   field: { paddingVertical: 6 },
+  headerButton: { minWidth: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
+  notice: { marginTop: 16, padding: 12, borderRadius: 10 },
+  editLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  input: { minHeight: MIN_TAP, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
+  inputMultiline: { minHeight: 120, textAlignVertical: 'top' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },
   tagDot: { width: 8, height: 8, borderRadius: 4 },
