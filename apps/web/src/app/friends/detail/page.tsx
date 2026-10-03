@@ -2,6 +2,7 @@
 
 import { resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 import { FieldValue } from '@/components/friends/field-value'
+import { FriendRichMenuView, useFriendRichMenu } from '@/components/friends/friend-rich-menu'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { api, fetchApi } from '@/lib/api'
@@ -80,6 +81,8 @@ export default function FriendDetailPage() {
   const [allTags, setAllTags] = useState<Tag[]>([])
 
   const [tab, setTab] = useState('home')
+  // いま設定されているリッチメニュー(LINE に問い合わせる)
+  const { state: richMenu, reload: reloadRichMenu } = useFriendRichMenu(friendId ?? null)
 
   const loadFriend = useCallback(() => {
     if (!friendId) return
@@ -337,6 +340,12 @@ export default function FriendDetailPage() {
                     </div>
                   </div>
                 )}
+              </LayerCard>
+
+              <LayerCard className="p-5 lg:col-span-2">
+                <h2 className="mb-3 text-sm font-semibold text-kumo-strong">リッチメニュー</h2>
+                <FriendRichMenuView state={richMenu} onReload={reloadRichMenu} />
+                <p className="mt-3 text-xs text-kumo-subtle">いま、この友だちの LINE に表示されているメニューです(個別に設定されていなければ、デフォルトのメニュー)。</p>
               </LayerCard>
 
               {/* 友だち情報(値が入っているものだけ、フォルダごとに表示。編集はフォルダのタブから) */}

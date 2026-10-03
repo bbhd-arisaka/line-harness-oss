@@ -177,19 +177,38 @@ richMenus.get('/api/friends/:friendId/rich-menu', async (c) => {
 
     // メニュー名は LINE API のリストから lookup (rich_menus DB テーブルは無い)
     let name: string | null = null;
+    let chatBarText: string | null = null;
     if (effectiveId) {
       try {
         const list = await lineClient.getRichMenuList();
         const found = (list.richmenus ?? []).find((m) => m.richMenuId === effectiveId);
         name = found?.name ?? null;
+        chatBarText = found?.chatBarText ?? null;
       } catch {
         // silent — 名前は出せないが id だけは返す
       }
     }
 
+    // beyond line の「リッチメニュー」画面で作ったメニューなら、その名前(グループ・ページ)も返す。
+    // Lステップ等、外で作られたメニューは見つからない(null)。
+    let groupName: string | null = null;
+    let pageName: string | null = null;
+    if (effectiveId && friendAccId) {
+      const row = await db
+        .prepare(
+          `SELECT g.name AS group_name, p.name AS page_name
+             FROM rich_menu_pages p INNER JOIN rich_menu_groups g ON g.id = p.group_id
+            WHERE p.line_richmenu_id = ? AND g.account_id = ? LIMIT 1`,
+        )
+        .bind(effectiveId, friendAccId)
+        .first<{ group_name: string; page_name: string }>();
+      groupName = row?.group_name ?? null;
+      pageName = row?.page_name ?? null;
+    }
+
     return c.json({
       success: true,
-      data: { id: effectiveId, name, isDefault },
+      data: { id: effectiveId, name, isDefault, chatBarText, groupName, pageName, accountId: friendAccId ?? null },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

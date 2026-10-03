@@ -8,6 +8,7 @@ import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
 import { FriendFieldPicker, type PickerFolder } from '@/components/forms/friend-field-picker'
 import { FieldValue } from '@/components/friends/field-value'
+import { FriendRichMenuView, useFriendRichMenu } from '@/components/friends/friend-rich-menu'
 import { FriendNameEditDialog, NameEditPencil, resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 
 interface FriendDetail {
@@ -237,34 +238,8 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
     return () => { cancelled = true }
   }, [friendId])
 
-  // リッチメニュー — loading / error / data を区別して、null=未設定 を取得失敗と
-  // 混同しないようにする。Codex review (P3) の指摘で導入。
-  type RichMenuState =
-    | { kind: 'loading' }
-    | { kind: 'error' }
-    | { kind: 'data'; id: string | null; name: string | null; isDefault: boolean }
-  const [richMenu, setRichMenu] = useState<RichMenuState>({ kind: 'loading' })
-
-  useEffect(() => {
-    if (!friendId) {
-      setRichMenu({ kind: 'loading' })
-      return
-    }
-    let cancelled = false
-    setRichMenu({ kind: 'loading' })
-    api.friends.richMenu(friendId).then((res) => {
-      if (cancelled) return
-      if (res.success && res.data) {
-        setRichMenu({ kind: 'data', ...res.data })
-      } else {
-        setRichMenu({ kind: 'error' })
-      }
-    }).catch(() => {
-      if (cancelled) return
-      setRichMenu({ kind: 'error' })
-    })
-    return () => { cancelled = true }
-  }, [friendId])
+  // リッチメニュー(いま設定されているもの)
+  const { state: richMenu, reload: reloadRichMenu } = useFriendRichMenu(friendId)
 
   if (!friendId) return null
 
@@ -477,22 +452,7 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
             {/* Rich Menu */}
             <div className="p-4">
               <h4 className="text-[11px] font-medium text-gray-500 mb-1.5">リッチメニュー</h4>
-              {richMenu.kind === 'loading' ? (
-                <p className="text-[11px] text-gray-400 italic">読み込み中...</p>
-              ) : richMenu.kind === 'error' ? (
-                <p className="text-[11px] text-red-500 italic">取得に失敗しました</p>
-              ) : richMenu.id === null ? (
-                <p className="text-[11px] text-gray-400 italic">未設定</p>
-              ) : (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-gray-700">{richMenu.name ?? '(名前なし)'}</span>
-                  {richMenu.isDefault && (
-                    <span className="px-1.5 py-0 rounded text-[10px] font-medium bg-gray-100 text-gray-500">
-                      デフォルト
-                    </span>
-                  )}
-                </div>
-              )}
+              <FriendRichMenuView state={richMenu} onReload={reloadRichMenu} compact />
             </div>
 
             {/* Metadata custom fields (本名等)。中身が空でも「本名」等を追加できるよう常に表示する */}
