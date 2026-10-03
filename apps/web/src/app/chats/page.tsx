@@ -872,7 +872,7 @@ export default function ChatsPage() {
           {/* タブ (全て / 未読 / 対応中 / 解決済) は意図的に削除。直近メッセージが見やすい LINE 風一覧を優先。 */}
 
           {/* Filter row */}
-          <div className="px-3 py-2 border-b border-gray-100 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto border-b border-gray-100 px-3 py-2 [&>*]:flex-shrink-0">
             {statusFilters.map((f) => (
               <Button type="button" size="xs" variant={statusFilter === f.key ? 'primary' : 'ghost'}
                 key={f.key}
@@ -1011,24 +1011,28 @@ export default function ChatsPage() {
             <>
               {/* Chat Header — flex-shrink-0: 低いビューポートでもヘッダーとコンポーザーは
                   高さを保ち、縮むのはメッセージ一覧だけにする */}
-              <div className="flex-shrink-0 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Button type="button" size="xs" shape="square" variant="ghost" title="戻る"
-                    onClick={() => setSelectedChatId(null)}
-                    className="lg:hidden flex-shrink-0 p-1 -ml-1 text-gray-500 hover:text-gray-700"
-                    aria-label="戻る"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </Button>
-                  {chatDetail.friendPictureUrl && (
+              <div className="flex-shrink-0 border-b border-gray-200 px-3 py-2 lg:px-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Button type="button" size="xs" shape="square" variant="ghost" title="戻る"
+                      onClick={() => setSelectedChatId(null)}
+                      className="lg:hidden flex-shrink-0 p-1 -ml-1 text-gray-500 hover:text-gray-700"
+                      aria-label="戻る"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </Button>
                     <Link href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`} title="友だち詳細を開く" className="flex-shrink-0">
-                      <img src={chatDetail.friendPictureUrl} alt="" className="w-8 h-8 rounded-full" />
+                      {chatDetail.friendPictureUrl ? (
+                        <img src={chatDetail.friendPictureUrl} alt="" className="h-8 w-8 rounded-full" />
+                      ) : (
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-500">
+                          {chatDetail.friendName.charAt(0)}
+                        </span>
+                      )}
                     </Link>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1 min-w-0">
+                    <div className="flex min-w-0 items-center gap-1">
                       <Link
                         href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`}
                         title="友だち詳細を開く"
@@ -1038,66 +1042,57 @@ export default function ChatsPage() {
                       </Link>
                       <NameEditPencil onClick={() => void openHeaderNameEdit(chatDetail.friendId ?? chatDetail.id)} />
                     </div>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${statusConfig[chatDetail.status].className}`}
+                  </div>
+                  <div className="flex flex-shrink-0 items-center gap-1.5">
+                    <Link
+                      href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`}
+                      className="hidden items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:inline-flex"
                     >
-                      {statusConfig[chatDetail.status].label}
-                    </span>
+                      友だち詳細 →
+                    </Link>
+                    {/* メモはPC(xl+)では右サイドバーに常設。狭い画面のみトグルで表示する */}
+                    <Button type="button" size="xs" variant={showMobileMemo ? 'primary' : 'secondary'}
+                      onClick={() => setShowMobileMemo((v) => !v)}
+                      className="xl:hidden"
+                      title="メモを表示"
+                    >
+                      📝 メモ
+                    </Button>
+                    {unansweredOnly && chats.length > 1 && (
+                      <Button type="button" size="xs" variant="primary"
+                        onClick={() => {
+                          const idx = chats.findIndex((c) => c.id === selectedChatId)
+                          // idx < 0 = current chat is no longer in the list (e.g. just sent a reply)
+                          // → fall back to the head of the list so the queue keeps moving
+                          const nextIdx = idx < 0 ? 0 : (idx + 1) % chats.length
+                          const next = chats[nextIdx]
+                          if (next && next.id !== selectedChatId) {
+                            setSelectedChatId(next.id)
+                          }
+                        }}
+                        title="次の未対応 friend に進む"
+                      >
+                        次へ →
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`}
-                    className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    友だち詳細 →
-                  </Link>
-                  {/* メモはPC(xl+)では右サイドバーに常設。狭い画面のみトグルで表示する */}
-                  <Button type="button" size="sm" variant={showMobileMemo ? 'primary' : 'secondary'}
-                    onClick={() => setShowMobileMemo((v) => !v)}
-                    className="xl:hidden"
-                    title="メモを表示"
-                  >
-                    📝 メモ
-                  </Button>
-                  {unansweredOnly && chats.length > 1 && (
-                  <Button type="button" size="sm" variant="primary"
-                      onClick={() => {
-                        const idx = chats.findIndex((c) => c.id === selectedChatId)
-                        // idx < 0 = current chat is no longer in the list (e.g. just sent a reply)
-                        // → fall back to the head of the list so the queue keeps moving
-                        const nextIdx = idx < 0 ? 0 : (idx + 1) % chats.length
-                        const next = chats[nextIdx]
-                        if (next && next.id !== selectedChatId) {
-                          setSelectedChatId(next.id)
-                        }
-                      }}
-                      title="次の未対応 friend に進む"
+                {/* 対応状態: 3つを1行の切替にまとめる(押したものに切り替わる) */}
+                <div className="mt-2 flex items-center gap-1.5" role="radiogroup" aria-label="対応状態">
+                  {(['unread', 'in_progress', 'resolved'] as const).map((s) => (
+                    <Button
+                      key={s}
+                      type="button"
+                      size="xs"
+                      role="radio"
+                      aria-checked={chatDetail.status === s}
+                      variant={chatDetail.status === s ? 'primary' : 'secondary'}
+                      onClick={() => { if (chatDetail.status !== s) handleStatusUpdate(s) }}
+                      className="flex-1 sm:flex-none"
                     >
-                      次の未対応 →
+                      {statusConfig[s].label}
                     </Button>
-                  )}
-                  {chatDetail.status !== 'unread' && (
-                    <Button type="button" size="sm" variant="destructive"
-                      onClick={() => handleStatusUpdate('unread')}
-                    >
-                      未読に戻す
-                    </Button>
-                  )}
-                  {chatDetail.status !== 'in_progress' && (
-                    <Button type="button" size="sm" variant="secondary"
-                      onClick={() => handleStatusUpdate('in_progress')}
-                    >
-                      対応中にする
-                    </Button>
-                  )}
-                  {chatDetail.status !== 'resolved' && (
-                    <Button type="button" size="sm" variant="primary"
-                      onClick={() => handleStatusUpdate('resolved')}
-                    >
-                      解決済にする
-                    </Button>
-                  )}
+                  ))}
                 </div>
               </div>
 
@@ -1216,11 +1211,20 @@ export default function ChatsPage() {
                         >
                           {/* 相手のアイコン（incoming のみ） */}
                           {!isOutgoing && (
-                            chatDetail.friendPictureUrl ? (
-                              <img src={chatDetail.friendPictureUrl} alt="" className="w-8 h-8 rounded-full flex-shrink-0 mb-1" />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-gray-300 flex-shrink-0 mb-1" />
-                            )
+                            <Link
+                              href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`}
+                              title="友だち詳細を開く"
+                              aria-label={`${chatDetail.friendName}の友だち詳細を開く`}
+                              className="mb-1 flex-shrink-0"
+                            >
+                              {chatDetail.friendPictureUrl ? (
+                                <img src={chatDetail.friendPictureUrl} alt="" className="h-8 w-8 rounded-full" />
+                              ) : (
+                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-300 text-sm text-white">
+                                  {chatDetail.friendName.charAt(0)}
+                                </span>
+                              )}
+                            </Link>
                           )}
 
                           {/* w-full が要る: 吹き出しの max-w が % 指定なので、

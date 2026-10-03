@@ -155,7 +155,7 @@ export default function ChatScreen() {
         if (mine !== seq.current) return;
         const prev = chatRef.current;
         // 新着が無ければ再描画しない(10秒ごとのポーリングで画面がちらつかないように)
-        if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.friendName !== next.friendName) {
+        if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.friendName !== next.friendName || prev.friendPictureUrl !== next.friendPictureUrl) {
           setChat(next);
         }
         setError(null);
@@ -264,7 +264,6 @@ export default function ChatScreen() {
         >
           {chat ? (
             <View style={[styles.statusBar, { backgroundColor: c.card, borderBottomColor: c.border }]}>
-              <Text style={{ color: c.textMuted, fontSize: 12, fontWeight: '700' }}>対応状態</Text>
               <View style={styles.segments} accessibilityRole="radiogroup">
                 {STATUS_ORDER.map((s) => {
                   const active = chat.status === s;
@@ -364,7 +363,7 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   headerButton: { width: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
-  statusBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  statusBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
   segments: { flex: 1, flexDirection: 'row', gap: 6 },
   segment: { flex: 1, minHeight: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   limitNote: { fontSize: 11, textAlign: 'center', paddingVertical: 10, paddingHorizontal: 16 },

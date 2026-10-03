@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CaretDownIcon, CheckIcon, CaretDoubleLeftIcon, ListIcon } from '@phosphor-icons/react'
+import { CaretDownIcon, CheckIcon, CaretDoubleLeftIcon, ListIcon, SignOutIcon } from '@phosphor-icons/react'
 import { DropdownMenu } from '@cloudflare/kumo/components/dropdown'
 import { useAccount } from '@/contexts/account-context'
 import type { AccountWithStats } from '@/contexts/account-context'
@@ -44,13 +44,13 @@ function AccountSwitcher() {
         render={
           <button
             type="button"
-            className="flex h-12 items-center gap-2 px-4 text-sm font-bold text-white hover:bg-white/10"
+            className="flex h-12 items-center gap-1.5 px-2 text-sm font-bold text-white hover:bg-white/10 sm:gap-2 sm:px-4"
           />
         }
       >
         {selectedAccount ? <AccountAvatar account={selectedAccount} size={24} /> : null}
-        {countryFlag(selectedAccount?.country) ? <span className="leading-none">{countryFlag(selectedAccount?.country)}</span> : null}
-        <span className="max-w-[16rem] truncate">{displayName}</span>
+        {countryFlag(selectedAccount?.country) ? <span className="leading-none max-sm:hidden">{countryFlag(selectedAccount?.country)}</span> : null}
+        <span className="max-w-[5.5rem] truncate sm:max-w-[16rem]">{displayName}</span>
         <CaretDownIcon size={12} weight="bold" className={open ? 'rotate-180' : ''} />
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end" className="min-w-56">
@@ -123,7 +123,7 @@ export default function TopBar({ onToggleMenu, collapsed = false }: { onToggleMe
       className="z-30 flex h-12 flex-shrink-0 items-center justify-between text-white"
       style={{ backgroundImage: 'linear-gradient(160deg, #08b43d, #007991)' }}
     >
-      <div className="flex items-center">
+      <div className="flex min-w-0 items-center">
         <button
           type="button"
           onClick={onToggleMenu}
@@ -133,11 +133,11 @@ export default function TopBar({ onToggleMenu, collapsed = false }: { onToggleMe
           <CaretDoubleLeftIcon size={16} weight="bold" className={`max-lg:hidden transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`} />
           <ListIcon size={20} weight="bold" className="lg:hidden" />
         </button>
-        <span className="text-[22px] font-black italic tracking-tight" style={{ textShadow: '0 1px 0 rgba(0,0,0,.15)' }}>
+        <span className="truncate text-lg font-black italic tracking-tight sm:text-[22px]" style={{ textShadow: '0 1px 0 rgba(0,0,0,.15)' }}>
           beyond line
         </span>
       </div>
-      <div className="flex items-center">
+      <div className="flex flex-shrink-0 items-center">
         {staffName && (
           <span className="hidden items-center gap-1.5 px-4 text-sm font-bold sm:flex">
             <span className="max-w-[12rem] truncate">{staffName}</span>
@@ -148,9 +148,11 @@ export default function TopBar({ onToggleMenu, collapsed = false }: { onToggleMe
         <button
           type="button"
           onClick={() => void logout()}
-          className="h-12 px-4 text-sm font-bold hover:bg-white/10"
+          aria-label="ログアウト"
+          className="flex h-12 items-center px-2.5 text-sm font-bold hover:bg-white/10 sm:px-4"
         >
-          ログアウト
+          <SignOutIcon size={20} weight="bold" className="sm:hidden" />
+          <span className="max-sm:hidden">ログアウト</span>
         </button>
       </div>
     </header>
