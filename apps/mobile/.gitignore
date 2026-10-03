@@ -1,0 +1,18 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.DS_Store
+# ネイティブのビルド成果物(prebuild を使う場合)
+/ios
+/android
+# 環境ごとの設定(秘密は入れない)
+.env
+.env.*.local
+# EAS・Apple の秘密情報
+*.p8
+*.p12
+*.mobileprovision
+*.jks
+expo-env.d.ts
