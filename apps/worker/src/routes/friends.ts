@@ -88,6 +88,8 @@ function serializeTag(row: DbTag) {
   };
 }
 
+const SEARCH_NAME_COLUMNS = ['f.display_name', 'f.real_name', 'f.system_display_name'] as const;
+
 // GET /api/friends - list with pagination
 friends.get('/api/friends', async (c) => {
   try {
@@ -139,9 +141,11 @@ friends.get('/api/friends', async (c) => {
       );
       binds.push(fieldKey, fieldKey);
     }
+    // 検索は、LINE名・本名・システム表示名のどれかに部分一致(LIKE のワイルドカードはエスケープ)
+    const escapedSearch = search ? search.replace(/[\\%_]/g, (ch) => `\\${ch}`) : '';
     if (search) {
-      conditions.push('f.display_name LIKE ?');
-      binds.push(`%${search}%`);
+      conditions.push(`(${SEARCH_NAME_COLUMNS.map((col) => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')})`);
+      for (let i = 0; i < SEARCH_NAME_COLUMNS.length; i++) binds.push(`%${escapedSearch}%`);
     }
     // Unhandled filter: chats.status === 'unread'.
     //
@@ -224,23 +228,34 @@ friends.get('/api/friends', async (c) => {
     let listStmt;
     let listBinds: unknown[];
     if (search) {
-      const exactPattern = search;
-      const prefixPattern = `${search}%`;
-      const wordStartAscii = `% ${search}%`;
-      const wordStartFullWidth = `%　${search}%`;
+      // 順位: 完全一致(0) → 前方一致(1) → 語頭一致(2) → 部分一致(3)。3つの名前のどれで一致してもよい
+      const anyName = (patternCount: number) =>
+        SEARCH_NAME_COLUMNS.flatMap((col) => Array.from({ length: patternCount }, () => `${col} LIKE ? ESCAPE '\\'`)).join(' OR ');
+      const exactPattern = escapedSearch;
+      const prefixPattern = `${escapedSearch}%`;
+      const wordStartAscii = `% ${escapedSearch}%`;
+      const wordStartFullWidth = `%　${escapedSearch}%`;
       listStmt = db.prepare(
         `SELECT ${baseSelect},
                 CASE
-                  WHEN f.display_name LIKE ? THEN 0
-                  WHEN f.display_name LIKE ? THEN 1
-                  WHEN f.display_name LIKE ? OR f.display_name LIKE ? THEN 2
+                  WHEN ${anyName(1)} THEN 0
+                  WHEN ${anyName(1)} THEN 1
+                  WHEN ${anyName(2)} THEN 2
                   ELSE 3
                 END AS match_score
          ${baseFrom} ${where}
          ORDER BY match_score ASC, f.created_at ${createdOrder}
          LIMIT ? OFFSET ?`,
       );
-      listBinds = [exactPattern, prefixPattern, wordStartAscii, wordStartFullWidth, ...binds, limit, offset];
+      const perColumn = (patterns: string[]) => SEARCH_NAME_COLUMNS.flatMap(() => patterns);
+      listBinds = [
+        ...perColumn([exactPattern]),
+        ...perColumn([prefixPattern]),
+        ...perColumn([wordStartAscii, wordStartFullWidth]),
+        ...binds,
+        limit,
+        offset,
+      ];
     } else {
       listStmt = db.prepare(
         `SELECT ${baseSelect} ${baseFrom} ${where} ORDER BY f.created_at ${createdOrder} LIMIT ? OFFSET ?`,

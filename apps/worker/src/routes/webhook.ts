@@ -26,6 +26,8 @@ import { replyViaHarnessProxy } from '../services/line-proxy-send.js';
 import type { HarnessProxyDispatch } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import { ensureSchedulerArmed } from '../durable-objects/tenant-scheduler.js';
+import { notifyIncomingMessage } from '../services/push-notify.js';
+import type { IncomingMessageNotice } from '../services/push-notify.js';
 
 const webhook = new Hono<Env>();
 
@@ -156,6 +158,20 @@ webhook.post('/webhook', async (c) => {
 
   const lineClient = new LineClient(channelAccessToken);
 
+  // iOS アプリへのプッシュ通知(APNs 設定が無ければ何もしない)。
+  // 背景で実行し、失敗しても Webhook の応答・処理には影響させない。
+  const onIncoming = (notice: IncomingMessageNotice): void => {
+    try {
+      c.executionCtx.waitUntil(
+        notifyIncomingMessage(c.env, db, notice).catch((err) => {
+          console.error('[webhook] push notify failed', err instanceof Error ? err.message : 'error');
+        }),
+      );
+    } catch (err) {
+      console.error('[webhook] push notify failed', err instanceof Error ? err.message : 'error');
+    }
+  };
+
   // 非同期処理 — LINE は ~1s 以内のレスポンスを要求
   const processingPromise = (async () => {
     const proxyDispatch: HarnessProxyDispatch = (request) =>
@@ -172,6 +188,7 @@ webhook.post('/webhook', async (c) => {
           c.env.LIFF_URL,
           c.env.IMAGES,
           proxyDispatch,
+          onIncoming,
         );
       } catch (err) {
         console.error('Error handling webhook event:', err);
@@ -200,6 +217,7 @@ async function handleEvent(
   liffUrl?: string,
   r2?: R2Bucket,
   proxyDispatch?: HarnessProxyDispatch,
+  onIncoming?: (notice: IncomingMessageNotice) => void,
 ): Promise<void> {
   if (event.type === 'follow') {
     const userId =
@@ -499,6 +517,8 @@ async function handleEvent(
     // 画像だけ送ってきた友だち」をバッジ・未対応一覧から永久に落としてしまう。
     // 非 text は auto_reply keyword にマッチし得ないので常に要対応扱いで正しい。
     await upsertChatOnMessage(db, friend.id);
+    // アプリへ通知(非 text は常に要対応扱い=unread にした場合と同じ)
+    onIncoming?.({ friendId: friend.id, accountId: lineAccountId, messageType: msg.type, content: finalContent });
     return;
   }
 
@@ -563,6 +583,8 @@ async function handleEvent(
     // auto_replies にマッチしなかった = 自発メッセージ → unread にする
     if (!matched) {
       await upsertChatOnMessage(db, friend.id);
+      // 自動返信で処理済み(matched)のものは、未対応にしないのと同じく通知もしない
+      onIncoming?.({ friendId: friend.id, accountId: lineAccountId, messageType: 'text', content: incomingText });
     }
 
     // イベントバス発火: message_received

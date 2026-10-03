@@ -46,6 +46,9 @@ vi.mock('../services/event-bus.js', () => ({
   logOutgoingMessage: vi.fn().mockResolvedValue(undefined),
 }));
 
+const notifyMock = vi.hoisted(() => vi.fn());
+vi.mock('../services/push-notify.js', () => ({ notifyIncomingMessage: notifyMock }));
+
 vi.mock('../services/local-line-proxy.js', () => ({
   dispatchLineProxyLocally: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
 }));
@@ -484,5 +487,61 @@ describe('POST /webhook — first-contact existing friends', () => {
     expect(addTagToFriend).not.toHaveBeenCalled();
     expect(getEntryRouteByRefCode).not.toHaveBeenCalled();
     expect(getMessageTemplateById).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /webhook — iOS アプリへのプッシュ通知', () => {
+  async function receive(eventMessage: Record<string, unknown>) {
+    vi.mocked(verifySignature).mockResolvedValue(true);
+    vi.mocked(getFriendByLineUserId).mockResolvedValue({ id: 'friend-1', line_user_id: 'U1', display_name: 'x', line_account_id: null } as never);
+    vi.mocked(jstNow).mockReturnValue('2026-06-18T12:00:00.000+09:00');
+    const stmt = { bind: vi.fn(), run: vi.fn().mockResolvedValue({}), all: vi.fn().mockResolvedValue({ results: [] }), first: vi.fn().mockResolvedValue(null) };
+    stmt.bind.mockReturnValue(stmt);
+    const db = { prepare: vi.fn().mockReturnValue(stmt) } as unknown as D1Database;
+    const executionCtx = { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as unknown as ExecutionContext;
+    const res = await setupApp().request(
+      '/webhook',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Line-Signature': 'A'.repeat(43) + '=' },
+        body: JSON.stringify({
+          destination: 'bot',
+          events: [{ type: 'message', replyToken: 'r', message: eventMessage, timestamp: 1, source: { type: 'user', userId: 'U1' }, webhookEventId: 'e', deliveryContext: { isRedelivery: false }, mode: 'active' }],
+        }),
+      },
+      { ...baseEnv, DB: db },
+      executionCtx,
+    );
+    // 背景処理(受信の記録 → 通知)をすべて待つ
+    for (const call of vi.mocked(executionCtx.waitUntil).mock.calls) await call[0];
+    for (const call of vi.mocked(executionCtx.waitUntil).mock.calls) await call[0];
+    return { res, db };
+  }
+
+  test('自発のテキスト受信で通知を呼ぶ(waitUntil の中。Webhook は 200)', async () => {
+    notifyMock.mockResolvedValue(undefined);
+    const { res, db } = await receive({ type: 'text', id: 'm1', text: 'こんにちは' });
+    expect(res.status).toBe(200);
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.anything(),
+      db,
+      { friendId: 'friend-1', accountId: null, messageType: 'text', content: 'こんにちは' },
+    );
+  });
+
+  test('画像などの非テキストでも通知を呼ぶ', async () => {
+    notifyMock.mockResolvedValue(undefined);
+    await receive({ type: 'sticker', id: 'm2', packageId: '1', stickerId: '1' });
+    expect(notifyMock).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ friendId: 'friend-1', messageType: 'sticker' }));
+  });
+
+  test('通知が失敗(reject)しても Webhook は成功し、処理は止まらない', async () => {
+    notifyMock.mockRejectedValue(new Error('apns down'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { res } = await receive({ type: 'text', id: 'm3', text: 'x' });
+    expect(res.status).toBe(200);
+    expect(notifyMock).toHaveBeenCalled();
+    expect(fireEvent).toHaveBeenCalled();
+    err.mockRestore();
   });
 });

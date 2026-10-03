@@ -115,6 +115,13 @@ export type Env = {
     // feature is entirely absent unless an operator opts in. ≥32 chars, shared
     // with the token issuer. See routes/admin-sso.ts and docs/ADMIN-AUTH.md.
     ADMIN_SSO_SECRET?: string;
+    // iOS アプリへのプッシュ通知(APNs)。APNS_KEY_P8(.p8 の中身・Secret)・APNS_KEY_ID・APNS_TEAM_ID が
+    // 3つそろったときだけ有効。無ければ通知は一切動かない。services/apns.ts
+    APNS_KEY_P8?: string;
+    APNS_KEY_ID?: string;
+    APNS_TEAM_ID?: string;
+    APNS_BUNDLE_ID?: string; // 既定 jp.cms-manager.beyondline
+    APNS_ENVIRONMENT?: string; // 'production'(既定) | 'sandbox'
     // beyond admin のID・パスワードでログイン(services/external-auth.ts)。3つとも任意で、
     // BEYOND_ADMIN_URL と BEYOND_ADMIN_INTERNAL_TOKEN が揃ったときだけ有効になる。
     BEYOND_ADMIN_URL?: string;
