@@ -20,12 +20,46 @@ const HISTORY_LIMIT = 1000;
 
 const STATUS_ORDER: ChatStatus[] = ['unread', 'in_progress', 'resolved'];
 
-const BubbleView = memo(function BubbleView({ bubble, onImagePress }: { bubble: Bubble; onImagePress: (url: string) => void }) {
+/** 相手のアイコン(丸)。タップすると友だち詳細へ。画像が無い・読めないときは名前の頭文字 */
+function Avatar({ uri, name, onPress }: { uri: string | null; name: string; onPress: () => void }) {
+  const c = useColors();
+  const [failed, setFailed] = useState(false);
+  const initial = (name || '?').trim().slice(0, 1) || '?';
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`${name || '友だち'}の詳細を開く`}
+      style={styles.avatar}
+    >
+      {uri && !failed ? (
+        <Image source={{ uri }} style={styles.avatarImage} onError={() => setFailed(true)} accessibilityIgnoresInvertColors />
+      ) : (
+        <View style={[styles.avatarImage, styles.avatarFallback, { backgroundColor: c.border }]}>
+          <Text style={{ color: c.textSub, fontSize: 15, fontWeight: '600' }}>{initial}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+const BubbleView = memo(function BubbleView({
+  bubble,
+  onImagePress,
+  avatar,
+}: {
+  bubble: Bubble;
+  onImagePress: (url: string) => void;
+  /** 相手のアイコンの表示に使う情報(受信の吹き出しだけに付ける) */
+  avatar: { uri: string | null; name: string; onPress: () => void };
+}) {
   const c = useColors();
   const out = bubble.side === 'outgoing';
   const alt = bubble.kind !== 'text';
   return (
     <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
+      {!out ? <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} /> : null}
       {out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
       <View
         style={[
@@ -68,6 +102,17 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [chat, setChat] = useState<ChatDetail | null>(null);
+  // 相手の吹き出しに付けるアイコン(タップで友だち詳細へ)
+  const avatar = useMemo(
+    () => ({
+      uri: chat?.friendPictureUrl ?? null,
+      name: chat?.friendName ?? '',
+      onPress: () => {
+        if (chat) router.push({ pathname: '/friend/[id]', params: { id: chat.friendId, from: 'chat' } });
+      },
+    }),
+    [chat?.friendPictureUrl, chat?.friendName, chat?.friendId, router], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -248,7 +293,7 @@ export default function ChatScreen() {
                   <Text style={[styles.dateLabel, { color: c.textSub, backgroundColor: c.card }]}>{item.label}</Text>
                 </View>
               ) : (
-                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} />
+                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} avatar={avatar} />
               )
             }
             // inverted の末尾 = 画面の一番上
@@ -308,6 +353,9 @@ const styles = StyleSheet.create({
   segment: { flex: 1, minHeight: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   limitNote: { fontSize: 11, textAlign: 'center', paddingVertical: 10, paddingHorizontal: 16 },
   bubbleRow: { flexDirection: 'row', alignItems: 'flex-end', marginVertical: 3, gap: 6 },
+  avatar: { width: 36, height: 36, marginBottom: 2 },
+  avatarImage: { width: 36, height: 36, borderRadius: 18 },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   bubble: { maxWidth: '75%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   bubbleIn: { borderTopLeftRadius: 4 },
   bubbleOut: { borderTopRightRadius: 4 },
