@@ -1,5 +1,6 @@
 import { jstNow } from './utils.js';
 import { enqueueMileageEvent } from './mileage.js';
+import { recordFriendEvent } from './friend-events.js';
 export interface Tag {
   id: string;
   name: string;
@@ -74,10 +75,45 @@ export async function deleteTag(db: D1Database, id: string): Promise<void> {
   await db.prepare(`DELETE FROM tags WHERE id = ?`).bind(id).run();
 }
 
+/**
+ * タグの付け外しを、トークの出来事のログに1件残す(実際に変化したときだけ呼ぶ)。
+ * タグ名・友だちのアカウントは1回の SELECT で引く。失敗しても呼び出し元は失敗させない。
+ */
+export async function recordTagChangeEvent(
+  db: D1Database,
+  friendId: string,
+  tagId: string,
+  action: 'added' | 'removed',
+  actor?: string | null,
+): Promise<void> {
+  try {
+    const row = await db
+      .prepare(
+        `SELECT (SELECT name FROM tags WHERE id = ?) AS tag_name,
+                (SELECT line_account_id FROM friends WHERE id = ?) AS line_account_id`,
+      )
+      .bind(tagId, friendId)
+      .first<{ tag_name: string | null; line_account_id: string | null }>();
+    const name = row?.tag_name;
+    if (!name) return;
+    await recordFriendEvent(db, {
+      friendId,
+      lineAccountId: row?.line_account_id ?? null,
+      type: action === 'added' ? 'tag_added' : 'tag_removed',
+      text: `タグ「${name}」を${action === 'added' ? '追加' : '削除'}しました`,
+      actor: actor ?? null,
+      detail: { tagId },
+    });
+  } catch (error) {
+    console.error('tag change event failed:', error);
+  }
+}
+
 export async function addTagToFriend(
   db: D1Database,
   friendId: string,
   tagId: string,
+  options?: { actor?: string | null },
 ): Promise<boolean> {
   const now = jstNow();
   const result = await db
@@ -89,6 +125,7 @@ export async function addTagToFriend(
     .run();
   const added = (result.meta?.changes ?? 0) > 0;
   if (added) {
+    await recordTagChangeEvent(db, friendId, tagId, 'added', options?.actor);
     try {
       await enqueueMileageEvent(db, {
         eventType: 'tag_added',
@@ -211,13 +248,17 @@ export async function removeTagFromFriend(
   db: D1Database,
   friendId: string,
   tagId: string,
-): Promise<void> {
-  await db
+  options?: { actor?: string | null },
+): Promise<boolean> {
+  const result = await db
     .prepare(
       `DELETE FROM friend_tags WHERE friend_id = ? AND tag_id = ?`,
     )
     .bind(friendId, tagId)
     .run();
+  const removed = (result?.meta?.changes ?? 0) > 0;
+  if (removed) await recordTagChangeEvent(db, friendId, tagId, 'removed', options?.actor);
+  return removed;
 }
 
 export async function getFriendTags(

@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../../../src/state/services';
 import { useInterval } from '../../../src/state/hooks';
-import { buildChatItems, sameMessages, type Bubble, type ChatListItem } from '../../../src/lib/format';
+import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow } from '../../../src/lib/format';
 import { STATUS_LABEL } from '../../../src/lib/format';
 import type { ChatDetail, ChatStatus } from '../../../src/lib/types';
 import { ImageViewer } from '../../../src/components/image-viewer';
@@ -43,6 +43,20 @@ function Avatar({ uri, name, onPress }: { uri: string | null; name: string; onPr
     </Pressable>
   );
 }
+
+/** 出来事のログ(タグ・ブロック・フォーム回答など)。中央の小さなグレーの行 */
+const EventView = memo(function EventView({ event }: { event: EventRow }) {
+  const c = useColors();
+  const tone = event.type === 'blocked' ? c.danger : undefined;
+  return (
+    <View style={styles.eventWrap}>
+      <Text style={[styles.eventLabel, { color: tone ?? c.textSub, backgroundColor: c.card }]}>
+        {event.text}
+        {event.time ? ` ・ ${event.time}` : ''}
+      </Text>
+    </View>
+  );
+});
 
 const BubbleView = memo(function BubbleView({
   bubble,
@@ -141,7 +155,7 @@ export default function ChatScreen() {
         if (mine !== seq.current) return;
         const prev = chatRef.current;
         // 新着が無ければ再描画しない(10秒ごとのポーリングで画面がちらつかないように)
-        if (!prev || !sameMessages(prev.messages, next.messages) || prev.status !== next.status || prev.friendName !== next.friendName) {
+        if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.friendName !== next.friendName) {
           setChat(next);
         }
         setError(null);
@@ -217,7 +231,7 @@ export default function ChatScreen() {
   }
 
   // 一覧は新しい順に並べて inverted で表示する(開いたとき自動で一番下=最新が見える)
-  const items: ChatListItem[] = useMemo(() => (chat ? buildChatItems(chat.messages).reverse() : []), [chat]);
+  const items: ChatListItem[] = useMemo(() => (chat ? buildChatItems(chat.messages, chat.events).reverse() : []), [chat]);
   const canSend = text.trim().length > 0 && !sending;
 
   return (
@@ -292,6 +306,8 @@ export default function ChatScreen() {
                 <View style={styles.dateWrap}>
                   <Text style={[styles.dateLabel, { color: c.textSub, backgroundColor: c.card }]}>{item.label}</Text>
                 </View>
+              ) : item.type === 'event' ? (
+                <EventView event={item.event} />
               ) : (
                 <BubbleView bubble={item.bubble} onImagePress={setViewerUri} avatar={avatar} />
               )
@@ -363,6 +379,8 @@ const styles = StyleSheet.create({
   time: { fontSize: 11, marginBottom: 2 },
   dateWrap: { alignItems: 'center', marginVertical: 10 },
   dateLabel: { fontSize: 12, fontWeight: '600', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
+  eventWrap: { alignItems: 'center', marginVertical: 6, paddingHorizontal: 16 },
+  eventLabel: { fontSize: 11, textAlign: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   input: { flex: 1, minHeight: MIN_TAP, maxHeight: 140, borderRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 16 },
   sendButton: { width: MIN_TAP, height: MIN_TAP, borderRadius: MIN_TAP / 2, alignItems: 'center', justifyContent: 'center' },

@@ -12,11 +12,12 @@ import {
   nameInitial,
   parseApiDate,
   resolveFriendName,
+  sameEvents,
   sameMessages,
   statusLabel,
   toBubble,
 } from './format';
-import type { ChatMessage } from './types';
+import type { ChatEvent, ChatMessage } from './types';
 
 describe('resolveFriendName(本名 > システム表示名 > LINE名)', () => {
   it('優先順位どおり', () => {
@@ -80,6 +81,15 @@ describe('トーク一覧のプレビュー', () => {
   });
 });
 
+const ev = (over: Partial<ChatEvent>): ChatEvent => ({
+  id: 'e1',
+  type: 'tag_added',
+  text: 'タグ「SNS流入」を追加しました',
+  actor: null,
+  createdAt: '2026-10-03T10:30:00+09:00',
+  ...over,
+});
+
 const msg = (over: Partial<ChatMessage>): ChatMessage => ({
   id: 'm1',
   direction: 'incoming',
@@ -130,6 +140,48 @@ describe('吹き出し', () => {
       'B:b',
       'B:c',
     ]);
+  });
+  it('出来事のログを時刻順に混ぜ、日付の区切りの中に入れる', () => {
+    const items = buildChatItems(
+      [msg({ id: 'a', createdAt: '2026-10-03T10:00:00+09:00' }), msg({ id: 'b', createdAt: '2026-10-04T09:00:00+09:00' })],
+      [
+        ev({ id: 'e2', createdAt: '2026-10-04T08:00:00+09:00', text: 'ブロックされました', type: 'blocked' }),
+        ev({ id: 'e1', createdAt: '2026-10-03T11:00:00+09:00', actor: '山田' }),
+      ],
+    );
+    expect(items.map((i) => (i.type === 'date' ? `D:${i.label}` : i.key))).toEqual([
+      'D:2026年10月3日(土)',
+      'a',
+      'event-e1',
+      'D:2026年10月4日(日)',
+      'event-e2',
+      'b',
+    ]);
+    const e1 = items.find((i) => i.key === 'event-e1');
+    expect(e1?.type === 'event' && e1.event.text).toBe('タグ「SNS流入」を追加しました ・ 山田');
+    expect(e1?.type === 'event' && e1.event.time).toBe('11:00');
+  });
+  it('同時刻はメッセージが先。actor が無ければ本文だけ', () => {
+    const t = '2026-10-03T10:00:00+09:00';
+    const items = buildChatItems([msg({ id: 'a', createdAt: t })], [ev({ id: 'e', createdAt: t })]);
+    expect(items.map((i) => i.key)).toEqual(['date-2026-10-03', 'a', 'event-e']);
+    const e = items[2];
+    expect(e.type === 'event' && e.event.text).toBe('タグ「SNS流入」を追加しました');
+  });
+  it('出来事だけのトーク・events が undefined のトーク・未知の type', () => {
+    const only = buildChatItems([], [ev({ id: 'e', type: 'brand_new_type', text: '新しい出来事' })]);
+    expect(only.map((i) => i.type)).toEqual(['date', 'event']);
+    expect(only[1].type === 'event' && only[1].event.type).toBe('brand_new_type');
+    expect(buildChatItems([msg({ id: 'a' })], undefined).map((i) => i.key)).toEqual(['date-2026-10-03', 'a']);
+    expect(buildChatItems([], undefined)).toEqual([]);
+  });
+  it('出来事の変化をポーリングで検知する', () => {
+    const e1 = ev({ id: 'e1' });
+    expect(sameEvents(undefined, [])).toBe(true);
+    expect(sameEvents([e1], [ev({ id: 'e1' })])).toBe(true);
+    expect(sameEvents(undefined, [e1])).toBe(false);
+    expect(sameEvents([e1], [e1, ev({ id: 'e2' })])).toBe(false);
+    expect(sameEvents([e1], [ev({ id: 'e1', text: '別の文言' })])).toBe(false);
   });
   it('ポーリング結果の比較', () => {
     const a = [msg({ id: '1' }), msg({ id: '2' })];

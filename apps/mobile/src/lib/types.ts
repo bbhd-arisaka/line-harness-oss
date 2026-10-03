@@ -66,6 +66,17 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+/** トークに残る出来事のログ(タグ・ブロック・フォーム回答など)。type は増えるので string */
+export interface ChatEvent {
+  id: string;
+  type: string;
+  /** 表示用に完成した日本語 */
+  text: string;
+  /** 操作した人(スタッフ名・システム・フォーム・自動・LINE)。無ければ null */
+  actor: string | null;
+  createdAt: string;
+}
+
 /** GET /api/chats/:id */
 export interface ChatDetail {
   id: string;
@@ -78,6 +89,8 @@ export interface ChatDetail {
   lastMessageAt: string | null;
   createdAt: string | null;
   messages: ChatMessage[];
+  /** 出来事のログ(時刻の昇順)。古いサーバーでは無い */
+  events?: ChatEvent[];
 }
 
 /** PUT /api/chats/:id の data */

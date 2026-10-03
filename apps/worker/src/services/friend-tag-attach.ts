@@ -1,6 +1,7 @@
 import {
   getScenarios, enrollFriendInScenario, jstNow, enqueueMileageEvent,
   getFriendById, getLineAccountById, getLineAccountByChannelId, resolveDefaultLineAccount,
+  recordTagChangeEvent,
 } from '@line-crm/db';
 import { fireEvent } from './event-bus.js';
 import { pushImmediateFirstStep, type ImmediatePushContext } from './immediate-first-step.js';
@@ -33,7 +34,7 @@ export async function attachTagAndFireSideEffects(
   friendId: string,
   tagId: string,
   push?: ImmediatePushContext,
-  options?: { lineAccountId?: string | null; dispatch?: TagAutomationDispatch },
+  options?: { lineAccountId?: string | null; dispatch?: TagAutomationDispatch; actor?: string | null },
 ): Promise<{ added: boolean }> {
   const dispatch = options?.dispatch ?? createTagAutomationDispatch();
   const effectKey = tagChangeKey(friendId, tagId, 'add');
@@ -55,6 +56,8 @@ export async function attachTagAndFireSideEffects(
     .run();
   const added = (result.meta?.changes ?? 0) > 0;
   if (!added) return { added: false };
+  // トークの出来事のログ(実際に付いたときだけ。失敗しても付与は成功させる)
+  await recordTagChangeEvent(db, friendId, tagId, 'added', options?.actor ?? null);
   if (!claimTagEffects(dispatch, effectKey)) {
     console.warn('Repeated tag automation side effects skipped within this dispatch');
     // The tag changed again, unlike a normal already-attached no-op. Let the

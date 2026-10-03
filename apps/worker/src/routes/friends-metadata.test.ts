@@ -6,6 +6,8 @@ const dbMocks = {
   getFriendById: vi.fn(),
   getFriendTags: vi.fn(),
   jstNow: vi.fn(() => '2026-08-21T00:00:00.000+09:00'),
+  changedMetadataKeys: vi.fn(() => []),
+  recordFriendInfoChanged: vi.fn(),
 };
 vi.mock('@line-crm/db', () => dbMocks);
 vi.mock('../services/event-bus.js', () => ({ fireEvent: vi.fn() }));

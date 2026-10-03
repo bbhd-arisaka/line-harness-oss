@@ -410,7 +410,7 @@ async function processSingleDelivery(
   // 失敗してもログに残すだけで配信フローは止めない。
   if (currentStep.on_reach_tag_id) {
     try {
-      await addTagToFriend(db, friend.id, currentStep.on_reach_tag_id);
+      await addTagToFriend(db, friend.id, currentStep.on_reach_tag_id, { actor: '自動' });
     } catch (err) {
       console.error(`[scenario] tag attach failed step=${currentStep.id}:`, err);
     }

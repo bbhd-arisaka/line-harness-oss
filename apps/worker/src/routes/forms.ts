@@ -21,6 +21,8 @@ import {
   resolveDefaultLineAccount,
   stopAllFriendScenarios,
   updateFriendRegistrationFields,
+  changedMetadataKeys,
+  recordFriendInfoChanged,
   removeTagFromFriend,
   enrollFriendInReminder,
 } from '@line-crm/db';
@@ -981,6 +983,14 @@ forms.post('/api/forms/:id/submit', async (c) => {
               .prepare(`UPDATE friends SET metadata = ?, updated_at = ? WHERE id = ?`)
               .bind(JSON.stringify(merged), now, friendId)
               .run();
+            // トークの出来事のログ: 友だち情報欄として定義のある項目だけ(フォームの質問名は出さない)
+            await recordFriendInfoChanged(db, {
+              friendId: friendId!,
+              lineAccountId: friend.line_account_id ?? null,
+              keys: changedMetadataKeys(existing, submissionData),
+              actor: 'フォーム',
+              onlyDefined: true,
+            });
           })(),
         );
       }
@@ -1050,7 +1060,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
               ...(displayNamePatch !== undefined ? { systemDisplayName: displayNamePatch } : {}),
               ...(memoPatch !== undefined ? { memo: memoPatch } : {}),
               ...(Object.keys(metadataPatch).length > 0 ? { metadataPatch } : {}),
-            }),
+            }, { actor: 'フォーム' }),
           );
         }
         for (const tagId of tagIdsToAttach) {
@@ -1058,11 +1068,11 @@ forms.post('/api/forms/:id/submit', async (c) => {
             attachTagAndFireSideEffects(db, friendId, tagId, {
               defaultAccessToken: c.env.LINE_CHANNEL_ACCESS_TOKEN,
               workerUrl: c.env.WORKER_URL,
-            }),
+            }, { actor: 'フォーム' }),
           );
         }
         for (const tagId of tagIdsToDetach) {
-          if (!tagIdsToAttach.has(tagId)) sideEffects.push(removeTagFromFriend(db, friendId, tagId));
+          if (!tagIdsToAttach.has(tagId)) sideEffects.push(removeTagFromFriend(db, friendId, tagId, { actor: 'フォーム' }));
         }
         for (const scenarioId of scenarioIdsToStart) {
           sideEffects.push(enrollFriendInScenario(db, friendId, scenarioId));
@@ -1084,7 +1094,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
         sideEffects.push(attachTagAndFireSideEffects(db, friendId, form.on_submit_tag_id, {
           defaultAccessToken: c.env.LINE_CHANNEL_ACCESS_TOKEN,
           workerUrl: c.env.WORKER_URL,
-        }));
+        }, { actor: 'フォーム' }));
       }
 
       // Enroll in scenario

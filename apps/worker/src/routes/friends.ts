@@ -15,6 +15,8 @@ import {
   getMileageHistoryForFriend,
   jstNow,
   updateFriendRegistrationFields,
+  changedMetadataKeys,
+  recordFriendInfoChanged,
 } from '@line-crm/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
@@ -489,7 +491,7 @@ friends.post('/api/friends/:id/tags', async (c) => {
     }
 
     const db = c.env.DB;
-    await addTagToFriend(db, friendId, body.tagId);
+    await addTagToFriend(db, friendId, body.tagId, { actor: c.get('staff')?.name ?? null });
 
     // Enroll in tag_added scenarios that match this tag
     const allScenarios = await getScenarios(db);
@@ -521,7 +523,7 @@ friends.delete('/api/friends/:id/tags/:tagId', async (c) => {
     const friendId = c.req.param('id');
     const tagId = c.req.param('tagId');
 
-    await removeTagFromFriend(c.env.DB, friendId, tagId);
+    await removeTagFromFriend(c.env.DB, friendId, tagId, { actor: c.get('staff')?.name ?? null });
 
     // イベントバス発火: tag_change
     await fireEvent(c.env.DB, 'tag_change', { friendId, eventData: { tagId, action: 'remove' } });
@@ -559,6 +561,14 @@ friends.put('/api/friends/:id/metadata', async (c) => {
       .prepare('UPDATE friends SET metadata = ?, updated_at = ? WHERE id = ?')
       .bind(JSON.stringify(merged), now, friendId)
       .run();
+
+    // トークの出来事のログ: 実際に値が変わった項目だけ(値は残さず、項目名だけ)
+    await recordFriendInfoChanged(db, {
+      friendId,
+      lineAccountId: friend.line_account_id ?? null,
+      keys: changedMetadataKeys(existing, body),
+      actor: c.get('staff')?.name ?? null,
+    });
 
     const updated = await getFriendById(db, friendId);
     const tags = await getFriendTags(db, friendId);
@@ -600,7 +610,7 @@ friends.put('/api/friends/:id/profile', async (c) => {
       ...('systemDisplayName' in body ? { systemDisplayName: body.systemDisplayName ?? null } : {}),
       ...('displayName' in body ? { displayName: body.displayName ?? null } : {}),
       ...('memo' in body ? { memo: body.memo ?? null } : {}),
-    });
+    }, { actor: c.get('staff')?.name ?? null });
 
     const updated = await getFriendById(db, friendId);
     const tags = await getFriendTags(db, friendId);

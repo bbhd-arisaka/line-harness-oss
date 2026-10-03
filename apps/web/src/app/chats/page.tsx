@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { mergeTimeline, eventToneClass, eventActorSuffix, timelineSignature, type ChatEvent } from '@/lib/chat-timeline'
 import { TaggedText } from '@/components/forms/tagged-text'
 import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
 import { FormTagPicker } from '@/components/forms/form-tag-picker'
@@ -60,6 +61,8 @@ interface ChatDetail extends Chat {
   friendName: string
   friendPictureUrl: string | null
   messages?: ChatMessage[]
+  /** 出来事のログ(タグ・ブロック・フォーム回答など)。古いサーバーでは無い */
+  events?: ChatEvent[]
 }
 
 type StatusFilter = 'all' | 'unread' | 'in_progress' | 'resolved'
@@ -574,7 +577,7 @@ export default function ChatsPage() {
   // そこから上にスクロールすれば過去のメッセージを辿れる（LINE受信画面と同じUX）。
   // ユーザーが手動でスクロールしたら delayed auto-scroll は発動させない。
   useEffect(() => {
-    if (!chatDetail?.messages || chatDetail.messages.length === 0) return
+    if (!chatDetail || (!chatDetail.messages?.length && !chatDetail.events?.length)) return
     const el = messagesScrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
@@ -597,7 +600,7 @@ export default function ChatsPage() {
       window.clearTimeout(id)
       el.removeEventListener('scroll', onScroll)
     }
-  }, [chatDetail?.id, chatDetail?.messages?.length])
+  }, [chatDetail?.id, timelineSignature(chatDetail?.messages, chatDetail?.events)])
 
   // チャットを開いたら入力欄に自動フォーカスする — 「クリックしてもフォーカスが
   // 入らない」報告への対処で、そもそもクリックを不要にする。モバイルでは
@@ -1100,15 +1103,43 @@ export default function ChatsPage() {
 
               {/* Messages — LINE-style chat bubbles */}
               <div ref={messagesScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-2" style={{ backgroundColor: '#7494C0' }}>
-                {(!chatDetail.messages || chatDetail.messages.length === 0) ? (
+                {(!chatDetail.messages?.length && !chatDetail.events?.length) ? (
                   <div className="text-center py-8">
                     <p className="text-white/60 text-sm">メッセージはまだありません。</p>
                   </div>
                 ) : (
-                  (chatDetail.messages ?? []).map((msg, idx) => {
-                    const allMsgs = chatDetail.messages ?? []
-                    const prevMsg = idx > 0 ? allMsgs[idx - 1] : null
-                    const showDateSep = !prevMsg || !sameYmd(prevMsg.createdAt, msg.createdAt)
+                  mergeTimeline(chatDetail.messages, chatDetail.events).map((item, idx, timeline) => {
+                    const prevItem = idx > 0 ? timeline[idx - 1] : null
+                    const showDateSep = !prevItem || !sameYmd(prevItem.createdAt, item.createdAt)
+
+                    // 出来事のログ(タグ・ブロック・フォーム回答など)は中央のシステム行。
+                    // 未知の type も同じ見た目(色分けだけ種類で控えめに)。
+                    if (item.kind === 'event') {
+                      const ev = item.event
+                      return (
+                        <div key={item.key}>
+                          {showDateSep && (
+                            <div className="flex justify-center my-3">
+                              <span className="text-[11px] text-white/85 bg-black/20 px-2.5 py-0.5 rounded-full">
+                                {formatYmdSlash(ev.createdAt)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-center my-1.5">
+                            <span className={`text-[11px] px-2.5 py-0.5 rounded-full max-w-[90%] text-center break-words ${eventToneClass(ev.type)}`}>
+                              {ev.text}
+                              {eventActorSuffix(ev.actor)}
+                              {' · '}
+                              {new Date(ev.createdAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    const msg = item.message
+                    const allMsgs = timeline
+                    const prevMsg = prevItem && prevItem.kind === 'message' ? prevItem.message : null
                     const isOutgoing = msg.direction === 'outgoing'
 
                     // リッチメニュー切替の postback はバブルにせずシステム行で表示。
@@ -1122,7 +1153,8 @@ export default function ChatsPage() {
                       }
                       let runLength = 1
                       for (let j = idx + 1; j < allMsgs.length; j++) {
-                        if (isRichMenuSwitch(allMsgs[j]) && sameYmd(allMsgs[j].createdAt, msg.createdAt)) runLength++
+                        const nx = allMsgs[j]
+                        if (nx.kind === 'message' && isRichMenuSwitch(nx.message) && sameYmd(nx.createdAt, msg.createdAt)) runLength++
                         else break
                       }
                       return (

@@ -227,7 +227,7 @@ export async function pushImmediateFirstStep(
     const attachReachTag = async () => {
       if (!firstStep.on_reach_tag_id) return;
       try {
-        await addTagToFriend(db, friendId, firstStep.on_reach_tag_id);
+        await addTagToFriend(db, friendId, firstStep.on_reach_tag_id, { actor: '自動' });
       } catch (err) {
         console.error(`[immediate-first-step] tag attach failed step=${firstStep.id}:`, err);
       }

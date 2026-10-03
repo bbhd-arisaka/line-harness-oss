@@ -1,5 +1,5 @@
 // 表示用の整形(名前の優先順位・日時・吹き出し)。React Native に依存しない純粋な関数だけ。
-import type { ChatMessage, ChatStatus, FriendFieldDefinition, FriendRichMenu } from './types';
+import type { ChatEvent, ChatMessage, ChatStatus, FriendFieldDefinition, FriendRichMenu } from './types';
 
 /** 友だちの表示名: 本名 > システム表示名 > LINE名(Web の resolveFriendName と同じ) */
 export function resolveFriendName(f: {
@@ -219,21 +219,60 @@ export function toBubble(m: ChatMessage): Bubble {
   }
 }
 
+/** 出来事のログ1行(中央の小さなグレーの行)。未知の type も同じ見た目 */
+export interface EventRow {
+  id: string;
+  type: string;
+  /** 本文 + 操作した人(あれば「 ・ 山田」) */
+  text: string;
+  time: string;
+  createdAt: string;
+}
+
 export type ChatListItem =
   | { type: 'date'; key: string; label: string }
-  | { type: 'bubble'; key: string; bubble: Bubble };
+  | { type: 'bubble'; key: string; bubble: Bubble }
+  | { type: 'event'; key: string; event: EventRow };
 
-/** 古い順のメッセージに、日付の区切りを差し込んだ一覧にする */
-export function buildChatItems(messages: ChatMessage[]): ChatListItem[] {
+export function toEventRow(e: ChatEvent): EventRow {
+  const actor = e.actor?.trim();
+  return {
+    id: e.id,
+    type: e.type,
+    text: actor ? `${e.text} ・ ${actor}` : e.text,
+    time: formatTime(e.createdAt),
+    createdAt: e.createdAt,
+  };
+}
+
+function timeMs(iso: string): number {
+  return parseApiDate(iso)?.getTime() ?? 0;
+}
+
+/**
+ * 古い順のメッセージと出来事を時刻順に混ぜ、日付の区切りを差し込んだ一覧にする。
+ * 同時刻はメッセージが先。events が無い(undefined)ときはメッセージだけ。
+ */
+export function buildChatItems(messages: ChatMessage[], events?: ChatEvent[]): ChatListItem[] {
+  type Entry = { at: string; order: number; item: ChatListItem };
+  const entries: Entry[] = [];
+  for (const m of messages) entries.push({ at: m.createdAt, order: 0, item: { type: 'bubble', key: m.id, bubble: toBubble(m) } });
+  for (const e of events ?? []) entries.push({ at: e.createdAt, order: 1, item: { type: 'event', key: `event-${e.id}`, event: toEventRow(e) } });
+  if (events && events.length > 0) {
+    // 安定ソート: 時刻 → メッセージ優先 → 元の並び
+    const indexed = entries.map((x, i) => ({ x, i }));
+    indexed.sort((a, b) => timeMs(a.x.at) - timeMs(b.x.at) || a.x.order - b.x.order || a.i - b.i);
+    entries.splice(0, entries.length, ...indexed.map((y) => y.x));
+  }
   const items: ChatListItem[] = [];
   let lastDay = '';
-  for (const m of messages) {
-    const day = dayKey(m.createdAt);
+  for (const { at, item } of entries) {
+    const day = dayKey(at);
     if (day && day !== lastDay) {
-      items.push({ type: 'date', key: `date-${day}`, label: formatDateSeparator(m.createdAt) });
+      items.push({ type: 'date', key: `date-${day}`, label: formatDateSeparator(at) });
       lastDay = day;
     }
-    items.push({ type: 'bubble', key: m.id, bubble: toBubble(m) });
+    items.push(item);
   }
   return items;
 }
@@ -243,6 +282,16 @@ export function sameMessages(a: ChatMessage[], b: ChatMessage[]): boolean {
   if (a.length !== b.length) return false;
   if (a.length === 0) return true;
   return a[a.length - 1].id === b[b.length - 1].id && a[0].id === b[0].id;
+}
+
+/** 出来事のログが、いまの表示と同じか(undefined は空と同じ。件数・先頭と末尾の id・本文で比べる) */
+export function sameEvents(a: ChatEvent[] | undefined, b: ChatEvent[] | undefined): boolean {
+  const x = a ?? [];
+  const y = b ?? [];
+  if (x.length !== y.length) return false;
+  if (x.length === 0) return true;
+  const last = x.length - 1;
+  return x[0].id === y[0].id && x[last].id === y[last].id && x[last].text === y[last].text;
 }
 
 // ── 友だち詳細 ──

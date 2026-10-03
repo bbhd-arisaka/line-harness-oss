@@ -1,4 +1,10 @@
 import { jstNow } from './utils.js';
+import {
+  recordFriendEvent,
+  recordFriendInfoChanged,
+  recordProfileChanged,
+  changedMetadataKeys,
+} from './friend-events.js';
 export interface Friend {
   id: string;
   line_user_id: string;
@@ -36,16 +42,41 @@ export async function updateFriendRegistrationFields(
   db: D1Database,
   friendId: string,
   updates: { realName?: string | null; displayName?: string | null; systemDisplayName?: string | null; memo?: string | null; metadataPatch?: Record<string, unknown> },
+  options?: { actor?: string | null },
 ): Promise<void> {
   const sets: string[] = [];
   const values: unknown[] = [];
-  if ('realName' in updates) { sets.push('real_name = ?'); values.push(updates.realName ?? null); }
-  if ('displayName' in updates) { sets.push('display_name = ?'); values.push(updates.displayName ?? null); }
-  if ('systemDisplayName' in updates) { sets.push('system_display_name = ?'); values.push(updates.systemDisplayName ?? null); }
-  if ('memo' in updates) { sets.push('memo = ?'); values.push(updates.memo ?? null); }
+  // 変更前の値(トークの出来事のログで、実際に変わった項目だけを残すため)
+  const before = await db
+    .prepare('SELECT real_name, display_name, system_display_name, memo, metadata, line_account_id FROM friends WHERE id = ?')
+    .bind(friendId)
+    .first<{
+      real_name: string | null; display_name: string | null; system_display_name: string | null;
+      memo: string | null; metadata: string; line_account_id: string | null;
+    }>();
+  const changedProfile: string[] = [];
+  const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? '') === (b ?? '');
+  if ('realName' in updates) {
+    sets.push('real_name = ?'); values.push(updates.realName ?? null);
+    if (before && !same(before.real_name, updates.realName)) changedProfile.push('本名');
+  }
+  if ('displayName' in updates) {
+    sets.push('display_name = ?'); values.push(updates.displayName ?? null);
+    if (before && !same(before.display_name, updates.displayName)) changedProfile.push('表示名');
+  }
+  if ('systemDisplayName' in updates) {
+    sets.push('system_display_name = ?'); values.push(updates.systemDisplayName ?? null);
+    if (before && !same(before.system_display_name, updates.systemDisplayName)) changedProfile.push('システム表示名');
+  }
+  if ('memo' in updates) {
+    sets.push('memo = ?'); values.push(updates.memo ?? null);
+    if (before && !same(before.memo, updates.memo)) changedProfile.push('個別メモ');
+  }
+  let changedKeys: string[] = [];
   if (updates.metadataPatch && Object.keys(updates.metadataPatch).length > 0) {
-    const friend = await db.prepare('SELECT metadata FROM friends WHERE id = ?').bind(friendId).first<{ metadata: string }>();
-    const existing = friend ? (JSON.parse(friend.metadata || '{}') as Record<string, unknown>) : {};
+    let existing: Record<string, unknown> = {};
+    try { existing = before ? (JSON.parse(before.metadata || '{}') as Record<string, unknown>) : {}; } catch { existing = {}; }
+    changedKeys = changedMetadataKeys(existing, updates.metadataPatch);
     const merged = { ...existing, ...updates.metadataPatch };
     sets.push('metadata = ?');
     values.push(JSON.stringify(merged));
@@ -55,6 +86,11 @@ export async function updateFriendRegistrationFields(
   values.push(jstNow());
   values.push(friendId);
   await db.prepare(`UPDATE friends SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run();
+
+  const actor = options?.actor ?? null;
+  const lineAccountId = before?.line_account_id ?? null;
+  await recordProfileChanged(db, { friendId, lineAccountId, labels: changedProfile, actor });
+  await recordFriendInfoChanged(db, { friendId, lineAccountId, keys: changedKeys, actor });
 }
 
 export interface GetFriendsOptions {
@@ -215,6 +251,7 @@ export async function upsertFriend(
     : await getFriendByLineUserId(db, input.lineUserId);
 
   if (existing) {
+    const wasFollowing = existing.is_following !== 0;
     await db
       .prepare(
         `UPDATE friends
@@ -245,6 +282,7 @@ export async function upsertFriend(
       )
       .run();
 
+    if (!wasFollowing) await recordFollowStateEvent(db, existing, 'unblocked', 'LINE');
     return (await getFriendById(db, existing.id))!;
   }
 
@@ -276,7 +314,36 @@ export async function upsertFriend(
     )
     .run();
 
+  await recordFriendEvent(db, {
+    friendId: id,
+    lineAccountId: input.lineAccountId ?? null,
+    type: 'followed',
+    text: '友だち追加されました',
+    actor: 'LINE',
+  });
   return (await getFriendById(db, id))!;
+}
+
+/**
+ * 友だちの状態が変わったときの出来事を1件残す。
+ * 再フォローで、以前ブロックされていた(ブロックの記録がある)ときだけ「ブロック解除」、
+ * ブロックされた記録が無い再登録は「友だち追加」とする。
+ */
+async function recordFollowStateEvent(
+  db: D1Database,
+  friend: { id: string; line_account_id: string | null; last_unfollowed_at?: string | null; unfollow_count?: number },
+  kind: 'unblocked' | 'blocked',
+  actor: string,
+): Promise<void> {
+  const wasBlocked = !!friend.last_unfollowed_at || (friend.unfollow_count ?? 0) > 0;
+  const type = kind === 'blocked' ? 'blocked' : wasBlocked ? 'unblocked' : 'followed';
+  await recordFriendEvent(db, {
+    friendId: friend.id,
+    lineAccountId: friend.line_account_id,
+    type,
+    text: type === 'blocked' ? 'ブロックされました' : type === 'unblocked' ? 'ブロックが解除されました' : '友だち追加されました',
+    actor,
+  });
 }
 
 /**
@@ -303,6 +370,15 @@ export async function updateFriendFollowStatus(
   lineAccountId?: string | null,
 ): Promise<void> {
   const now = jstNow();
+  // 状態が実際に変わる友だちだけを先に控える(ログ用)
+  const changedRows = await db
+    .prepare(
+      `SELECT id, line_account_id, last_unfollowed_at, unfollow_count FROM friends
+        WHERE line_user_id = ? AND is_following = ?${lineAccountId ? ' AND line_account_id = ?' : ''}`,
+    )
+    .bind(lineUserId, isFollowing ? 0 : 1, ...(lineAccountId ? [lineAccountId] : []))
+    .all<{ id: string; line_account_id: string | null; last_unfollowed_at: string | null; unfollow_count: number }>();
+  const changed = changedRows.results ?? [];
   // アカウント指定があれば、そのアカウントの友だちだけを更新する(別アカウントの行は触らない)
   const scope = lineAccountId ? ' AND line_account_id = ?' : '';
   const scopeArgs = lineAccountId ? [lineAccountId] : [];
@@ -321,6 +397,7 @@ export async function updateFriendFollowStatus(
       )
       .bind(now, now, now, lineUserId, ...scopeArgs)
       .run();
+    for (const f of changed) await recordFollowStateEvent(db, f, 'unblocked', 'LINE');
     return;
   }
   await db
@@ -335,6 +412,7 @@ export async function updateFriendFollowStatus(
     )
     .bind(now, now, lineUserId, ...scopeArgs)
     .run();
+  for (const f of changed) await recordFollowStateEvent(db, f, 'blocked', 'LINE');
 }
 
 /** Get merged metadata across all friend records sharing the same user_id (UUID). */

@@ -1731,7 +1731,7 @@ async function applyXHarnessActions(
       }
       if (tagRow) {
         const { addTagToFriend } = await import('@line-crm/db');
-        await addTagToFriend(db, friendId, tagRow.id);
+        await addTagToFriend(db, friendId, tagRow.id, { actor: '自動' });
         console.log(`X Harness: added tag "${result.tag}" to friend ${friendId}`);
       }
     } catch (err) {

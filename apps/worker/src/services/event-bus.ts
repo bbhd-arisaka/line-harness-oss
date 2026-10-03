@@ -287,12 +287,13 @@ async function executeAction(
       await attachTagAndFireSideEffects(db, friendId!, action.params.tagId, undefined, {
         lineAccountId,
         dispatch,
+        actor: '自動',
       });
       break;
     }
 
     case 'remove_tag':
-      await removeTagFromFriend(db, friendId!, action.params.tagId);
+      await removeTagFromFriend(db, friendId!, action.params.tagId, { actor: '自動' });
       break;
 
     case 'start_scenario':

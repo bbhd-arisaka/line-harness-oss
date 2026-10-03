@@ -16,6 +16,7 @@ import {
   getLineAccountById,
   resolveDefaultLineAccount,
   updateChat,
+  listFriendEvents,
   jstNow,
 } from '@line-crm/db';
 import type { Env } from '../index.js';
@@ -453,6 +454,9 @@ chats.get('/api/chats/:id', async (c) => {
       .all();
     messages.results = (messages.results as Record<string, unknown>[]).reverse();
 
+    // トークの履歴に挟む「出来事のログ」(フォーム回答・ブロック・タグ・友だち情報の変更など)。時刻の昇順。
+    const events = await listFriendEvents(c.env.DB, resolvedFriendId, { limit: 500 });
+
     return c.json({
       success: true,
       data: {
@@ -471,6 +475,13 @@ chats.get('/api/chats/:id', async (c) => {
           messageType: m.message_type,
           content: m.content,
           createdAt: m.created_at,
+        })),
+        events: events.map((e) => ({
+          id: e.id,
+          type: e.event_type,
+          text: e.text,
+          actor: e.actor,
+          createdAt: e.created_at,
         })),
       },
     });

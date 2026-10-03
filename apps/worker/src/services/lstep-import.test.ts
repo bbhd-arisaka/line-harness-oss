@@ -112,6 +112,18 @@ describe('Lステップ引き継ぎ', () => {
     expect(sqlite.prepare("SELECT field_type, options FROM friend_field_definitions WHERE field_key='ls_first'").get()).toEqual({ field_type: 'select', options: '["あり","なし"]' });
   });
 
+  test('一括投入(友だち・タグ)では、トークの出来事のログを残さない / 元に戻しても残さない', async () => {
+    const { db, sqlite } = setup();
+    const defs = validateDefinitions(DEFS);
+    const { batchId } = await startImport(db, defs, 'owner');
+    await applyFriends(db, batchId, validateFriends(FRIENDS, new Set(defs.fields.map((f) => f.key))));
+    await finishImport(db, batchId, {});
+    expect(sqlite.prepare('SELECT COUNT(*) c FROM friend_tags').get()).toEqual({ c: 2 });
+    expect(sqlite.prepare('SELECT COUNT(*) c FROM friend_events').get()).toEqual({ c: 0 });
+    await undoImport(db, batchId);
+    expect(sqlite.prepare('SELECT COUNT(*) c FROM friend_events').get()).toEqual({ c: 0 });
+  });
+
   test('2回実行しても、タグは重複せず、定義も増えない', async () => {
     const { db, sqlite } = setup();
     const defs = validateDefinitions(DEFS);

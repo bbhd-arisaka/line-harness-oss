@@ -1,3 +1,4 @@
+import type { ChatEvent } from "./chat-timeline"
 import type {
   Friend,
   Tag,
@@ -1034,7 +1035,7 @@ export const api = {
       )
     },
     get: (id: string) =>
-      fetchApi<ApiResponse<Chat & { messages?: { id: string; content: string; senderType: string; createdAt: string }[] }>>(
+      fetchApi<ApiResponse<Chat & { messages?: { id: string; content: string; senderType: string; createdAt: string }[]; events?: ChatEvent[] }>>(
         `/api/chats/${id}`,
       ),
     create: (data: { friendId: string; operatorId?: string | null }) =>

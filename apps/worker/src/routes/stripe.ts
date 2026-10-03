@@ -138,7 +138,7 @@ stripe.post('/api/integrations/stripe/webhook', async (c) => {
           .bind(`purchased_${productId}`)
           .first<{ id: string }>();
         if (tag) {
-          await addTagToFriend(db, friendId, tag.id);
+          await addTagToFriend(db, friendId, tag.id, { actor: '自動' });
         }
       }
 
@@ -169,7 +169,7 @@ stripe.post('/api/integrations/stripe/webhook', async (c) => {
         .prepare(`SELECT id FROM tags WHERE name = 'subscription_cancelled'`)
         .first<{ id: string }>();
       if (cancelledTag) {
-        await addTagToFriend(db, friendId, cancelledTag.id);
+        await addTagToFriend(db, friendId, cancelledTag.id, { actor: '自動' });
       }
     }
 

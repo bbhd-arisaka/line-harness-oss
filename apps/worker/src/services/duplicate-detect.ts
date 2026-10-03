@@ -126,12 +126,12 @@ export async function processDuplicateDetection(db: D1Database): Promise<void> {
 
       // Tag friend with the match's account tag (e.g., "重複:①")
       if (matchTagId) {
-        await addTagToFriend(db, friend.id, matchTagId);
+        await addTagToFriend(db, friend.id, matchTagId, { actor: '自動' });
       }
 
       // Tag match with the friend's account tag (e.g., "重複:XH1")
       if (friendTagId) {
-        await addTagToFriend(db, match.id, friendTagId);
+        await addTagToFriend(db, match.id, friendTagId, { actor: '自動' });
       }
 
       taggedCount++;

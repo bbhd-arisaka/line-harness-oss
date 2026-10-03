@@ -1,4 +1,5 @@
 import { jstNow } from './utils.js';
+import { recordFriendEvent } from './friend-events.js';
 // =============================================================================
 // Forms — Survey / questionnaire system (L社 回答フォーム equivalent)
 // =============================================================================
@@ -694,6 +695,31 @@ export async function createFormSubmission(
     .prepare(`UPDATE forms SET submit_count = submit_count + 1, updated_at = ? WHERE id = ?`)
     .bind(now, input.formId)
     .run();
+
+  // トークの出来事のログ(友だちが特定できる回答だけ)。失敗しても回答の保存は成功させる
+  if (input.friendId) {
+    try {
+      const row = await db
+        .prepare(
+          `SELECT (SELECT name FROM forms WHERE id = ?) AS form_name,
+                  (SELECT line_account_id FROM friends WHERE id = ?) AS line_account_id`,
+        )
+        .bind(input.formId, input.friendId)
+        .first<{ form_name: string | null; line_account_id: string | null }>();
+      if (row?.form_name) {
+        await recordFriendEvent(db, {
+          friendId: input.friendId,
+          lineAccountId: row.line_account_id ?? null,
+          type: 'form_submitted',
+          text: `フォーム「${row.form_name}」に回答しました`,
+          actor: 'フォーム',
+          detail: { formId: input.formId, submissionId: id },
+        });
+      }
+    } catch (error) {
+      console.error('form submitted event failed:', error);
+    }
+  }
 
   return (await db
     .prepare(`SELECT * FROM form_submissions WHERE id = ?`)

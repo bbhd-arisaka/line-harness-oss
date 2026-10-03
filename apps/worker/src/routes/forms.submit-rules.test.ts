@@ -35,6 +35,8 @@ vi.mock('@line-crm/db', () => ({
   stopAllFriendScenarios: vi.fn(),
   updateFriendRegistrationFields: mocks.updateFriendRegistrationFields,
   removeTagFromFriend: mocks.removeTagFromFriend,
+  changedMetadataKeys: vi.fn(() => []),
+  recordFriendInfoChanged: vi.fn(),
   enrollFriendInScenario: mocks.enrollFriendInScenario,
   enrollFriendInReminder: mocks.enrollFriendInReminder,
   applyMileageRulesForEvent: vi.fn(),
@@ -155,12 +157,12 @@ describe('選択時の動作', () => {
     await submit({ kikkake: 'SNS' });
     expect(mocks.updateFriendRegistrationFields).toHaveBeenCalledWith(expect.anything(), 'friend-1', {
       metadataPatch: { ff_kikkake: 'SNS' },
-    });
+    }, { actor: 'フォーム' });
     mocks.updateFriendRegistrationFields.mockClear();
     await submit({ kikkake: '紹介' });
     expect(mocks.updateFriendRegistrationFields).toHaveBeenCalledWith(expect.anything(), 'friend-1', {
       metadataPatch: { ff_kikkake: 'ご紹介' },
-    });
+    }, { actor: 'フォーム' });
   });
 
   test('チェックボックスの複数選択は、友だち情報へまとめて登録する', async () => {
@@ -170,7 +172,7 @@ describe('選択時の動作', () => {
     await submit({ menu: ['A', 'C'] });
     expect(mocks.updateFriendRegistrationFields).toHaveBeenCalledWith(expect.anything(), 'friend-1', {
       metadataPatch: { ff_menu: 'A, C' },
-    });
+    }, { actor: 'フォーム' });
   });
 
   test('「その他(自由入力)」も選択肢「その他」のタグ設定が効く', async () => {
@@ -178,7 +180,7 @@ describe('選択時の動作', () => {
       formWith([{ name: 'k', label: 'k', type: 'radio', options: ['SNS'], allowOther: true, optionTags: { その他: ['tag-other'] } }]),
     );
     await submit({ k: 'その他(友人の紹介)' });
-    expect(mocks.attachTag).toHaveBeenCalledWith(expect.anything(), 'friend-1', 'tag-other', expect.anything());
+    expect(mocks.attachTag).toHaveBeenCalledWith(expect.anything(), 'friend-1', 'tag-other', expect.anything(), { actor: 'フォーム' });
   });
 
   test('アクション: タグ追加・削除・シナリオ開始', async () => {
@@ -191,8 +193,8 @@ describe('選択時の動作', () => {
       ]),
     );
     await submit({ k: 'A' });
-    expect(mocks.attachTag).toHaveBeenCalledWith(expect.anything(), 'friend-1', 't-add', expect.anything());
-    expect(mocks.removeTagFromFriend).toHaveBeenCalledWith(expect.anything(), 'friend-1', 't-del');
+    expect(mocks.attachTag).toHaveBeenCalledWith(expect.anything(), 'friend-1', 't-add', expect.anything(), { actor: 'フォーム' });
+    expect(mocks.removeTagFromFriend).toHaveBeenCalledWith(expect.anything(), 'friend-1', 't-del', { actor: 'フォーム' });
     expect(mocks.enrollFriendInScenario).toHaveBeenCalledWith(expect.anything(), 'friend-1', 'sc-1');
   });
 });

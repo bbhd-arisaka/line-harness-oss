@@ -539,7 +539,7 @@ describe('on_reach_tag', () => {
     await pushImmediateFirstStep(db, 'friend-1', 'scn-1', ctx, {
       enrollment: { id: 'fs-1', current_step_order: 0 },
     });
-    expect(dbMocks.addTagToFriend).toHaveBeenCalledWith(db, 'friend-1', 'tag-9');
+    expect(dbMocks.addTagToFriend).toHaveBeenCalledWith(db, 'friend-1', 'tag-9', { actor: '自動' });
   });
 });
 
