@@ -1,5 +1,8 @@
 import type { Context, Next } from 'hono';
-import { getStaffByApiKey } from '@line-crm/db';
+import { getStaffByApiKey, getStaffByAppToken } from '@line-crm/db';
+
+/** iOSアプリのトークンの先頭(packages/db の APP_TOKEN_PREFIX と同じ値) */
+const APP_TOKEN_PREFIX = 'lhapp_';
 import type { Env } from '../index.js';
 import type { AdminSameSite } from './admin-auth-config.js';
 import { safeDecode } from '../utils/safe-decode.js';
@@ -206,6 +209,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path.startsWith('/api/liff/') ||
     // Admin login/logout — issue/clear the session cookie before auth exists.
     path === '/api/auth/login' ||
+    // iOSアプリのログイン(メール・パスワード。route 側で総当たり対策あり)
+    path === '/api/app/login' ||
     // ログイン画面が、beyond admin のログインを案内するための設定(秘密は含まない)
     path === '/api/auth/config' ||
     path === '/api/auth/logout' ||
@@ -228,7 +233,17 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
   const cookie = cookieToken(c);
   const token = bearer ?? cookie;
 
-  let staff = await authenticateApiToken(c, token);
+  // iOSアプリのトークン(Authorization ヘッダだけ。Cookie では受け付けない)
+  let staff: AuthenticatedStaff | null = null;
+  if (bearer && bearer.startsWith(APP_TOKEN_PREFIX)) {
+    const found = await getStaffByAppToken(c.env.DB, bearer);
+    if (found) {
+      staff = { id: found.staff.id, name: found.staff.name, role: found.staff.role, external: !!found.staff.external_id };
+      c.set('appSessionId', found.sessionId);
+    }
+  } else {
+    staff = await authenticateApiToken(c, token);
+  }
   // beyond admin のログイン(Authorization ヘッダの API キーが無いときだけ)
   let viaExternal = false;
   if (!staff && !bearer) {

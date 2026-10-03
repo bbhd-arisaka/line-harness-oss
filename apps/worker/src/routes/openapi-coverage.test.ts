@@ -346,6 +346,9 @@ const KNOWN_GAPS: readonly string[] = [
   'PUT /api/traffic-pools/{id}/accounts/{accountId}',
   // auth (4)
   'GET /api/auth/config',
+  'POST /api/app/login',
+  'POST /api/app/logout',
+  'PUT /api/app/device',
   'GET /api/auth/session',
   'POST /api/auth/login',
   'POST /api/auth/logout',

@@ -91,7 +91,8 @@
     "083_staff_account_access.sql",
     "084_import_batches.sql",
     "085_messages_log_import_batch.sql",
-    "086_staff_external_identity.sql"
+    "086_staff_external_identity.sql",
+    "087_app_sessions.sql"
   ],
-  "migrationCount": 92
+  "migrationCount": 93
 }

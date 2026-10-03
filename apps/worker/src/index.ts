@@ -65,6 +65,7 @@ import { accountSettings } from './routes/account-settings.js';
 import { setup } from './routes/setup.js';
 import { autoReplies } from './routes/auto-replies.js';
 import { adminAuth } from './routes/admin-auth.js';
+import { appAuth } from './routes/app-auth.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import { defaultCachePolicyMiddleware } from './middleware/cache-policy.js';
 import booking from './routes/booking.js';
@@ -165,6 +166,8 @@ export type Env = {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };
     /** 制限のあるスタッフの許可アカウントID。null = 全アカウント(制限なし)。 */
     allowedAccountIds: string[] | null;
+    /** iOSアプリのトークンで入ったときの、そのセッションID(ログアウト・端末登録で使う) */
+    appSessionId?: string;
   };
 };
 
@@ -258,6 +261,7 @@ app.route('/', images);
 app.route('/', setup);
 app.route('/', autoReplies);
 app.route('/', adminAuth);
+app.route('/', appAuth);
 app.route('/', trafficPools);
 app.route('/', booking);
 app.route('/', events);

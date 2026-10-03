@@ -60,7 +60,7 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
   const db = c.env.DB;
 
   // 自分の情報・認証まわり
-  if (path === '/api/staff/me' || path.startsWith('/api/auth/')) return next();
+  if (path === '/api/staff/me' || path.startsWith('/api/auth/') || path.startsWith('/api/app/')) return next();
 
   // 公式アカウント一覧(内容は各ハンドラーが許可分だけに絞る)/ 個別参照
   if (isGet && path === '/api/line-accounts') return next();

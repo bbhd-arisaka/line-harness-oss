@@ -128,7 +128,9 @@ function insertTouch(
 }
 
 // JST ISO timestamp `daysAgo` days before `NOW`.
-const NOW = '2026-07-07T12:00:00.000+09:00';
+// 固定の日付だと、本物の時計を使う trackConversion の帰属期間(約90日)を過ぎた日に落ちる(2026-10-03 に発生)。
+// 今の時刻を基準にして、日付が進んでも壊れないようにする。
+const NOW = new Date(Date.now() + 9 * 60 * 60_000).toISOString().slice(0, -1) + '+09:00';
 function jstDaysAgo(days: number, opts: { minutes?: number } = {}): string {
   const base = new Date(NOW).getTime();
   const ms = base - days * 86_400_000 + (opts.minutes ?? 0) * 60_000;
@@ -331,14 +333,15 @@ describe('resolveAffiliateAttribution', () => {
 
     // Older touch: 20 days ago, stored in JST ISO "+09:00" format.
     // julianday sees the true instant (2026-06-17T03:00:00Z ≈ JD 2461214.625).
-    const olderIso = '2026-06-17T12:00:00.000+09:00'; // JST noon = UTC 03:00
+    const olderIso = jstDaysAgo(20); // JST ISO(+09:00)
 
     // Newer touch: 13 days ago, stored as UTC space-separated (SQLite datetime style).
     // julianday sees the true instant (2026-06-24T03:00:00Z ≈ JD 2461221.625),
     // which is 7 days later than the ISO touch.
     // Naive text comparison: "2026-06-17T..." > "2026-06-24 ..." (ISO > space format
     // because 'T' > ' ' in ASCII), so the older one would win under string sort.
-    const newerUtcSpace = '2026-06-24 03:00:00'; // UTC space-sep, same real instant as JST 12:00
+    // 13日前の同じ時刻を、UTC の空白区切り(SQLite の datetime('now') 形式)で表す
+    const newerUtcSpace = new Date(new Date(NOW).getTime() - 13 * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
 
     sqlite
       .prepare(`INSERT INTO ref_tracking (id, ref_code, friend_id, created_at) VALUES (?, ?, ?, ?)`)
