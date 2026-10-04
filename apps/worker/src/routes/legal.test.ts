@@ -17,4 +17,9 @@ describe('公開ページ(プライバシーポリシー・サポート)', () =>
     expect(withMail).not.toContain('<script>x</script>');
     expect(withMail).toContain('mailto:');
   });
+
+  it('/app は最新版へ案内する固定リンクを返す', async () => {
+    const html = await (await legal.request('/app', {}, {} as never)).text();
+    expect(html).toContain('exp://u.expo.dev/959aad6e-128e-4235-980c-13d68e14e78f?channel-name=preview');
+  });
 });

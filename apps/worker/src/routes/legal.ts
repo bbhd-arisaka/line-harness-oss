@@ -152,3 +152,16 @@ ${contactBlock(c.env.SUPPORT_EMAIL)}
 `;
   return c.html(page('サポート', body));
 });
+
+// スタッフ向け: アプリ(Expo Go)の最新版を開く入口。配信のたびにリンクを探さなくてよいように、固定リンクへ案内する。
+legal.get('/app', (c) => {
+  const link = 'exp://u.expo.dev/959aad6e-128e-4235-980c-13d68e14e78f?channel-name=preview&runtime-version=0.1.0';
+  const body = `
+<h1>アプリを開く(試験版)</h1>
+<p>iPhoneに無料アプリ「Expo Go」を入れてから、下のボタンを押してください。いつでも最新版が開きます。</p>
+<p><a href="${link}" style="display:inline-block;padding:14px 22px;background:#06c755;color:#fff;border-radius:12px;font-weight:700;text-decoration:none">最新のアプリを開く</a></p>
+<p class="meta">開かないときは、Expo Go を開いたまま、このページをもう一度開いてください。</p>
+<p><a href="/privacy">プライバシーポリシー</a> / <a href="/support">サポート</a></p>
+`;
+  return c.html(page('アプリを開く', body));
+});
