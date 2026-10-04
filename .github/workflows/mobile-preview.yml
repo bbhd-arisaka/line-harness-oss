@@ -43,7 +43,7 @@ jobs:
       # いつでも最新の配信が開く(配信のたびに新しいリンクを探さなくてよい)。すでにあれば付け替えるだけ。
       - name: 固定リンクの窓口(チャンネル)を最新につなぐ
         run: |
-          eas channel:edit preview --branch preview --non-interactive || eas channel:create preview --branch preview --non-interactive
+          eas channel:edit preview --branch preview --non-interactive || eas channel:create preview --non-interactive
       - name: 配信先を表示
         run: |
           echo "配信しました。iPhone の Expo Go で、次の固定リンクを開くと最新になります(https://beyond-line.cms-manager.jp/app からも開けます)。"
