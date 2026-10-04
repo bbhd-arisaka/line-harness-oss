@@ -11,9 +11,10 @@ import Header from '@/components/layout/header'
 import { useAccount } from '@/contexts/account-context'
 import { ApiError, fetchApi } from '@/lib/api'
 
-// Lステップ引き継ぎで「友だちを結びつけられなかった人」を確認するページ(オーナー専用)。
-// 左: beyond line にいるのに Lステップの記録が見つからなかった/確実でなかった人。
-// 右: Lステップにいるのに beyond line の友だちが見つからなかった人。
+// Lステップ引き継ぎで「友だちを確実に結びつけられなかった人」を確認するページ(オーナー専用)。
+// 1) 名前だけで結びつけた人: beyond line の友だちと、結びつけたLステップの人を並べて見せ、「同じ人」か「別の人」かを判断する。
+// 2) 結びつかなかった人: beyond line の友だちに、Lステップの人を選んで手で結びつける。
+// 3) Lステップにだけいる人: 結びつけ先の候補。
 
 type Side = 'beyond' | 'lstep'
 type Reason = 'no_lstep' | 'ambiguous' | 'name_only' | 'no_beyond'
@@ -31,106 +32,253 @@ interface ReviewItem {
   note: string | null
   resolved_by: string | null
   resolved_at: string | null
+  partner_id: string | null
+  partner_name: string | null
+  partner_picture_url: string | null
+  decision: 'same' | 'different' | 'link' | null
+  line_name: string | null
+  real_name: string | null
+  partner_line_name: string | null
+  partner_real_name: string | null
 }
 
-const REASON_LABEL: Record<Reason, { label: string; help: string }> = {
-  no_lstep: { label: 'Lステップに見つからない', help: 'Lステップ側に、同じ人の記録がありませんでした(Lステップに登録がない・ブロック済みなど)' },
-  ambiguous: { label: '同名が複数いて決められない', help: 'Lステップに同じ名前の人が複数いて、どの人か決められませんでした。履歴や情報が別人のものになっていないか確認が必要です' },
-  name_only: { label: '名前だけで結びつけた', help: 'LINE名が同じ人を1人だけ見つけて結びつけました。確実ではないので、本人かどうか確認してください' },
-  no_beyond: { label: 'beyond lineに見つからない', help: 'Lステップにはいますが、beyond line に同じ人がいません(まだ友だち追加していない・ブロック済みなど)' },
+const REASON_LABEL: Record<Reason, string> = {
+  no_lstep: 'Lステップに見つからない',
+  ambiguous: '同名が複数いて決められない',
+  name_only: '名前だけで結びつけた',
+  no_beyond: 'beyond lineに見つからない',
 }
 const LSTEP_DETAIL_URL = 'https://manager.linestep.net/line/detail/'
 
 type Filter = 'open' | 'resolved' | 'all'
+type Patch = { status?: 'open' | 'resolved'; note?: string; decision?: 'same' | 'different' | null }
 
 function errorText(err: unknown): string {
   return err instanceof ApiError || err instanceof Error ? err.message : '通信に失敗しました'
 }
 
-function Avatar({ name, url }: { name: string; url: string | null }) {
+function Avatar({ name, url, size = 'h-10 w-10' }: { name: string; url: string | null; size?: string }) {
   const [broken, setBroken] = useState(false)
   if (url && !broken) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt="" className="h-10 w-10 flex-shrink-0 rounded-full object-cover" onError={() => setBroken(true)} />
+    return <img src={url} alt="" referrerPolicy="no-referrer" className={`${size} flex-shrink-0 rounded-full object-cover`} onError={() => setBroken(true)} />
   }
   return (
-    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-kumo-tint text-sm font-bold text-kumo-subtle">
+    <span className={`${size} flex flex-shrink-0 items-center justify-center rounded-full bg-kumo-tint text-sm font-bold text-kumo-subtle`} title="プロフィール画像が未設定、または表示できません">
       {[...name][0] ?? '?'}
     </span>
   )
 }
 
-function Row({ item, onChanged }: { item: ReviewItem; onChanged: (next: ReviewItem) => void }) {
-  const [note, setNote] = useState(item.note ?? '')
+/** 1人分(画像・名前・どちらのシステムの人か) */
+function Person({ label, name, lineName, realName, url, href, external }: { label: string; name: string; lineName: string | null; realName: string | null; url: string | null; href: string | null; external?: boolean }) {
+  const title = realName || lineName || name
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-3">
+      <Avatar name={name} url={url} />
+      <div className="min-w-0">
+        <div className="text-xs text-kumo-subtle">{label}</div>
+        {href ? (
+          external ? (
+            <a href={href} target="_blank" rel="noreferrer" className="break-words font-bold text-kumo-link hover:underline">{title}</a>
+          ) : (
+            <Link href={href} className="break-words font-bold text-kumo-link hover:underline">{title}</Link>
+          )
+        ) : (
+          <span className="break-words font-bold">{title}</span>
+        )}
+        <div className="break-words text-xs text-kumo-default">LINE名: {lineName || '(不明)'}</div>
+        <div className="break-words text-xs text-kumo-default">本名: {realName || '(未登録)'}</div>
+      </div>
+    </div>
+  )
+}
+
+const lstepHref = (id: string | null) => (id ? `${LSTEP_DETAIL_URL}${id}` : null)
+const friendHref = (id: string | null) => (id ? `/friends/detail?id=${id}` : null)
+
+/** 行の共通部品: 更新APIを呼んで、結果を親へ返す */
+function useRowActions(item: ReviewItem, onChanged: (rows: ReviewItem[]) => void) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const resolved = item.status === 'resolved'
-  const reason = REASON_LABEL[item.reason]
-
-  const save = async (status: 'open' | 'resolved') => {
+  const run = async (fn: () => Promise<ReviewItem[]>) => {
     setBusy(true)
     setError(null)
     try {
-      const res = await fetchApi<{ success: boolean; data: ReviewItem }>(`/api/imports/lstep/review/${item.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ status, note }),
-      })
-      onChanged(res.data)
+      onChanged(await fn())
     } catch (err) {
       setError(errorText(err))
     } finally {
       setBusy(false)
     }
   }
+  const patch = (p: Patch) =>
+    run(async () => {
+      const res = await fetchApi<{ success: boolean; data: ReviewItem }>(`/api/imports/lstep/review/${item.id}`, { method: 'PUT', body: JSON.stringify(p) })
+      return [res.data]
+    })
+  const link = (partnerRowId: string) =>
+    run(async () => {
+      const res = await fetchApi<{ success: boolean; data: { a: ReviewItem; b: ReviewItem } }>(`/api/imports/lstep/review/${item.id}/link`, { method: 'POST', body: JSON.stringify({ partnerRowId }) })
+      return [res.data.a, res.data.b]
+    })
+  const unlink = () =>
+    run(async () => {
+      const res = await fetchApi<{ success: boolean; data: ReviewItem[] }>(`/api/imports/lstep/review/${item.id}/unlink`, { method: 'POST', body: '{}' })
+      return res.data
+    })
+  return { busy, error, patch, link, unlink }
+}
 
+function Meta({ item, error }: { item: ReviewItem; error: string | null }) {
   return (
-    <li className={`flex flex-col gap-2 border-b border-kumo-line px-4 py-3 last:border-b-0 ${resolved ? 'opacity-70' : ''}`}>
-      <div className="flex items-start gap-3">
-        <Avatar name={item.name} url={item.picture_url} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {item.side === 'beyond' && item.friend_id ? (
-              <Link href={`/friends/detail?id=${item.friend_id}`} className="font-bold text-kumo-link hover:underline">{item.name}</Link>
-            ) : (
-              <a href={`${LSTEP_DETAIL_URL}${item.lstep_id}`} target="_blank" rel="noreferrer" className="font-bold text-kumo-link hover:underline">{item.name}</a>
-            )}
-            <span className="rounded bg-kumo-tint px-1.5 py-0.5 text-xs text-kumo-default" title={reason.help}>{reason.label}</span>
-            {item.added_at && <span className="text-xs text-kumo-subtle">登録 {item.added_at.slice(0, 10)}</span>}
-          </div>
-          {item.detail && <p className="mt-1 break-words text-xs text-kumo-subtle">{item.detail}</p>}
-          {item.side === 'lstep' && <p className="mt-1 text-xs text-kumo-subtle">名前をおすと、Lステップの友だち詳細が開きます(Lステップにログインしている必要があります)</p>}
-        </div>
+    <>
+      {item.detail && <p className="break-words text-xs text-kumo-subtle">{item.detail}</p>}
+      {item.status === 'resolved' && item.resolved_by && (
+        <p className="text-xs text-kumo-subtle">{item.resolved_by} が確認済み({item.resolved_at?.slice(0, 16).replace('T', ' ')})</p>
+      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </>
+  )
+}
+
+/** 名前だけで結びつけた人: 2人を並べて、同じ人か判断する */
+function PairCard({ item, onChanged }: { item: ReviewItem; onChanged: (rows: ReviewItem[]) => void }) {
+  const { busy, error, patch } = useRowActions(item, onChanged)
+  const [note, setNote] = useState(item.note ?? '')
+  const different = item.decision === 'different'
+  return (
+    <li className={`flex flex-col gap-2 border-b border-kumo-line px-4 py-3 last:border-b-0 ${item.status === 'resolved' ? 'opacity-70' : ''}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Person label="beyond line の友だち" name={item.name} lineName={item.line_name} realName={item.real_name} url={item.picture_url} href={friendHref(item.friend_id)} />
+        <span className="text-lg text-kumo-subtle" aria-label="と同じ人?">＝?</span>
+        <Person label="Lステップの人(この人のデータを引き継いでいます)" name={item.partner_name ?? '(不明)'} lineName={item.partner_line_name} realName={item.partner_real_name} url={item.partner_picture_url} href={lstepHref(item.partner_id)} external />
       </div>
-      <div className="flex flex-wrap items-center gap-2 pl-[52px]">
+      {different && (
+        <Banner variant="error" title="「別の人」と判断しました" description="この友だちに、別の人のLステップのデータ(タグ・友だち情報・履歴)が引き継がれています。取り消しが必要なので、開発側に伝えてください。" />
+      )}
+      <Meta item={item} error={error} />
+      <div className="flex flex-wrap items-center gap-2">
         <Input aria-label="メモ" className="min-w-0 flex-1" placeholder="メモ(確認した内容など)" value={note} onValueChange={setNote} />
-        {resolved ? (
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void save('open')}>未確認に戻す</Button>
+        {item.status === 'resolved' ? (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void patch({ status: 'open', decision: null, note })}>判断を取り消す</Button>
         ) : (
-          <Button variant="primary" size="sm" disabled={busy} onClick={() => void save('resolved')}>確認済みにする</Button>
+          <>
+            <Button variant="primary" size="sm" disabled={busy} onClick={() => void patch({ status: 'resolved', decision: 'same', note })}>同じ人です</Button>
+            <Button variant="secondary" size="sm" disabled={busy || different} onClick={() => void patch({ status: 'open', decision: 'different', note })}>別の人です</Button>
+          </>
         )}
       </div>
-      {resolved && item.resolved_by && (
-        <p className="pl-[52px] text-xs text-kumo-subtle">{item.resolved_by} が確認済み({item.resolved_at?.slice(0, 16).replace('T', ' ')})</p>
-      )}
-      {error && <p className="pl-[52px] text-xs text-red-600">{error}</p>}
     </li>
   )
 }
 
-function Section({ title, description, items, onChanged }: { title: string; description: string; items: ReviewItem[]; onChanged: (next: ReviewItem) => void }) {
+/** 結びつかなかったbeyond lineの友だち: Lステップの人を選んで結びつける */
+function UnmatchedCard({ item, candidates, onChanged }: { item: ReviewItem; candidates: ReviewItem[]; onChanged: (rows: ReviewItem[]) => void }) {
+  const { busy, error, patch, link, unlink } = useRowActions(item, onChanged)
+  const [note, setNote] = useState(item.note ?? '')
+  const [pick, setPick] = useState<string | null>(null)
+  const linked = item.decision === 'link'
+  const picked = candidates.find((c) => c.id === pick) ?? null
+  return (
+    <li className={`flex flex-col gap-2 border-b border-kumo-line px-4 py-3 last:border-b-0 ${item.status === 'resolved' ? 'opacity-70' : ''}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Person label="beyond line の友だち" name={item.name} lineName={item.line_name} realName={item.real_name} url={item.picture_url} href={friendHref(item.friend_id)} />
+        {linked && (
+          <>
+            <span className="text-lg text-kumo-subtle" aria-label="と同じ人">＝</span>
+            <Person label="Lステップの人" name={item.partner_name ?? '(不明)'} lineName={item.partner_line_name} realName={item.partner_real_name} url={item.partner_picture_url} href={lstepHref(item.partner_id)} external />
+          </>
+        )}
+      </div>
+      <p className="text-xs text-kumo-subtle">{REASON_LABEL[item.reason]}</p>
+      <Meta item={item} error={error} />
+      {linked ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded bg-kumo-tint px-1.5 py-0.5 text-xs">結びつけを記録しました(Lステップのタグ・友だち情報・履歴の移行は、開発側で行います)</span>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void unlink()}>結びつけを解除</Button>
+        </div>
+      ) : item.status === 'open' ? (
+        <div className="flex flex-col gap-2">
+          <div className="text-xs font-bold text-kumo-default">同じ人を、Lステップの「beyond lineに見つからない人」から選ぶ</div>
+          {candidates.length === 0 ? (
+            <p className="text-xs text-kumo-subtle">選べるLステップの人がいません</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {candidates.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setPick(pick === c.id ? null : c.id)}
+                  className={`flex items-center gap-2 rounded border px-2 py-1 text-left text-sm ${pick === c.id ? 'border-kumo-brand bg-kumo-tint' : 'border-kumo-line'}`}
+                >
+                  <Avatar name={c.name} url={c.picture_url} size="h-8 w-8" />
+                  <span className="break-words">{c.real_name || c.name}<span className="block text-xs text-kumo-subtle">LINE名: {c.line_name || '(不明)'}</span></span>
+                </button>
+              ))}
+            </div>
+          )}
+          {picked && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm">「{item.real_name || item.name}(LINE名: {item.line_name || '不明'})」＝「{picked.real_name || picked.name}(LINE名: {picked.line_name || '不明'})」</span>
+              <Button variant="primary" size="sm" disabled={busy} onClick={() => void link(picked.id).then(() => setPick(null))}>この2人を結びつける</Button>
+            </div>
+          )}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input aria-label="メモ" className="min-w-0 flex-1" placeholder="メモ(確認した内容など)" value={note} onValueChange={setNote} />
+        {item.status === 'resolved' ? (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void patch({ status: 'open', note })}>未確認に戻す</Button>
+        ) : !linked ? (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void patch({ status: 'resolved', note })}>結びつけなくてよい(確認済み)</Button>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
+/** Lステップにだけいる人 */
+function LstepCard({ item, onChanged }: { item: ReviewItem; onChanged: (rows: ReviewItem[]) => void }) {
+  const { busy, error, patch } = useRowActions(item, onChanged)
+  const [note, setNote] = useState(item.note ?? '')
+  const linked = item.decision === 'link'
+  return (
+    <li className={`flex flex-col gap-2 border-b border-kumo-line px-4 py-3 last:border-b-0 ${item.status === 'resolved' ? 'opacity-70' : ''}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Person label="Lステップの人(名前をおすとLステップで開きます)" name={item.name} lineName={item.line_name} realName={item.real_name} url={item.picture_url} href={lstepHref(item.lstep_id)} external />
+        {linked && (
+          <>
+            <span className="text-lg text-kumo-subtle" aria-label="と同じ人">＝</span>
+            <Person label="beyond line の友だち" name={item.partner_name ?? '(不明)'} lineName={item.partner_line_name} realName={item.partner_real_name} url={item.partner_picture_url} href={friendHref(item.partner_id)} />
+          </>
+        )}
+      </div>
+      <Meta item={item} error={error} />
+      {linked && <p className="text-xs text-kumo-subtle">結びつけ済みです。解除は、beyond line の友だち側の行でおこないます。</p>}
+      {item.note && !linked && item.status === 'open' && <p className="break-words text-xs">メモ: {item.note}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input aria-label="メモ" className="min-w-0 flex-1" placeholder="メモ(確認した内容など)" value={note} onValueChange={setNote} />
+        {item.status === 'resolved' ? (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void patch({ status: 'open', note })}>未確認に戻す</Button>
+        ) : !linked ? (
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void patch({ status: 'resolved', note })}>確認済みにする</Button>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
+function Section({ title, description, count, children }: { title: string; description: string; count: number; children: React.ReactNode }) {
   return (
     <section className="mb-6 rounded border border-kumo-line bg-kumo-base">
       <div className="border-b border-kumo-line px-4 py-3">
         <h2 className="text-sm font-bold text-kumo-default">
-          {title}<span className="ml-2 text-xs font-normal text-kumo-subtle">{items.length}人</span>
+          {title}<span className="ml-2 text-xs font-normal text-kumo-subtle">{count}人</span>
         </h2>
         <p className="mt-1 text-xs text-kumo-subtle">{description}</p>
       </div>
-      {items.length === 0 ? (
-        <div className="px-4 py-6 text-center text-sm text-kumo-subtle">該当する人はいません</div>
-      ) : (
-        <ul>{items.map((it) => <Row key={it.id} item={it} onChanged={onChanged} />)}</ul>
-      )}
+      {count === 0 ? <div className="px-4 py-6 text-center text-sm text-kumo-subtle">該当する人はいません</div> : <ul>{children}</ul>}
     </section>
   )
 }
@@ -156,21 +304,25 @@ export default function MatchReviewPage() {
 
   useEffect(() => { void load() }, [load])
 
-  const onChanged = (next: ReviewItem) => setItems((cur) => cur?.map((x) => (x.id === next.id ? next : x)) ?? cur)
+  const onChanged = (rows: ReviewItem[]) =>
+    setItems((cur) => cur?.map((x) => rows.find((r) => r.id === x.id) ?? x) ?? cur)
 
   const counts = useMemo(() => {
     const all = items ?? []
     return { open: all.filter((x) => x.status === 'open').length, resolved: all.filter((x) => x.status === 'resolved').length, all: all.length }
   }, [items])
   const shown = useMemo(() => (items ?? []).filter((x) => filter === 'all' || x.status === filter), [items, filter])
-  const beyond = shown.filter((x) => x.side === 'beyond')
-  const lstep = shown.filter((x) => x.side === 'lstep')
+  const pairs = shown.filter((x) => x.side === 'beyond' && x.reason === 'name_only')
+  const unmatched = shown.filter((x) => x.side === 'beyond' && x.reason !== 'name_only')
+  const lsteps = shown.filter((x) => x.side === 'lstep')
+  // 結びつけ先の候補: まだ結びつけておらず、確認済みでもない「Lステップにだけいる人」(絞り込みとは無関係に全件から)
+  const candidates = useMemo(() => (items ?? []).filter((x) => x.side === 'lstep' && x.status === 'open' && !x.decision), [items])
 
   return (
     <div className="max-w-3xl">
       <Header
         title="友だち照合の確認"
-        description="Lステップから引き継ぐとき、同じ人だと確実に結びつけられなかった友だちの一覧です。オーナー専用。"
+        description="Lステップから引き継ぐとき、同じ人だと確実に結びつけられなかった友だちを確認します。オーナー専用。"
         action={<Link href="/imports" className="text-sm text-kumo-link hover:underline">データ引き継ぎへ</Link>}
       />
 
@@ -192,17 +344,26 @@ export default function MatchReviewPage() {
           ) : (
             <>
               <Section
-                title="beyond line にいるのに、Lステップと結びつかなかった人"
-                description="履歴・タグ・友だち情報の引き継ぎ対象になっていない、または確実でない人です。名前をおすと友だち詳細が開きます。"
-                items={beyond}
-                onChanged={onChanged}
-              />
+                title="名前だけで結びつけた人(同じ人か確認)"
+                description="プロフィール画像では確認できず、名前が同じだったので結びつけています。左(beyond line)と右(Lステップ)が同じ人かを見て、判断してください。"
+                count={pairs.length}
+              >
+                {pairs.map((it) => <PairCard key={it.id} item={it} onChanged={onChanged} />)}
+              </Section>
               <Section
-                title="Lステップにいるのに、beyond line に見つからなかった人"
-                description="まだ友だち追加していない・ブロックした・別のLINE名に変えたなどが考えられます。"
-                items={lstep}
-                onChanged={onChanged}
-              />
+                title="結びつかなかった人(beyond line の友だち)"
+                description="Lステップに同じ人が見つからなかった友だちです。同じ人が下の「Lステップにだけいる人」にいれば、選んで結びつけてください。"
+                count={unmatched.length}
+              >
+                {unmatched.map((it) => <UnmatchedCard key={it.id} item={it} candidates={candidates} onChanged={onChanged} />)}
+              </Section>
+              <Section
+                title="Lステップにだけいる人"
+                description="beyond line に同じ人が見つからなかった、Lステップの友だちです。"
+                count={lsteps.length}
+              >
+                {lsteps.map((it) => <LstepCard key={it.id} item={it} onChanged={onChanged} />)}
+              </Section>
             </>
           )}
         </>

@@ -25,7 +25,7 @@ import {
   validateMessages,
   validateSubmissions,
 } from '../services/lstep-import.js';
-import { listReviewItems, replaceReviewItems, updateReviewItem, validateReviewItems } from '../services/lstep-match-review.js';
+import { linkReviewItems, listReviewItems, replaceReviewItems, unlinkReviewItem, updateReviewItem, validateReviewItems } from '../services/lstep-match-review.js';
 import type { Env } from '../index.js';
 
 /**
@@ -149,9 +149,26 @@ imports.post('/api/imports/lstep/review', requireRole('owner'), async (c) => {
 
 imports.put('/api/imports/lstep/review/:id', requireRole('owner'), async (c) => {
   try {
-    const body = await c.req.json<{ status?: unknown; note?: unknown }>();
+    const body = await c.req.json<{ status?: unknown; note?: unknown; decision?: unknown }>();
     const staff = c.get('staff');
-    return c.json({ success: true, data: await updateReviewItem(c.env.DB, c.req.param('id')!, body.status, body.note, staff?.name ?? '不明') });
+    return c.json({ success: true, data: await updateReviewItem(c.env.DB, c.req.param('id')!, body, staff?.name ?? '不明') });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+imports.post('/api/imports/lstep/review/:id/link', requireRole('owner'), async (c) => {
+  try {
+    const body = await c.req.json<{ partnerRowId?: unknown }>();
+    return c.json({ success: true, data: await linkReviewItems(c.env.DB, c.req.param('id')!, body.partnerRowId) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+imports.post('/api/imports/lstep/review/:id/unlink', requireRole('owner'), async (c) => {
+  try {
+    return c.json({ success: true, data: await unlinkReviewItem(c.env.DB, c.req.param('id')!) });
   } catch (err) {
     return fail(c, err);
   }

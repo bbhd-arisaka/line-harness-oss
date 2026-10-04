@@ -636,7 +636,7 @@ CREATE TABLE IF NOT EXISTS lstep_match_review (
   resolved_by     TEXT,
   resolved_at     TEXT,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-);
+, partner_id TEXT, partner_name TEXT, partner_picture_url TEXT, decision TEXT, line_name TEXT, real_name TEXT, partner_line_name TEXT, partner_real_name TEXT);
 
 CREATE TABLE IF NOT EXISTS media_inquiries (
   id TEXT PRIMARY KEY,

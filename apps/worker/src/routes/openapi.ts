@@ -564,8 +564,25 @@ const spec = {
         tags: ['Imports'],
         summary: '照合できなかった人を、確認済みにする/未確認に戻す(メモつき)',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['open', 'resolved'] }, note: { type: 'string' } } } } } },
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['open', 'resolved'] }, note: { type: 'string' }, decision: { type: 'string', nullable: true, enum: ['same', 'different'] } } } } } },
         responses: { '200': { description: 'Updated' }, '400': { description: 'Invalid status' }, '404': { description: 'Not found' } },
+      },
+    },
+    '/api/imports/lstep/review/{id}/link': {
+      post: {
+        tags: ['Imports'],
+        summary: 'beyond line の友だちと Lステップの人を、手で結びつける(両方の行に相手を記録・オーナー専用)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['partnerRowId'], properties: { partnerRowId: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Linked rows' }, '400': { description: 'Invalid pair' }, '404': { description: 'Not found' } },
+      },
+    },
+    '/api/imports/lstep/review/{id}/unlink': {
+      post: {
+        tags: ['Imports'],
+        summary: '手で結びつけたのを解除する(相手の行も一緒に戻す・オーナー専用)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Unlinked rows' }, '400': { description: 'Not linked' }, '404': { description: 'Not found' } },
       },
     },
     '/api/imports/lstep/messages/remove': {
