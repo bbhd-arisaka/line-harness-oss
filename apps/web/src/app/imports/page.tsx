@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import Header from '@/components/layout/header'
 import { Modal } from '@/components/ui/modal'
 import { ApiError, fetchApi } from '@/lib/api'
@@ -232,7 +233,7 @@ export default function ImportsPage() {
   const btn = 'rounded px-4 py-2 text-sm font-bold disabled:opacity-50'
   return (
     <div className="max-w-3xl">
-      <Header title="データ引き継ぎ" description="Lステップから集めたデータ(友だち情報・タグ・本名)を、beyond line に反映します。オーナー専用。" />
+      <Header title="データ引き継ぎ" description="Lステップから集めたデータ(友だち情報・タグ・本名)を、beyond line に反映します。オーナー専用。" action={<Link href="/match-review" className="text-sm text-[#06C755] hover:underline">照合できなかった人を確認する</Link>} />
 
       {message && (
         <div className={`mb-4 rounded border p-3 text-sm ${message.kind === 'ok' ? 'border-green-300 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-700'}`}>

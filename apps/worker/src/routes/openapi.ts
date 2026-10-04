@@ -545,6 +545,29 @@ const spec = {
         responses: { '200': { description: 'Deleted' }, '404': { description: 'Not found' } },
       },
     },
+    '/api/imports/lstep/review': {
+      get: {
+        tags: ['Imports'],
+        summary: '照合できなかった人の確認リスト(オーナー専用)',
+        parameters: [{ name: 'accountId', in: 'query', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Review items' }, '400': { description: 'accountId missing' } },
+      },
+      post: {
+        tags: ['Imports'],
+        summary: '照合できなかった人の確認リストを入れ替える(確認済みの人は残す・500件まで・オーナー専用)',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['accountId', 'items'], properties: { accountId: { type: 'string' }, items: { type: 'array', items: { type: 'object' } } } } } } },
+        responses: { '200': { description: 'inserted / keptResolved' }, '400': { description: 'Invalid items' }, '404': { description: 'Account not found' } },
+      },
+    },
+    '/api/imports/lstep/review/{id}': {
+      put: {
+        tags: ['Imports'],
+        summary: '照合できなかった人を、確認済みにする/未確認に戻す(メモつき)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['open', 'resolved'] }, note: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Updated' }, '400': { description: 'Invalid status' }, '404': { description: 'Not found' } },
+      },
+    },
     '/api/imports/lstep/messages/remove': {
       post: {
         tags: ['Imports'],

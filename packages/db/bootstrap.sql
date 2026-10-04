@@ -620,6 +620,24 @@ CREATE TABLE IF NOT EXISTS link_clicks (
   clicked_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS lstep_match_review (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT NOT NULL REFERENCES line_accounts(id) ON DELETE CASCADE,
+  side            TEXT NOT NULL CHECK (side IN ('beyond', 'lstep')),
+  friend_id       TEXT,            -- side='beyond' のとき: beyond line の友だちID
+  lstep_id        TEXT,            -- side='lstep' のとき: Lステップの友だちID
+  name            TEXT NOT NULL,
+  picture_url     TEXT,
+  added_at        TEXT,
+  reason          TEXT NOT NULL,   -- no_lstep / ambiguous / name_only / no_beyond
+  detail          TEXT,
+  status          TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+  note            TEXT,
+  resolved_by     TEXT,
+  resolved_at     TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
 CREATE TABLE IF NOT EXISTS media_inquiries (
   id TEXT PRIMARY KEY,
   inquiry_type TEXT NOT NULL,
@@ -1397,6 +1415,8 @@ CREATE INDEX IF NOT EXISTS idx_line_accounts_display_order
 CREATE INDEX IF NOT EXISTS idx_link_clicks_friend ON link_clicks (friend_id);
 
 CREATE INDEX IF NOT EXISTS idx_link_clicks_link ON link_clicks (tracked_link_id);
+
+CREATE INDEX IF NOT EXISTS idx_lstep_match_review_account ON lstep_match_review(line_account_id, side, status);
 
 CREATE INDEX IF NOT EXISTS idx_media_inquiries_created
   ON media_inquiries (created_at DESC);

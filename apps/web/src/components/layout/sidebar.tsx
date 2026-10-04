@@ -86,6 +86,7 @@ const menuSections: MenuSection[] = [
       { href: '/accounts', label: 'LINE公式アカウント設定' },
       { href: '/staff', label: 'スタッフ設定' },
       { href: '/imports', label: 'データ引き継ぎ' },
+      { href: '/match-review', label: '友だち照合の確認' },
       { href: '/booking/menus', label: '予約メニュー' },
       { href: '/booking/staff', label: '予約スタッフ' },
       { href: '/webhooks', label: 'Webhook' },
@@ -161,7 +162,7 @@ export default function Sidebar({
               )}
               <ul>
                 {section.items.filter((item) => {
-                  if (item.href === '/staff' && staffRole !== 'owner') return false
+                  if ((item.href === '/staff' || item.href === '/match-review') && staffRole !== 'owner') return false
                   if (item.href === '/accounts' && staffRole === 'staff') return false
                   return true
                 }).map((item) => {

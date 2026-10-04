@@ -25,6 +25,7 @@ import {
   validateMessages,
   validateSubmissions,
 } from '../services/lstep-import.js';
+import { listReviewItems, replaceReviewItems, updateReviewItem, validateReviewItems } from '../services/lstep-match-review.js';
 import type { Env } from '../index.js';
 
 /**
@@ -120,6 +121,37 @@ imports.post('/api/imports/lstep/:batchId/submissions', requireRole('owner'), as
   try {
     const body = await c.req.json<{ submissions?: unknown }>();
     return c.json({ success: true, data: await applySubmissions(c.env.DB, c.req.param('batchId')!, validateSubmissions(body.submissions)) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+// 照合できなかった人の確認リスト(画面で確認する)
+imports.get('/api/imports/lstep/review', requireRole('owner'), async (c) => {
+  try {
+    const accountId = c.req.query('accountId');
+    if (!accountId) throw new ImportError('accountId を指定してください');
+    return c.json({ success: true, data: await listReviewItems(c.env.DB, accountId) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+imports.post('/api/imports/lstep/review', requireRole('owner'), async (c) => {
+  try {
+    const body = await c.req.json<{ accountId?: unknown; items?: unknown }>();
+    if (typeof body.accountId !== 'string' || !body.accountId) throw new ImportError('accountId を指定してください');
+    return c.json({ success: true, data: await replaceReviewItems(c.env.DB, body.accountId, validateReviewItems(body.items)) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+imports.put('/api/imports/lstep/review/:id', requireRole('owner'), async (c) => {
+  try {
+    const body = await c.req.json<{ status?: unknown; note?: unknown }>();
+    const staff = c.get('staff');
+    return c.json({ success: true, data: await updateReviewItem(c.env.DB, c.req.param('id')!, body.status, body.note, staff?.name ?? '不明') });
   } catch (err) {
     return fail(c, err);
   }

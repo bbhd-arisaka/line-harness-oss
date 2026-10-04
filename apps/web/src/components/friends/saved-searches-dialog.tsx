@@ -62,7 +62,7 @@ export function SavedSearchesDialog({
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <Dialog className="w-full max-w-2xl p-0">
+      <Dialog size="base" className="p-0">
         <div className="flex items-center justify-between border-b border-kumo-line px-5 py-3">
           <Dialog.Title className="text-base font-semibold text-kumo-strong">保存した検索</Dialog.Title>
           <Button type="button" size="xs" shape="square" variant="ghost" icon={XIcon} aria-label="閉じる" onClick={onClose} />

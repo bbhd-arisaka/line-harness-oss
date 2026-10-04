@@ -334,7 +334,7 @@ export function AdvancedSearchDialog({
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <Dialog className="w-full max-w-3xl p-0">
+      <Dialog size="lg" className="p-0">
         <div className="flex items-center justify-between border-b border-kumo-line px-5 py-3">
           <Dialog.Title className="text-base font-semibold text-kumo-strong">絞り込み条件を設定</Dialog.Title>
           <Button type="button" size="xs" shape="square" variant="ghost" icon={XIcon} aria-label="閉じる" onClick={onClose} />
