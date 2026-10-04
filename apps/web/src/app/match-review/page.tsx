@@ -57,17 +57,25 @@ function errorText(err: unknown): string {
   return err instanceof ApiError || err instanceof Error ? err.message : '通信に失敗しました'
 }
 
-function Avatar({ name, url, size = 'h-10 w-10' }: { name: string; url: string | null; size?: string }) {
+/** LINEの初期アイコン(プロフィール画像が未設定の人)。灰色の丸に白い人影 */
+function DefaultIcon({ size }: { size: string }) {
+  return (
+    <svg viewBox="0 0 40 40" className={`${size} flex-shrink-0 rounded-full`} role="img" aria-label="プロフィール画像は未設定(LINEの初期アイコン)">
+      <title>プロフィール画像は未設定(LINEの初期アイコン)</title>
+      <rect width="40" height="40" fill="#c9cdd2" />
+      <circle cx="20" cy="15.5" r="6.5" fill="#ffffff" />
+      <path d="M7 40c0-8.3 5.8-13 13-13s13 4.7 13 13z" fill="#ffffff" />
+    </svg>
+  )
+}
+
+function Avatar({ url, size = 'h-10 w-10' }: { name?: string; url: string | null; size?: string }) {
   const [broken, setBroken] = useState(false)
   if (url && !broken) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={url} alt="" referrerPolicy="no-referrer" className={`${size} flex-shrink-0 rounded-full object-cover`} onError={() => setBroken(true)} />
   }
-  return (
-    <span className={`${size} flex flex-shrink-0 items-center justify-center rounded-full bg-kumo-tint text-sm font-bold text-kumo-subtle`} title="プロフィール画像が未設定、または表示できません">
-      {[...name][0] ?? '?'}
-    </span>
-  )
+  return <DefaultIcon size={size} />
 }
 
 /** 1人分(画像・名前・どちらのシステムの人か) */

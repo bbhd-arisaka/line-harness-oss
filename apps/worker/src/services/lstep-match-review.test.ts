@@ -61,6 +61,11 @@ describe('Lステップ照合の確認リスト', () => {
     const same = await updateReviewItem(db, row.id, { decision: 'same', status: 'resolved' }, '有坂');
     expect(same).toMatchObject({ decision: 'same', status: 'resolved', note: '別人でした' });
     await expect(updateReviewItem(db, row.id, { decision: 'link' }, 'x')).rejects.toThrow(/紐付け/);
+    // 画像は、最新の画像(または初期アイコン=null)に直せる
+    expect(row.partner_picture_url).toBe('https://cdn.example.com/p.jpg');
+    expect((await updateReviewItem(db, row.id, { partnerPictureUrl: null }, 'x')).partner_picture_url).toBeNull();
+    expect((await updateReviewItem(db, row.id, { partnerPictureUrl: 'https://cdn.example.com/new.jpg' }, 'x')).partner_picture_url).toBe('https://cdn.example.com/new.jpg');
+    await expect(updateReviewItem(db, row.id, { partnerPictureUrl: 'http://x/y.jpg' }, 'x')).rejects.toThrow(/https/);
     await expect(updateReviewItem(db, row.id, { decision: 'nope' }, 'x')).rejects.toBeInstanceOf(ImportError);
   });
 

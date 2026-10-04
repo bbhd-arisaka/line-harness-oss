@@ -149,7 +149,7 @@ imports.post('/api/imports/lstep/review', requireRole('owner'), async (c) => {
 
 imports.put('/api/imports/lstep/review/:id', requireRole('owner'), async (c) => {
   try {
-    const body = await c.req.json<{ status?: unknown; note?: unknown; decision?: unknown }>();
+    const body = await c.req.json<{ status?: unknown; note?: unknown; decision?: unknown; pictureUrl?: unknown; partnerPictureUrl?: unknown }>();
     const staff = c.get('staff');
     return c.json({ success: true, data: await updateReviewItem(c.env.DB, c.req.param('id')!, body, staff?.name ?? '不明') });
   } catch (err) {

@@ -167,7 +167,7 @@ const jstNow = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().replac
 export async function updateReviewItem(
   db: D1Database,
   id: string,
-  input: { status?: unknown; note?: unknown; decision?: unknown },
+  input: { status?: unknown; note?: unknown; decision?: unknown; pictureUrl?: unknown; partnerPictureUrl?: unknown },
   staffName: string,
 ): Promise<ReviewRow> {
   const row = await getRow(db, id);
@@ -179,10 +179,13 @@ export async function updateReviewItem(
     if (input.decision === 'link') throw new ImportError('紐付けは、紐付け用の操作で行ってください');
     decision = input.decision as ReviewDecision | null;
   }
+  // 画像の更新(Lステップの友だち一覧の画像は古いので、最新の画像に直す / 初期アイコンなら null)
+  const picture = input.pictureUrl === undefined ? row.picture_url : input.pictureUrl === null ? null : httpsUrl(input.pictureUrl);
+  const partnerPicture = input.partnerPictureUrl === undefined ? row.partner_picture_url : input.partnerPictureUrl === null ? null : httpsUrl(input.partnerPictureUrl);
   const memo = input.note === undefined ? row.note : typeof input.note === 'string' && input.note !== '' ? input.note.slice(0, 500) : null;
   await db
-    .prepare('UPDATE lstep_match_review SET status = ?, note = ?, decision = ?, resolved_by = ?, resolved_at = ? WHERE id = ?')
-    .bind(status, memo, decision, status === 'resolved' ? staffName : null, status === 'resolved' ? jstNow() : null, id)
+    .prepare('UPDATE lstep_match_review SET status = ?, note = ?, decision = ?, picture_url = ?, partner_picture_url = ?, resolved_by = ?, resolved_at = ? WHERE id = ?')
+    .bind(status, memo, decision, picture, partnerPicture, status === 'resolved' ? staffName : null, status === 'resolved' ? jstNow() : null, id)
     .run();
   return getRow(db, id);
 }
