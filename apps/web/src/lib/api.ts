@@ -35,6 +35,7 @@ import type {
   PoolAccount,
 } from '@line-crm/shared'
 import { getApiBase } from './api-base'
+import type { FriendFilter } from './friend-filter'
 
 /** Per-account delivery-health snapshot for the dashboard cards. */
 export type AccountDeliveryHealth = {
@@ -194,6 +195,8 @@ export async function fetchApi<T>(path: string, options?: RequestInit): Promise<
 }
 
 export type FriendListParams = {
+  /** 詳細検索の条件(Lステップの「絞り込み条件を設定」相当)。JSON にして ?filter= で渡す */
+  filter?: FriendFilter
   offset?: string
   limit?: string | number
   tagId?: string
@@ -339,6 +342,15 @@ export type QuotaUsage = {
   noticeUrl: string | null
 }
 
+export type SavedFriendSearch = {
+  id: string
+  lineAccountId: string
+  name: string
+  filter: FriendFilter
+  createdBy: string | null
+  createdAt: string
+}
+
 export const api = {
   usage: () => fetchApi<ApiResponse<QuotaUsage>>('/api/usage'),
   friends: {
@@ -354,6 +366,7 @@ export const api = {
       if (params?.sort) query.sort = params.sort
       if (params?.handled) query.handled = params.handled
       if (params?.fieldKey) query.fieldKey = params.fieldKey
+      if (params?.filter) query.filter = JSON.stringify(params.filter)
       return fetchApi<ApiResponse<PaginatedResponse<FriendListItem>>>(
         '/api/friends?' + new URLSearchParams(query)
       )
@@ -393,6 +406,13 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
+  },
+  friendSearches: {
+    list: (accountId: string) =>
+      fetchApi<ApiResponse<SavedFriendSearch[]>>('/api/friend-searches?lineAccountId=' + encodeURIComponent(accountId)),
+    create: (data: { lineAccountId: string; name: string; filter: FriendFilter }) =>
+      fetchApi<ApiResponse<SavedFriendSearch>>('/api/friend-searches', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchApi<ApiResponse<null>>(`/api/friend-searches/${id}`, { method: 'DELETE' }),
   },
   tags: {
     /** withCounts で friendCount 付き (JOIN 集計 — タグ管理ページ用)。 */

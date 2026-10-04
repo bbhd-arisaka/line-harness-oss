@@ -522,6 +522,29 @@ const spec = {
         responses: { '200': { description: 'Added / skipped counts' }, '400': { description: 'Invalid messages' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
       },
     },
+    '/api/friend-searches': {
+      get: {
+        tags: ['Friends'],
+        summary: '保存した検索の一覧(アカウントごと)',
+        parameters: [{ name: 'lineAccountId', in: 'query', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Saved searches' }, '400': { description: 'lineAccountId is required' }, '403': { description: 'Account not allowed' } },
+      },
+      post: {
+        tags: ['Friends'],
+        summary: '検索条件を保存(Lステップの「この条件を保存」相当)',
+        description: 'filter は、友だちリストの詳細検索の条件(GET /api/friends の filter と同じ形)。検証してから保存する。',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['lineAccountId', 'name', 'filter'], properties: { lineAccountId: { type: 'string' }, name: { type: 'string' }, filter: { type: 'object' } } } } } },
+        responses: { '201': { description: 'Created' }, '400': { description: 'Invalid request' }, '403': { description: 'Account not allowed' } },
+      },
+    },
+    '/api/friend-searches/{id}': {
+      delete: {
+        tags: ['Friends'],
+        summary: '保存した検索を削除',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Deleted' }, '404': { description: 'Not found' } },
+      },
+    },
     '/api/imports/lstep/messages/remove': {
       post: {
         tags: ['Imports'],

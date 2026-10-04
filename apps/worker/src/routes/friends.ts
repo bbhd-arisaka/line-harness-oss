@@ -22,6 +22,7 @@ import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
 import { buildMessage } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
+import { buildFriendFilterPieces, FilterError, parseFriendFilter } from '../services/friend-filter.js';
 
 const friends = new Hono<Env>();
 
@@ -172,6 +173,25 @@ friends.get('/api/friends', async (c) => {
            'resolved'
          ) = 'unread'`,
       );
+    }
+    // ?filter=<JSON> — 詳細検索(Lステップの「絞り込み条件を設定」相当)。services/friend-filter.ts
+    const filterParam = c.req.query('filter');
+    if (filterParam) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(filterParam);
+      } catch {
+        return c.json({ success: false, error: '検索条件の形式が正しくありません' }, 400);
+      }
+      try {
+        for (const piece of buildFriendFilterPieces(parseFriendFilter(parsed))) {
+          conditions.push(piece.sql);
+          binds.push(...piece.binds);
+        }
+      } catch (err) {
+        if (err instanceof FilterError) return c.json({ success: false, error: err.message }, 400);
+        throw err;
+      }
     }
     // Metadata filters: ?metadata.key=value (e.g. ?metadata.monthly_cost=〜100万円)
     const url = new URL(c.req.url);

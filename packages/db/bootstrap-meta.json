@@ -94,7 +94,8 @@
     "086_staff_external_identity.sql",
     "087_app_sessions.sql",
     "088_friend_events.sql",
-    "089_staff_deletion_request.sql"
+    "089_staff_deletion_request.sql",
+    "090_saved_friend_searches.sql"
   ],
-  "migrationCount": 95
+  "migrationCount": 96
 }

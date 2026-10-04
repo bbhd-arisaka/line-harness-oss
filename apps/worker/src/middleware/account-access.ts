@@ -92,6 +92,9 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
     return accountId && allowed.includes(accountId) ? next() : forbidden(c);
   }
 
+  // 友だちリストの「保存した検索」: アカウントの確認は、各ハンドラーが行う
+  if (path === '/api/friend-searches' || path.startsWith('/api/friend-searches/')) return next();
+
   // 全アカウント共通の一覧(タグ・友だち情報欄・担当者)は読み取りだけ許可
   if (isGet && (path === '/api/tags' || path === '/api/operators' || /^\/api\/friend-fields\/(folders|definitions)$/.test(path))) {
     return next();

@@ -10,11 +10,14 @@ import { Loader } from '@cloudflare/kumo/components/loader'
 import { Pagination } from '@cloudflare/kumo/components/pagination'
 import { Select } from '@cloudflare/kumo/components/select'
 import type { Tag } from '@line-crm/shared'
-import { api } from '@/lib/api'
+import { api, fetchApi } from '@/lib/api'
 import type { FriendListItem } from '@/lib/api'
 import Header from '@/components/layout/header'
 import FriendListTable from '@/components/friends/friend-list-table'
 import CcPromptButton from '@/components/cc-prompt-button'
+import { AdvancedSearchDialog } from '@/components/friends/advanced-search-dialog'
+import { SavedSearchesDialog } from '@/components/friends/saved-searches-dialog'
+import { cleanFilter, describeFilter, emptyFilter, isFilterEmpty, type DescribeContext, type FriendFilter } from '@/lib/friend-filter'
 import { useAccount } from '@/contexts/account-context'
 
 const ccPrompts = [
@@ -36,7 +39,7 @@ const ccPrompts = [
   },
 ]
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 
 type SortMode = 'recent' | 'oldest'
 type ResponseFilter = 'all' | 'unhandled'
@@ -56,12 +59,33 @@ export default function FriendsPage() {
   const [error, setError] = useState('')
   // 友だち情報欄一覧の「友だち人数」から来たときの絞り込み(その項目に値が入っている友だち)
   const [fieldFilter, setFieldFilter] = useState<{ key: string; label: string } | null>(null)
+  // 詳細検索(Lステップの「絞り込み条件を設定」)と、保存した検索
+  const [filter, setFilter] = useState<FriendFilter>(emptyFilter)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [savedOpen, setSavedOpen] = useState(false)
+  const [filterCtx, setFilterCtx] = useState<DescribeContext>({ tags: [], fields: [], scenarios: [], forms: [] })
+  const [saveName, setSaveName] = useState('')
+  const [savingSearch, setSavingSearch] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
+  const filterActive = !isFilterEmpty(filter)
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     const key = q.get('fieldKey')
     if (key) setFieldFilter({ key, label: q.get('fieldLabel') || key })
   }, [])
+
+  // 保存した検索・条件の表示に使う、名前の一覧(タグ・友だち情報欄・シナリオ・フォーム)
+  useEffect(() => {
+    let cancelled = false
+    const part = (patch: Partial<DescribeContext>) => { if (!cancelled) setFilterCtx((c) => ({ ...c, ...patch })) }
+    api.tags.list().then((r) => { if (r.success) part({ tags: r.data.map((t) => ({ id: t.id, name: t.name })) }) }).catch(() => undefined)
+    fetchApi<{ success: boolean; data: Array<{ fieldKey: string; label: string }> }>('/api/friend-fields/definitions').then((r) => { if (r.success) part({ fields: r.data }) }).catch(() => undefined)
+    api.scenarios.list({ accountId: selectedAccountId || undefined }).then((r) => { if (r.success) part({ scenarios: r.data.map((s) => ({ id: s.id, name: s.name })) }) }).catch(() => undefined)
+    fetchApi<{ success: boolean; data: Array<{ id: string; name: string }> }>('/api/forms').then((r) => { if (r.success) part({ forms: r.data.map((f) => ({ id: f.id, name: f.name })) }) }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [selectedAccountId])
 
   const loadTags = useCallback(async () => {
     try {
@@ -77,8 +101,9 @@ export default function FriendsPage() {
     setError('')
     try {
       const res = await api.friends.list({
-        offset: String((page - 1) * PAGE_SIZE),
-        limit: PAGE_SIZE,
+        offset: String((page - 1) * pageSize),
+        limit: pageSize,
+        filter: filterActive ? cleanFilter(filter) : undefined,
         tagId: selectedTagId || undefined,
         accountId: selectedAccountId || undefined,
         search: searchSubmitted || undefined,
@@ -98,7 +123,7 @@ export default function FriendsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, selectedTagId, selectedAccountId, searchSubmitted, sortMode, responseFilter, fieldFilter])
+  }, [page, pageSize, filter, filterActive, selectedTagId, selectedAccountId, searchSubmitted, sortMode, responseFilter, fieldFilter])
 
   useEffect(() => {
     loadTags()
@@ -142,6 +167,41 @@ export default function FriendsPage() {
   const handleSortChange = (v: SortMode) => updateAndResetPage(() => setSortMode(v))
   const handleResponseFilterChange = (v: ResponseFilter) => updateAndResetPage(() => setResponseFilter(v))
   const handleTagFilterChange = (v: string) => updateAndResetPage(() => setSelectedTagId(v))
+  const applyAdvanced = (next: FriendFilter, sort: SortMode, size: number, ctx: DescribeContext) => {
+    updateAndResetPage(() => {
+      setFilter(next)
+      setSortMode(sort)
+      setPageSize(size)
+      setFilterCtx(ctx)
+    })
+    setSaveMessage('')
+    setAdvancedOpen(false)
+  }
+  const applySaved = (next: FriendFilter, name: string) => {
+    updateAndResetPage(() => setFilter(next))
+    setSaveName(name)
+    setSaveMessage('')
+    setSavedOpen(false)
+  }
+  const resetAdvanced = () => {
+    updateAndResetPage(() => setFilter(emptyFilter()))
+    setSaveName('')
+    setSaveMessage('')
+  }
+  const saveCurrentSearch = async () => {
+    const name = saveName.trim()
+    if (!name || !selectedAccountId || savingSearch) return
+    setSavingSearch(true)
+    setSaveMessage('')
+    try {
+      const res = await api.friendSearches.create({ lineAccountId: selectedAccountId, name, filter: cleanFilter(filter) })
+      setSaveMessage(res.success ? `「${name}」として保存しました` : '保存できませんでした')
+    } catch {
+      setSaveMessage('保存できませんでした')
+    } finally {
+      setSavingSearch(false)
+    }
+  }
 
   return (
     <div>
@@ -186,6 +246,12 @@ export default function FriendsPage() {
           <Button type="submit" variant="primary" icon={MagnifyingGlassIcon}>
             検索
           </Button>
+          <Button type="button" variant="primary" onClick={() => setAdvancedOpen(true)}>
+            詳細検索
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => setSavedOpen(true)}>
+            保存した検索
+          </Button>
         </form>
 
         <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-kumo-line pt-3">
@@ -209,6 +275,30 @@ export default function FriendsPage() {
         </div>
       </LayerCard>
 
+      {filterActive && (
+        <LayerCard className="mb-4 space-y-3 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="min-w-0 break-words text-sm text-kumo-strong">
+              <span className="font-semibold">条件:</span> {describeFilter(filter, filterCtx)}
+            </p>
+            <Button type="button" size="xs" variant="secondary" onClick={resetAdvanced}>条件リセット</Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              aria-label="保存する検索の名前"
+              placeholder="カスタム検索名"
+              value={saveName}
+              onValueChange={setSaveName}
+              className="w-full sm:w-64"
+            />
+            <Button type="button" size="sm" variant="secondary" loading={savingSearch} disabled={!saveName.trim() || !selectedAccountId} onClick={() => void saveCurrentSearch()}>
+              この条件を保存
+            </Button>
+            {saveMessage ? <span className="text-xs text-kumo-subtle" role="status">{saveMessage}</span> : null}
+          </div>
+        </LayerCard>
+      )}
+
       {error ? <Banner className="mb-4" variant="error" title="友だちを読み込めませんでした" description={error} /> : null}
 
       {loading ? (
@@ -224,7 +314,7 @@ export default function FriendsPage() {
           className="mt-4"
           page={page}
           setPage={setPage}
-          perPage={PAGE_SIZE}
+          perPage={pageSize}
           totalCount={total}
           labels={{ navigation: '友だち一覧のページ', firstPage: '最初のページ', previousPage: '前のページ', nextPage: '次のページ', lastPage: '最後のページ', pageNumber: 'ページ番号' }}
         >
@@ -232,6 +322,23 @@ export default function FriendsPage() {
           <Pagination.Controls controls="full" pageSelector="input" />
         </Pagination>
       )}
+
+      <AdvancedSearchDialog
+        open={advancedOpen}
+        onClose={() => setAdvancedOpen(false)}
+        accountId={selectedAccountId || null}
+        initial={filter}
+        initialSort={sortMode}
+        initialPageSize={pageSize}
+        onApply={applyAdvanced}
+      />
+      <SavedSearchesDialog
+        open={savedOpen}
+        onClose={() => setSavedOpen(false)}
+        accountId={selectedAccountId || null}
+        ctx={filterCtx}
+        onApply={applySaved}
+      />
 
       <CcPromptButton prompts={ccPrompts} />
     </div>

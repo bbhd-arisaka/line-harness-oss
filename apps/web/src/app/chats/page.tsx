@@ -152,6 +152,8 @@ const ccPrompts = [
 interface FriendItem {
   id: string
   displayName: string
+  realName?: string | null
+  systemDisplayName?: string | null
   pictureUrl: string | null
   isFollowing: boolean
 }
@@ -612,6 +614,33 @@ export default function ChatsPage() {
     textareaRef.current?.focus()
   }, [chatDetail?.id])
 
+  // 名前検索(Lステップの個別トークの検索相当)。LINE登録名・本名・システム表示名のどれかに部分一致する友だちを、
+  // トークの有無にかかわらず探す。結果を選ぶと、その友だちのトークを開く(まだ無ければ新規メッセージ画面)。
+  const [nameQuery, setNameQuery] = useState('')
+  const [nameResults, setNameResults] = useState<FriendItem[]>([])
+  const [nameSearching, setNameSearching] = useState(false)
+  useEffect(() => {
+    const q = nameQuery.trim()
+    if (!q) {
+      setNameResults([])
+      setNameSearching(false)
+      return
+    }
+    let cancelled = false
+    setNameSearching(true)
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.friends.list({ accountId: selectedAccountId || undefined, search: q, limit: '50', includeTags: false })
+        if (!cancelled && res.success) setNameResults(res.data.items as unknown as FriendItem[])
+      } catch {
+        if (!cancelled) setNameResults([])
+      } finally {
+        if (!cancelled) setNameSearching(false)
+      }
+    }, 300)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [nameQuery, selectedAccountId])
+
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId)
     setMessageContent('')
@@ -871,6 +900,17 @@ export default function ChatsPage() {
         <div className={`w-full lg:w-80 xl:w-96 lg:flex-shrink-0 bg-white border-r border-gray-200 flex-col overflow-hidden ${selectedChatId ? 'hidden lg:flex' : 'flex'}`}>
           {/* タブ (全て / 未読 / 対応中 / 解決済) は意図的に削除。直近メッセージが見やすい LINE 風一覧を優先。 */}
 
+          {/* 名前検索 */}
+          <div className="border-b border-gray-100 px-3 py-2">
+            <Input
+              aria-label="友だち名で検索"
+              type="search"
+              placeholder="友だち名を検索"
+              value={nameQuery}
+              onChange={(e) => setNameQuery(e.target.value)}
+            />
+          </div>
+
           {/* Filter row */}
           <div className="flex items-center gap-1.5 overflow-x-auto border-b border-gray-100 px-3 py-2 [&>*]:flex-shrink-0">
             {statusFilters.map((f) => (
@@ -894,7 +934,36 @@ export default function ChatsPage() {
 
           {/* Chat List */}
           <div className="flex-1 overflow-y-auto">
-            {loading ? (
+            {nameQuery.trim() ? (
+              nameSearching && nameResults.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-gray-400">検索中...</p>
+              ) : nameResults.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-gray-400">「{nameQuery.trim()}」に一致する友だちが見つかりません</p>
+              ) : (
+                nameResults.map((f) => {
+                  const display = f.realName?.trim() || f.systemDisplayName?.trim() || f.displayName || '名前なし'
+                  return (
+                    <Button
+                      key={f.id}
+                      type="button"
+                      variant="ghost"
+                      className={`h-auto w-full justify-start gap-3 rounded-none border-b border-gray-100 px-4 py-3 text-left ${selectedChatId === f.id ? 'bg-green-50' : ''}`}
+                      onClick={() => { setSelectedFriendId(null); handleSelectChat(f.id); setNameQuery('') }}
+                    >
+                      {f.pictureUrl ? (
+                        <img src={f.pictureUrl} alt="" className="h-10 w-10 flex-shrink-0 rounded-full" />
+                      ) : (
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-500">{display.charAt(0)}</span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-gray-900">{display}</span>
+                        {f.displayName && display !== f.displayName ? <span className="block truncate text-xs text-gray-400">LINE名: {f.displayName}</span> : null}
+                      </span>
+                    </Button>
+                  )
+                })
+              )
+            ) : loading ? (
               <div>
                 {[...Array(5)].map((_, i) => (
                   <div key={i} className="px-4 py-3 border-b border-gray-100 animate-pulse">

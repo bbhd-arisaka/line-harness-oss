@@ -231,9 +231,16 @@ export default function FriendDetailPage() {
         title={friend ? resolveFriendName(friend) : '友だち詳細'}
         description="友だちの基本情報・タグ・友だち情報欄を確認・編集できます。"
         action={
-          <Link href="/friends">
-            <Button type="button" variant="secondary" size="sm">一覧に戻る</Button>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {friendId ? (
+              <Link href={`/chats?friend=${encodeURIComponent(friendId)}`}>
+                <Button type="button" variant="primary" size="sm">個別トークを開く</Button>
+              </Link>
+            ) : null}
+            <Link href="/friends">
+              <Button type="button" variant="secondary" size="sm">一覧に戻る</Button>
+            </Link>
+          </div>
         }
       />
 
