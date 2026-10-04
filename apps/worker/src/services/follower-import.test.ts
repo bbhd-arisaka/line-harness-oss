@@ -155,6 +155,33 @@ describe('persisted one-time follower import', () => {
     expect((await getFollowerImportState(db, 'acc-1')).completedAt).not.toBeNull();
   });
 
+  test('完了後でも、頼まれたときだけやり直せる。すでにいる友だちは上書きせず、新しい人だけ追加する', async () => {
+    const a = uid('c');
+    const b = uid('d');
+    const { db, friends } = makeDb();
+    const client = {
+      getFollowerIds: vi.fn()
+        .mockResolvedValueOnce({ userIds: [] })
+        .mockResolvedValueOnce({ userIds: [a] })
+        .mockResolvedValueOnce({ userIds: [a, b] }),
+      getProfile: vi.fn().mockResolvedValue({ displayName: '名前', pictureUrl: null }),
+    };
+    await detectFollowerImportCapability(db, client, 'acc-1');
+    await startFollowerImport(db, 'acc-1');
+    await processFollowerImportStep(db, client, 'acc-1');
+    await processFollowerImportStep(db, client, 'acc-1');
+    friends.get(`${a}|acc-1`)!.display_name = '手で直した名前';
+
+    expect((await startFollowerImport(db, 'acc-1')).phase).toBe('completed');
+    const restarted = await startFollowerImport(db, 'acc-1', { restart: true });
+    expect(restarted.phase).toBe('importing_ids');
+    const ids = await processFollowerImportStep(db, client, 'acc-1');
+    expect(ids.state).toMatchObject({ imported: 1, alreadyPresent: 1 });
+    await processFollowerImportStep(db, client, 'acc-1');
+    expect(friends.get(`${a}|acc-1`)?.display_name).toBe('手で直した名前');
+    expect(friends.get(`${b}|acc-1`)?.display_name).toBe('名前');
+  });
+
   test('同じ人が別アカウントの友だちでも、このアカウントの友だちとして別に取り込む', async () => {
     const lineUserId = uid('b');
     const { db, friends } = makeDb([

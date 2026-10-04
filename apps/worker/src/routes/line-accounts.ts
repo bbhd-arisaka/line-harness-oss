@@ -445,7 +445,8 @@ lineAccounts.post(
     const account = await getLineAccountById(c.env.DB, c.req.param('id')!);
     if (!account) return c.json({ success: false, error: 'LINE account not found' }, 404);
     try {
-      const state = await startFollowerImport(c.env.DB, account.id);
+      const body = await c.req.json<{ restart?: unknown }>().catch(() => ({}) as { restart?: unknown });
+      const state = await startFollowerImport(c.env.DB, account.id, { restart: body.restart === true });
       return c.json({ success: true, data: state });
     } catch (err) {
       if (err instanceof Error && err.message === 'FOLLOWER_IMPORT_NOT_AVAILABLE') {

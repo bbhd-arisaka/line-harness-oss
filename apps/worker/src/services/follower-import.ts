@@ -147,13 +147,16 @@ export async function detectFollowerImportCapability(
 export async function startFollowerImport(
   db: D1Database,
   lineAccountId: string,
+  options: { restart?: boolean } = {},
 ): Promise<FollowerImportState> {
   const state = await getFollowerImportState(db, lineAccountId);
   if (state.capability !== 'available') {
     throw new Error('FOLLOWER_IMPORT_NOT_AVAILABLE');
   }
-  if (state.phase === 'completed') return state;
-  if (state.phase === 'not_started') {
+  // 完了後のやり直しは、明示的に頼まれたときだけ。すでにいる友だちは「登録済み」と数えるだけで、
+  // 名前などは上書きしない(プロフィール取得は、名前が未取得の友だちだけ)。
+  if (state.phase === 'completed' && !options.restart) return state;
+  if (state.phase === 'not_started' || state.phase === 'completed') {
     const capability = state.capability;
     const eligibilityCheckedAt = state.eligibilityCheckedAt;
     Object.assign(state, emptyFollowerImportState(), {
