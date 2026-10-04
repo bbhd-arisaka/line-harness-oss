@@ -16,6 +16,7 @@ import {
   planFriends,
   planMessages,
   planSubmissions,
+  removeImportedMessages,
   startImport,
   undoImport,
   validateDefinitions,
@@ -119,6 +120,17 @@ imports.post('/api/imports/lstep/:batchId/submissions', requireRole('owner'), as
   try {
     const body = await c.req.json<{ submissions?: unknown }>();
     return c.json({ success: true, data: await applySubmissions(c.env.DB, c.req.param('batchId')!, validateSubmissions(body.submissions)) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+// 取り込んだ履歴のうち、別人の記録が混ざったメッセージを1件ずつ取り除く(元に戻せる)
+imports.post('/api/imports/lstep/messages/remove', requireRole('owner'), async (c) => {
+  try {
+    const body = await c.req.json<{ friendId?: unknown; messageIds?: unknown; reason?: unknown }>();
+    const staff = c.get('staff');
+    return c.json({ success: true, data: await removeImportedMessages(c.env.DB, body.friendId as string, body.messageIds, staff?.name ?? '不明', body.reason) });
   } catch (err) {
     return fail(c, err);
   }

@@ -12,6 +12,7 @@ import {
   finishImport,
   planMessages,
   planDefinitions,
+  removeImportedMessages,
   planFriends,
   loadImportTargets,
   loadTagIds,
@@ -154,6 +155,26 @@ describe('Lステップ引き継ぎ', () => {
     // 元からあった phone は残る
     expect(sqlite.prepare('SELECT field_key FROM friend_field_definitions').all()).toEqual([{ field_key: 'phone' }]);
     await expect(undoImport(db, batchId)).rejects.toThrow(/取り消し済み/);
+  });
+
+  test('取り込んだ履歴の混入を1件ずつ取り除ける: 印の無いメッセージには触れず、元に戻せる', async () => {
+    const { db, sqlite } = setup();
+    const ins = sqlite.prepare('INSERT INTO messages_log (id, friend_id, direction, message_type, content, source, line_account_id, created_at, import_batch_id) VALUES (?,?,?,?,?,?,?,?,?)');
+    ins.run('m-imp', 'f1', 'outgoing', 'text', '混ざった一斉配信', 'broadcast', 'acc-a', '2025-12-28T10:00:00.000+09:00', 'batch-x');
+    ins.run('m-live', 'f1', 'incoming', 'text', 'LINEから直接届いた', 'user', 'acc-a', '2026-10-01T10:00:00.000+09:00', null);
+    ins.run('m-other', 'f2', 'outgoing', 'text', '別の人の', 'broadcast', 'acc-a', '2025-12-28T10:00:00.000+09:00', 'batch-x');
+    const r = await removeImportedMessages(db, 'f1', ['m-imp', 'm-live', 'm-other', 'nothing'], 'owner', '別人の記録が混ざった');
+    expect(r).toMatchObject({ removed: 1, skipped: 3 });
+    const left = (sqlite.prepare('SELECT id FROM messages_log ORDER BY id').all() as { id: string }[]).map((x) => x.id);
+    expect(left).toEqual(['m-live', 'm-other']);
+    // 何も消えないときは記録も作らない
+    expect(await removeImportedMessages(db, 'f1', ['m-live'], 'owner', '')).toEqual({ batchId: null, removed: 0, skipped: 1 });
+    await expect(removeImportedMessages(db, 'nobody', ['m-imp'], 'owner', '')).rejects.toThrow(/見つかりません/);
+    await expect(removeImportedMessages(db, 'f1', [], 'owner', '')).rejects.toThrow(/1〜50件/);
+    // 元に戻す: 取り除いたメッセージが元の行のまま戻る
+    await undoImport(db, r.batchId!);
+    const back = sqlite.prepare('SELECT direction, content, created_at, import_batch_id FROM messages_log WHERE id = ?').get('m-imp');
+    expect(back).toEqual({ direction: 'outgoing', content: '混ざった一斉配信', created_at: '2025-12-28T10:00:00.000+09:00', import_batch_id: 'batch-x' });
   });
 
   test('完了済み・存在しない取り込みには反映できない / 存在しないアカウントは拒否', async () => {

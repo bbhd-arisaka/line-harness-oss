@@ -522,6 +522,15 @@ const spec = {
         responses: { '200': { description: 'Added / skipped counts' }, '400': { description: 'Invalid messages' }, '404': { description: 'Batch not found' }, '409': { description: 'Batch already finished' } },
       },
     },
+    '/api/imports/lstep/messages/remove': {
+      post: {
+        tags: ['Imports'],
+        summary: '取り込んだトーク履歴のうち、別人の記録が混ざったメッセージを1件ずつ取り除く(1回50件まで・オーナー専用)',
+        description: '取り込みの印が付いたメッセージだけが対象(LINEと直接やりとりした分には触れない)。取り除く前の行は記録に残り、その記録の「元に戻す」で戻せる。',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['friendId', 'messageIds'], properties: { friendId: { type: 'string' }, messageIds: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' } } } } } },
+        responses: { '200': { description: 'batchId / removed / skipped' }, '400': { description: 'Invalid request' }, '404': { description: 'Friend not found' } },
+      },
+    },
     '/api/imports/lstep/targets': {
       get: {
         tags: ['Imports'],

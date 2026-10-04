@@ -290,6 +290,34 @@ export async function applyFriends(db: D1Database, batchId: string, friends: Dat
   return result;
 }
 
+/**
+ * 取り込んだトーク履歴のうち、別人の記録が混ざっていたメッセージを、1件ずつ取り除く(オーナー専用)。
+ * 取り込みの印(import_batch_id)が付いたメッセージだけが対象で、LINEと直接やりとりした分(印なし)には触れない。
+ * 取り除く前の行は記録に残し、「元に戻す」で戻せる。
+ */
+export async function removeImportedMessages(db: D1Database, friendId: string, messageIds: unknown, createdBy: string, reason: unknown): Promise<{ batchId: string | null; removed: number; skipped: number }> {
+  if (typeof friendId !== 'string' || !friendId) throw new ImportError('friendId がありません');
+  if (!Array.isArray(messageIds) || !messageIds.length || messageIds.length > 50 || messageIds.some((x) => typeof x !== 'string' || !x || x.length > 64)) throw new ImportError('messageIds は1〜50件の文字列で指定してください');
+  const ids = [...new Set(messageIds as string[])];
+  const friend = await db.prepare('SELECT id, line_account_id FROM friends WHERE id = ?').bind(friendId).first<{ id: string; line_account_id: string | null }>();
+  if (!friend) throw new ImportError('友だちが見つかりません', 404);
+  const ph = ids.map(() => '?').join(',');
+  const rows = (await db.prepare(`SELECT * FROM messages_log WHERE friend_id = ? AND import_batch_id IS NOT NULL AND id IN (${ph})`).bind(friendId, ...ids).all<Record<string, string | null>>()).results ?? [];
+  if (!rows.length) return { batchId: null, removed: 0, skipped: ids.length };
+  const batchId = crypto.randomUUID();
+  const now = jstNow();
+  const statements: D1PreparedStatement[] = [
+    db.prepare("INSERT INTO import_batches (id, source, line_account_id, status, summary, created_by, finished_at) VALUES (?, 'lstep-correction', ?, 'applied', ?, ?, ?)")
+      .bind(batchId, friend.line_account_id, JSON.stringify({ friendId, removed: rows.length, reason: typeof reason === 'string' ? reason.slice(0, 500) : '' }), createdBy, now),
+  ];
+  for (const r of rows) {
+    statements.push(db.prepare('INSERT INTO import_batch_ops (batch_id, op, ref1, ref2, before) VALUES (?, ?, ?, ?, ?)').bind(batchId, 'removed_message', r.id, friendId, JSON.stringify(r)));
+  }
+  statements.push(db.prepare(`DELETE FROM messages_log WHERE friend_id = ? AND import_batch_id IS NOT NULL AND id IN (${rows.map(() => '?').join(',')})`).bind(friendId, ...rows.map((r) => r.id)));
+  await chunked(db, statements);
+  return { batchId, removed: rows.length, skipped: ids.length - rows.length };
+}
+
 export async function finishImport(db: D1Database, batchId: string, summary: unknown): Promise<void> {
   const res = await db.prepare("UPDATE import_batches SET status = 'applied', summary = ?, finished_at = ? WHERE id = ? AND status = 'running'").bind(JSON.stringify(summary ?? {}), jstNow(), batchId).run();
   if (!res.meta.changes) throw new ImportError('この取り込みは完了できません(記録が無い、または完了済み)', 409);
@@ -314,6 +342,12 @@ export async function undoImport(db: D1Database, batchId: string): Promise<{ res
   const now = jstNow();
   for (const o of ops) {
     if (o.op === 'attached_submission' && o.ref1) { statements.push(db.prepare('UPDATE form_submissions SET friend_id = NULL WHERE id = ?').bind(o.ref1)); }
+    else if (o.op === 'removed_message' && o.before) {
+      // 取り除いた(別人の記録が混ざっていた)メッセージを、元の行のまま戻す
+      const b = JSON.parse(o.before) as Record<string, string | null>;
+      statements.push(db.prepare('INSERT OR IGNORE INTO messages_log (id, friend_id, direction, message_type, content, source, line_account_id, created_at, import_batch_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(b.id, b.friend_id, b.direction, b.message_type, b.content, b.source ?? null, b.line_account_id ?? null, b.created_at, b.import_batch_id ?? null));
+    }
     else if (o.op === 'added_friend_tag') { statements.push(db.prepare('DELETE FROM friend_tags WHERE friend_id = ? AND tag_id = ?').bind(o.ref1, o.ref2)); out.removedTags++; }
     else if (o.op === 'friend_before' && o.before) {
       const b = JSON.parse(o.before) as Record<string, string | null>;
