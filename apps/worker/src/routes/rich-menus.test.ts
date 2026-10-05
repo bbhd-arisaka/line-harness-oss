@@ -120,6 +120,22 @@ describe('GET /api/friends/:friendId/rich-menu(いま設定されているリッ
     expect(body.data).toMatchObject({ id: 'rm-def', name: 'デフォルト用', isDefault: true, groupName: null, pageName: null });
   });
 
+  test('別のツール(Lステップ・LINE公式アカウント管理画面など)が設定したメニューは、取得失敗にせず「別のツールで設定」として返す', async () => {
+    const { get } = setup();
+    const other = new Error('LINE API error: 403 Forbidden — {"message":"the richmenu is owned by another channel","details":[]}');
+    // 個別メニューが別のチャンネルのもの
+    getRichMenuIdOfUser.mockRejectedValue(other);
+    expect((await get()).body.data).toMatchObject({ id: null, isDefault: false, ownedByOtherChannel: true });
+    expect(getDefaultRichMenuId).not.toHaveBeenCalled();
+    // デフォルトのメニューが別のチャンネルのもの
+    getRichMenuIdOfUser.mockRejectedValue(new Error('LINE API error: 404'));
+    getDefaultRichMenuId.mockRejectedValue(other);
+    expect((await get()).body.data).toMatchObject({ id: null, isDefault: true, ownedByOtherChannel: true });
+    // 権限のない別の理由の403は、これまでどおり取得失敗
+    getDefaultRichMenuId.mockRejectedValue(new Error('LINE API error: 403 Forbidden — invalid token'));
+    expect((await get()).status).toBe(500);
+  });
+
   test('どちらも無ければ id は null(未設定)。LINE 側の本当のエラーは取得失敗(500)', async () => {
     const { get } = setup();
     getRichMenuIdOfUser.mockRejectedValue(new Error('LINE API error: 404'));

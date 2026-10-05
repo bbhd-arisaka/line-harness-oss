@@ -391,7 +391,7 @@ export const api = {
         method: 'DELETE',
       }),
     richMenu: (id: string) =>
-      fetchApi<ApiResponse<{ id: string | null; name: string | null; isDefault: boolean; chatBarText?: string | null; groupName?: string | null; pageName?: string | null; accountId?: string | null }>>(
+      fetchApi<ApiResponse<{ id: string | null; name: string | null; isDefault: boolean; ownedByOtherChannel?: boolean; chatBarText?: string | null; groupName?: string | null; pageName?: string | null; accountId?: string | null }>>(
         `/api/friends/${id}/rich-menu`,
       ),
     // null 値のキーは削除される(サーバー側のマージ仕様)。

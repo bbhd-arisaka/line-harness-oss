@@ -11,6 +11,8 @@ export interface FriendRichMenuInfo {
   id: string | null
   name: string | null
   isDefault: boolean
+  /** Lステップ・LINE公式アカウント管理画面など、別のツールが設定したメニュー(中身は読めない) */
+  ownedByOtherChannel?: boolean
   chatBarText?: string | null
   /** beyond line の「リッチメニュー」画面で作ったメニューなら、そのグループ・ページ名 */
   groupName?: string | null
@@ -69,6 +71,21 @@ export function FriendRichMenuView({ state, onReload, compact = false }: { state
   }
 
   const { menu } = state
+  if (menu.ownedByOtherChannel) {
+    return (
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={compact ? 'text-xs font-medium text-gray-800' : 'text-sm font-medium text-kumo-strong'}>別のツールで設定されたメニュー</span>
+          <span className={`rounded px-1.5 py-0 text-[10px] font-medium ${menu.isDefault ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'}`}>
+            {menu.isDefault ? 'デフォルト' : '個別に設定'}
+          </span>
+        </div>
+        <p className={compact ? 'text-[11px] text-gray-500' : 'text-xs text-kumo-subtle'}>
+          Lステップや、LINE公式アカウントの管理画面で設定されたメニューです。内容(名前・画像)は、ここでは確認できません。
+        </p>
+      </div>
+    )
+  }
   if (menu.id === null) {
     return <p className={compact ? 'text-[11px] italic text-gray-400' : 'text-sm text-kumo-subtle'}>リッチメニューは設定されていません</p>
   }

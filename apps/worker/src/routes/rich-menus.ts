@@ -153,7 +153,15 @@ richMenus.get('/api/friends/:friendId/rich-menu', async (c) => {
     // 個別メニュー取得 — 404 (個別未設定) のみ null に正規化。トークン期限切れ
     // / 5xx 等の真のエラーは外側 catch に伝搬させて 500 を返す。null と「取得失敗」
     // を混同すると運用者にデフォルトメニューが偽表示される。
+    // 403 "the richmenu is owned by another channel": Lステップや LINE公式アカウント管理画面など、
+    // 別のツールが設定したメニュー。こちらの権限では中身を読めないが、「設定されている」ことは確かなので、
+    // 取得失敗にはせず ownedByOtherChannel として返す。
+    const isOwnedByOtherChannel = (err: unknown): boolean => {
+      const msg = err instanceof Error ? err.message : String(err);
+      return msg.includes('403') && /owned by another channel/i.test(msg);
+    };
     let userMenuId: string | null = null;
+    let userMenuOwnedByOther = false;
     try {
       const r = await lineClient.getRichMenuIdOfUser(friend.line_user_id);
       userMenuId = r.richMenuId;
@@ -161,6 +169,8 @@ richMenus.get('/api/friends/:friendId/rich-menu', async (c) => {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('404')) {
         userMenuId = null;
+      } else if (isOwnedByOtherChannel(err)) {
+        userMenuOwnedByOther = true;
       } else {
         throw err;
       }
@@ -169,10 +179,22 @@ richMenus.get('/api/friends/:friendId/rich-menu', async (c) => {
     // 個別未設定ならデフォルトを fallback。getDefaultRichMenuId は client.ts 側で
     // 404 を null に変換済 (Task 1)、その他のエラーは throw され外側 catch に流れる。
     let isDefault = false;
+    let defaultOwnedByOther = false;
     let effectiveId: string | null = userMenuId;
-    if (!userMenuId) {
-      effectiveId = await lineClient.getDefaultRichMenuId();
-      isDefault = !!effectiveId;
+    if (!userMenuId && !userMenuOwnedByOther) {
+      try {
+        effectiveId = await lineClient.getDefaultRichMenuId();
+        isDefault = !!effectiveId;
+      } catch (err) {
+        if (isOwnedByOtherChannel(err)) defaultOwnedByOther = true;
+        else throw err;
+      }
+    }
+    if (userMenuOwnedByOther || defaultOwnedByOther) {
+      return c.json({
+        success: true,
+        data: { id: null, name: null, isDefault: defaultOwnedByOther, ownedByOtherChannel: true, chatBarText: null, groupName: null, pageName: null, accountId: friendAccId ?? null },
+      });
     }
 
     // メニュー名は LINE API のリストから lookup (rich_menus DB テーブルは無い)
