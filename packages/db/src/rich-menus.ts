@@ -524,3 +524,30 @@ export async function markRichMenuGroupUnpublished(
       .bind(now, groupId),
   ]);
 }
+
+/**
+ * リッチメニューの「店舗からメッセージを送る」エリア(postback の kind='reply')の本文を、replyId から取得する。
+ * replyId は、エリアを作ったときに付く UUID で、編集で保存し直しても変わらない
+ * (公開済みのメニューのボタンは、`rmreply:<replyId>` を送ってくる)。
+ */
+export const RICH_MENU_REPLY_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const RICH_MENU_REPLY_MAX_LENGTH = 5000;
+
+export async function getRichMenuReplyText(db: D1Database, replyId: string): Promise<string | null> {
+  if (!RICH_MENU_REPLY_ID_RE.test(replyId)) return null;
+  const rows = await db
+    .prepare(`SELECT action_data FROM rich_menu_areas WHERE action_type = 'postback' AND action_data LIKE ? ORDER BY updated_at DESC`)
+    .bind(`%"replyId":"${replyId}"%`)
+    .all<{ action_data: string }>();
+  for (const row of rows.results ?? []) {
+    try {
+      const data = JSON.parse(row.action_data) as { kind?: unknown; replyId?: unknown; replyText?: unknown };
+      if (data.kind === 'reply' && data.replyId === replyId && typeof data.replyText === 'string' && data.replyText.trim() !== '') {
+        return data.replyText;
+      }
+    } catch {
+      // 壊れた行は読み飛ばす
+    }
+  }
+  return null;
+}

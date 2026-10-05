@@ -27,6 +27,7 @@ import type { HarnessProxyDispatch } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import { ensureSchedulerArmed } from '../durable-objects/tenant-scheduler.js';
 import { notifyIncomingMessage } from '../services/push-notify.js';
+import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
 import type { IncomingMessageNotice } from '../services/push-notify.js';
 
 const webhook = new Hono<Env>();
@@ -405,10 +406,24 @@ async function handleEvent(
       console.error('Failed to log incoming postback', err);
     }
 
+    // リッチメニューの「店舗からメッセージを送る」ボタン: 設定した本文を、店舗から返信する。
+    // 本文は rich_menu_areas に持っている(5,000文字まで)。自動応答のマッチには回さない。
+    let richMenuReplySent = false;
+    if (postbackData.startsWith(RICH_MENU_REPLY_PREFIX)) {
+      richMenuReplySent = await sendRichMenuReply(db, lineClient, friend, postbackData, event.replyToken, {
+        lineAccountId,
+        workerUrl,
+        replyMessage: workerUrl
+          ? (token, messages) => replyViaHarnessProxy(workerUrl, lineAccessToken, token, messages, proxyDispatch)
+          : undefined,
+      });
+    }
+
     // postback data を auto_replies にマッチさせて返信 (テキスト経路と共通)。
     // silent + automation で「返信なしでタグだけ付ける」構成もここで成立する。
-    const { matched: postbackMatched, replyTokenConsumed: postbackReplyTokenConsumed } =
-      await matchAndReply(db, lineClient, friend, postbackData, event.replyToken, {
+    const { matched: postbackMatched, replyTokenConsumed: postbackReplyTokenConsumed } = richMenuReplySent
+      ? { matched: true, replyTokenConsumed: true }
+      : await matchAndReply(db, lineClient, friend, postbackData, event.replyToken, {
         inputKind: 'postback',
         lineAccountId,
         workerUrl,

@@ -29,6 +29,8 @@ import {
   publishRichMenuGroup,
   unpublishRichMenuGroup,
   linkRichMenuBulkChunked,
+  RICH_MENU_REPLY_ID_RE,
+  RICH_MENU_REPLY_MAX_LENGTH,
   type LineRichMenuClient,
   type R2Like,
   type GroupInput,
@@ -104,6 +106,16 @@ function parseAreaInput(raw: unknown): Parsed<RichMenuAreaInput> {
   if (!r.actionData || typeof r.actionData !== 'object') {
     return { ok: false, error: 'area.actionData must be object' };
   }
+  let actionData = r.actionData as Record<string, unknown>;
+  if (r.actionType === 'postback' && actionData.kind === 'reply') {
+    // 「店舗からメッセージを送る」: 本文は5,000文字まで。replyId は、編集で保存し直しても変わらないように、あれば保つ(無ければ付ける)。
+    if (typeof actionData.replyText !== 'string') return { ok: false, error: 'area.actionData.replyText must be string' };
+    if ([...actionData.replyText].length > RICH_MENU_REPLY_MAX_LENGTH) {
+      return { ok: false, error: `店舗から送るメッセージは${RICH_MENU_REPLY_MAX_LENGTH}文字までです` };
+    }
+    const replyId = typeof actionData.replyId === 'string' && RICH_MENU_REPLY_ID_RE.test(actionData.replyId) ? actionData.replyId : crypto.randomUUID();
+    actionData = { kind: 'reply', replyId, replyText: actionData.replyText };
+  }
   return {
     ok: true,
     value: {
@@ -112,7 +124,7 @@ function parseAreaInput(raw: unknown): Parsed<RichMenuAreaInput> {
       boundsWidth: r.boundsWidth as number,
       boundsHeight: r.boundsHeight as number,
       actionType: r.actionType as RichMenuAreaInput['actionType'],
-      actionData: r.actionData as Record<string, unknown>,
+      actionData,
     },
   };
 }

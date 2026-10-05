@@ -13,10 +13,35 @@ type Props = {
   onDelete: () => void
 }
 
-function defaultActionData(type: Area['actionType']): Record<string, unknown> {
+/**
+ * 画面で選ぶ「ボタンを押したときの動き」。
+ *  - reply: 店舗からメッセージを送る(お客様が送ったことにはならない)。保存上は postback の kind='reply' で、
+ *           押されたときに店舗側が本文を返信する。長文(5,000文字まで)・改行・絵文字OK。
+ *  - message: お客様が送ったことになるテキスト。LINEの仕様で300文字まで。
+ */
+type UiAction = 'uri' | 'reply' | 'message' | 'richmenuswitch' | 'postback'
+
+const ACTION_OPTIONS: { value: UiAction; label: string }[] = [
+  { value: 'uri', label: 'URLを開く' },
+  { value: 'reply', label: '店舗からメッセージを送る(長文・改行・絵文字OK)' },
+  { value: 'message', label: 'お客様がテキストを送る(300文字まで)' },
+  { value: 'richmenuswitch', label: 'メニューのページを切り替える' },
+  { value: 'postback', label: '上級者向け(postback)' },
+]
+
+function uiActionOf(area: Area): UiAction {
+  const data = (area.actionData ?? {}) as Record<string, unknown>
+  if (area.actionType === 'postback' && data.kind === 'reply') return 'reply'
+  return area.actionType
+}
+
+function defaultActionData(type: UiAction): Record<string, unknown> {
   switch (type) {
     case 'uri':
       return { uri: '' }
+    case 'reply':
+      // replyId は、押されたボタンと本文を結びつける目印。編集して保存し直しても変わらない
+      return { kind: 'reply', replyId: crypto.randomUUID(), replyText: '' }
     case 'message':
       return { text: '' }
     case 'postback':
@@ -48,23 +73,36 @@ function NumField({
   )
 }
 
-/** LINEのメッセージアクションの送信テキストは、300文字まで(改行も1文字)。 */
-const MESSAGE_TEXT_LIMIT = 300
-
-export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
-  const data = (area.actionData ?? {}) as Record<string, unknown>
-  const textRef = useRef<HTMLTextAreaElement>(null)
+/** 複数行(改行OK)のテキストエリア + 絵文字ボタン + 文字数。送信テキストと、店舗から送るメッセージで共通。 */
+function TextAreaWithEmoji({
+  id,
+  label,
+  value,
+  onChange,
+  limit,
+  rows,
+  placeholder,
+  overLimitNote,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (v: string) => void
+  limit: number
+  rows: number
+  placeholder: string
+  overLimitNote: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
-  const messageText = (data.text as string) ?? ''
-  const messageLength = [...messageText].length
+  const length = [...value].length
 
   // 絵文字は、カーソルの位置(選択している文字があれば置き換え)に入れる
   const insertEmoji = (emoji: string) => {
-    const el = textRef.current
-    const start = el?.selectionStart ?? messageText.length
-    const end = el?.selectionEnd ?? messageText.length
-    const next = messageText.slice(0, start) + emoji + messageText.slice(end)
-    onUpdate({ actionData: { ...data, text: next } })
+    const el = ref.current
+    const start = el?.selectionStart ?? value.length
+    const end = el?.selectionEnd ?? value.length
+    onChange(value.slice(0, start) + emoji + value.slice(end))
     const pos = start + emoji.length
     requestAnimationFrame(() => {
       el?.focus()
@@ -72,6 +110,43 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
     })
   }
 
+  return (
+    <div className="block">
+      <div className="flex items-center justify-between">
+        <label htmlFor={id} className="text-xs text-gray-500">{label}</label>
+        <button
+          type="button"
+          onClick={() => setEmojiOpen((v) => !v)}
+          aria-expanded={emojiOpen}
+          className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+        >
+          <span aria-hidden>😊</span> 絵文字
+        </button>
+      </div>
+      <textarea
+        id={id}
+        ref={ref}
+        rows={rows}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-0.5 block w-full resize-y border border-gray-300 rounded px-2 py-1 text-sm leading-relaxed"
+      />
+      {emojiOpen && <EmojiPicker onPick={insertEmoji} />}
+      <p className={`mt-1 text-[11px] ${length > limit ? 'text-red-600' : 'text-gray-500'}`}>
+        {length.toLocaleString()}/{limit.toLocaleString()}文字{length > limit ? `(${overLimitNote})` : ''}
+      </p>
+    </div>
+  )
+}
+
+/** LINEのメッセージアクションの送信テキストは300文字まで。店舗から送るメッセージ(テキスト)は5,000文字まで。改行も1文字。 */
+const MESSAGE_TEXT_LIMIT = 300
+const REPLY_TEXT_LIMIT = 5000
+
+export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
+  const data = (area.actionData ?? {}) as Record<string, unknown>
+  const uiAction = uiActionOf(area)
 
   return (
     <div className="space-y-3 text-sm">
@@ -101,23 +176,24 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
       </div>
 
       <label className="block">
-        <span className="text-xs text-gray-500">アクション</span>
+        <span className="text-xs text-gray-500">ボタンを押したときの動き</span>
         <select
-          value={area.actionType}
+          value={uiAction}
           onChange={(e) => {
-            const next = e.target.value as Area['actionType']
-            onUpdate({ actionType: next, actionData: defaultActionData(next) })
+            const next = e.target.value as UiAction
+            onUpdate({ actionType: next === 'reply' ? 'postback' : next, actionData: defaultActionData(next) })
           }}
           className="mt-0.5 block w-full border border-gray-300 rounded px-2 py-1 text-sm"
         >
-          <option value="uri">URL を開く (uri)</option>
-          <option value="message">テキスト送信 (message)</option>
-          <option value="postback">postback</option>
-          <option value="richmenuswitch">タブ切替 (richmenuswitch)</option>
+          {ACTION_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
       </label>
 
-      {area.actionType === 'uri' && (
+      {uiAction === 'uri' && (
         <label className="block">
           <span className="text-xs text-gray-500">URL</span>
           <input
@@ -133,37 +209,47 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
         </label>
       )}
 
-      {area.actionType === 'message' && (
-        <div className="block">
-          <div className="flex items-center justify-between">
-            <label htmlFor="area-message-text" className="text-xs text-gray-500">送信テキスト</label>
-            <button
-              type="button"
-              onClick={() => setEmojiOpen((v) => !v)}
-              aria-expanded={emojiOpen}
-              className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
-            >
-              <span aria-hidden>😊</span> 絵文字
-            </button>
-          </div>
-          <textarea
-            id="area-message-text"
-            ref={textRef}
-            rows={4}
-            value={messageText}
-            onChange={(e) => onUpdate({ actionData: { ...data, text: e.target.value } })}
-            placeholder={'タップしたときに送信されるテキスト(Enterで改行できます)'}
-            className="mt-0.5 block w-full resize-y border border-gray-300 rounded px-2 py-1 text-sm leading-relaxed"
+      {uiAction === 'reply' && (
+        <div className="space-y-1">
+          <TextAreaWithEmoji
+            id="area-reply-text"
+            label="店舗から送るメッセージ"
+            value={(data.replyText as string) ?? ''}
+            onChange={(v) => onUpdate({ actionData: { ...data, replyText: v } })}
+            limit={REPLY_TEXT_LIMIT}
+            rows={8}
+            placeholder={'ボタンを押したお客様に、店舗から送られる文章(Enterで改行できます)'}
+            overLimitNote="上限を超えています。公開できません"
           />
-          {emojiOpen && <EmojiPicker onPick={insertEmoji} />}
-          <p className={`mt-1 text-[11px] ${messageLength > MESSAGE_TEXT_LIMIT ? 'text-red-600' : 'text-gray-500'}`}>
-            {messageLength}/{MESSAGE_TEXT_LIMIT}文字{messageLength > MESSAGE_TEXT_LIMIT ? '(LINEの上限を超えています。公開できません)' : ''}
+          <p className="text-[11px] text-gray-500">
+            ボタンを押すと、お客様の発言としては表示されず、店舗からこの文章が届きます。{'{{name}}'} でお客様の名前を入れられます。
           </p>
         </div>
       )}
 
-      {area.actionType === 'postback' && (
+      {uiAction === 'message' && (
+        <div className="space-y-1">
+          <TextAreaWithEmoji
+            id="area-message-text"
+            label="お客様が送るテキスト"
+            value={(data.text as string) ?? ''}
+            onChange={(v) => onUpdate({ actionData: { ...data, text: v } })}
+            limit={MESSAGE_TEXT_LIMIT}
+            rows={4}
+            placeholder={'ボタンを押すと、お客様が送ったことになるテキスト(Enterで改行できます)'}
+            overLimitNote="LINEの上限を超えています。公開できません"
+          />
+          <p className="text-[11px] text-gray-500">
+            お客様が送ったことになるため、LINEの仕様で300文字までです。長い文章は「店舗からメッセージを送る」を選んでください。
+          </p>
+        </div>
+      )}
+
+      {uiAction === 'postback' && (
         <>
+          <p className="text-[11px] text-gray-500">
+            自動応答のキーワードに合わせて動かしたいときだけ使う、上級者向けの設定です。
+          </p>
           <label className="block">
             <span className="text-xs text-gray-500">postback data</span>
             <input
@@ -185,7 +271,7 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
         </>
       )}
 
-      {area.actionType === 'richmenuswitch' && (
+      {uiAction === 'richmenuswitch' && (
         <label className="block">
           <span className="text-xs text-gray-500">遷移先ページ</span>
           <select

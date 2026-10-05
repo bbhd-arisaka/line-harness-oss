@@ -51,8 +51,12 @@ interface ChatMessage {
 // ノイズなので、チャット表示ではシステム行「リッチメニュー切替」に置き換える。
 // source カラムでは判別できない — migration 028 の backfill が既存の postback
 // incoming を 'user' に倒しているため、content パターンで判定する。
+// 「店舗からメッセージを送る」ボタン(`rmreply:<UUID>`)のタップも、同じくシステム行にする(返信の本文は、店舗からの送信として別に出る)。
 const RICH_MENU_SWITCH_RE =
-  /^switch-to-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+  /^(?:switch-to-|rmreply:)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+function richMenuTapLabel(content: string): string {
+  return content.startsWith('rmreply:') ? 'リッチメニューのボタン' : 'リッチメニュー切替'
+}
 function isRichMenuSwitch(msg: { direction: string; messageType: string; content: string }): boolean {
   return msg.direction === 'incoming' && msg.messageType === 'text' && RICH_MENU_SWITCH_RE.test(msg.content)
 }
@@ -257,7 +261,7 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
               return (
                 <div key={msg.id} className="flex justify-center">
                   <span className="text-[11px] text-gray-400 bg-gray-100 px-2.5 py-0.5 rounded-full">
-                    リッチメニュー切替
+                    {richMenuTapLabel(msg.content)}
                   </span>
                 </div>
               )
@@ -990,7 +994,7 @@ export default function ChatsPage() {
                   // 最新メッセージの本文 preview。flex/image は文字列で見せても意味が薄いので type 表記に置換。
                   const previewRaw = chat.lastMessageContent ?? ''
                   const preview = (() => {
-                    if (RICH_MENU_SWITCH_RE.test(previewRaw)) return 'リッチメニュー切替'
+                    if (RICH_MENU_SWITCH_RE.test(previewRaw)) return richMenuTapLabel(previewRaw)
                     if (chat.lastMessageType === 'image') return '📷 画像'
                     if (chat.lastMessageType === 'flex') return '📋 Flexメッセージ'
                     if (chat.lastMessageType === 'sticker') return '🎨 スタンプ'
@@ -1232,7 +1236,7 @@ export default function ChatsPage() {
                           )}
                           <div className="flex justify-center my-1.5">
                             <span className="text-[11px] text-white/70 bg-black/15 px-2.5 py-0.5 rounded-full">
-                              リッチメニュー切替{runLength > 1 ? ` ×${runLength}` : ''}
+                              {richMenuTapLabel(msg.content)}{runLength > 1 ? ` ×${runLength}` : ''}
                               {' · '}
                               {new Date(msg.createdAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                             </span>

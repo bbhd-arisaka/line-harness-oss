@@ -284,6 +284,45 @@ describe('POST /api/rich-menu-groups', () => {
   });
 });
 
+describe('POST /api/rich-menu-groups: 店舗からメッセージを送るエリア', () => {
+  const area = (actionData: Record<string, unknown>) => ({
+    boundsX: 0, boundsY: 0, boundsWidth: 100, boundsHeight: 100, actionType: 'postback', actionData,
+  });
+  const post = (areas: unknown[]) =>
+    setupApp().request('/api/rich-menu-groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: 'a', name: 'x', chatBarText: 'x', size: 'large', pages: [{ name: 'p1', orderIndex: 0, areas }] }),
+    });
+
+  test('300文字を超える長文(改行つき)も受け付け、replyId が無ければ付ける。あれば保つ', async () => {
+    dbMocks.createRichMenuGroup.mockResolvedValue({
+      id: 'new-1', account_id: 'a', name: 'x', chat_bar_text: 'x', size: 'large', default_page_id: 'p1', is_default_for_all: 0,
+      status: 'draft', publishing_at: null, created_at: '2026-05-08T00:00:00.000', updated_at: '2026-05-08T00:00:00.000',
+      pages: [{ id: 'p1', group_id: 'new-1', order_index: 0, name: 'p1', alias_id: 'lhx-newxxxxx-0', line_richmenu_id: null,
+        image_r2_key: null, image_content_type: null, created_at: '2026-05-08T00:00:00.000', updated_at: '2026-05-08T00:00:00.000', areas: [] }],
+    });
+    const longText = 'ご案内\n😊'.repeat(400);
+    const keep = '3f2b8c1e-9d4a-4b6e-8f10-2a7c5d9e1b34';
+    const res = await post([
+      area({ kind: 'reply', replyText: longText }),
+      area({ kind: 'reply', replyId: keep, replyText: 'こんにちは' }),
+    ]);
+    expect(res.status).toBe(200);
+    const input = dbMocks.createRichMenuGroup.mock.calls[0][1] as { pages: { areas: { actionData: Record<string, unknown> }[] }[] };
+    const [a1, a2] = input.pages[0].areas;
+    expect(a1.actionData).toMatchObject({ kind: 'reply', replyText: longText });
+    expect(a1.actionData.replyId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(a2.actionData).toEqual({ kind: 'reply', replyId: keep, replyText: 'こんにちは' });
+  });
+
+  test('5,000文字を超えると断る', async () => {
+    const res = await post([area({ kind: 'reply', replyText: 'あ'.repeat(5001) })]);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/5000/);
+  });
+});
+
 // ----- PATCH /api/rich-menu-groups/:groupId -----
 
 describe('PATCH /api/rich-menu-groups/:groupId', () => {

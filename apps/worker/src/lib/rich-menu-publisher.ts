@@ -20,6 +20,27 @@ export type AreaInput = {
   actionData: Record<string, unknown>;
 };
 
+/**
+ * 管理画面のエリアを、LINEのアクションに変換する。
+ * 「店舗からメッセージを送る」(postback の kind='reply')は、本文を LINE に渡さず、
+ * ボタンを押されたときに `rmreply:<replyId>` を受け取って、本文はこちらで返信する(本文は5,000文字まで・改行と絵文字OK。
+ * LINEの message アクションは300文字までで、お客様が送ったことになるため)。
+ */
+export function toLineAction(a: Pick<AreaInput, 'actionType' | 'actionData'>): Record<string, unknown> {
+  if (a.actionType === 'postback' && a.actionData.kind === 'reply') {
+    const replyId = a.actionData.replyId;
+    const text = a.actionData.replyText;
+    if (typeof replyId !== 'string' || !replyId) throw new Error('reply action missing replyId');
+    if (typeof text !== 'string' || text.trim() === '') throw new Error('店舗から送るメッセージが空のエリアがあります');
+    return { type: 'postback', data: `rmreply:${replyId}` };
+  }
+  return { type: a.actionType, ...a.actionData };
+}
+
+/** 「店舗からメッセージを送る」: 本文の上限(LINEのテキストメッセージは5,000文字まで)と、replyId の形(UUID)。 */
+export const RICH_MENU_REPLY_MAX_LENGTH = 5000;
+export const RICH_MENU_REPLY_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export type PageInput = {
   id: string;
   orderIndex: number;
@@ -128,7 +149,7 @@ export async function publishRichMenuGroup(
       chatBarText: group.chatBarText,
       areas: page.areas.map((a) => ({
         bounds: a.bounds,
-        action: { type: a.actionType, ...a.actionData },
+        action: toLineAction(a),
       })),
     });
     const newRichMenuId = created.richMenuId;
