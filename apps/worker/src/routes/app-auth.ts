@@ -10,7 +10,7 @@ import {
   setAppSessionApnsToken,
 } from '@line-crm/db';
 import { verifyAdminCredentials } from '../services/app-auth.js';
-import { resolveExternalStaff } from '../services/external-auth.js';
+import { isTenantPermitted, resolveExternalStaff } from '../services/external-auth.js';
 import type { Env } from '../index.js';
 
 /**
@@ -46,12 +46,11 @@ appAuth.post('/api/app/login', async (c) => {
     return c.json({ success: false, error: result.message }, result.status);
   }
 
-  const allowed = (c.env.BEYOND_ADMIN_ALLOWED_TENANT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (allowed.length > 0 && !allowed.includes(result.profile.tenantId)) {
+  if (!(await isTenantPermitted(c.env.DB, c.env, result.profile.tenantId))) {
     return c.json({ success: false, error: 'この会社は beyond line を利用できません' }, 403);
   }
 
-  const staff = await resolveExternalStaff(c.env.DB, result.profile);
+  const staff = await resolveExternalStaff(c.env.DB, result.profile, c.env);
   if (!staff) {
     return c.json({ success: false, error: 'このユーザーは停止されています。管理者に連絡してください' }, 403);
   }

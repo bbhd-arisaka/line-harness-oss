@@ -174,7 +174,7 @@ describe('beyond admin のユーザー一覧の同期(スタッフ管理に、�
   test('一覧にいる全員がスタッフに入る(ログイン前でも)。見られるアカウントは空から。無効の人は無効', async () => {
     const { d, sqlite } = db();
     const fetchSpy = f(USERS);
-    expect(await syncExternalUsers(d, ENV, fetchSpy)).toEqual({ synced: 4, deactivated: 0 });
+    expect(await syncExternalUsers(d, { ...ENV, BEYOND_ADMIN_ALLOWED_TENANT_IDS: 't-1,t-2' }, fetchSpy)).toEqual({ synced: 4, deactivated: 0 });
     const [url, init] = (fetchSpy as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0];
     expect(url).toBe('https://admin.example.test/api/internal/line/users');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer internal-secret');
@@ -190,10 +190,10 @@ describe('beyond admin のユーザー一覧の同期(スタッフ管理に、�
   test('beyond admin から居なくなった人は無効になる。見られるアカウントの設定は同期で消えない', async () => {
     const { d, sqlite } = db();
     sqlite.exec("INSERT INTO line_accounts(id,channel_id,name,channel_secret,channel_access_token) VALUES('acc-a','ch-a','A店','s','t')");
-    await syncExternalUsers(d, ENV, f(USERS));
+    await syncExternalUsers(d, { ...ENV, BEYOND_ADMIN_ALLOWED_TENANT_IDS: 't-1,t-2' }, f(USERS));
     const id = (sqlite.prepare("SELECT id FROM staff_members WHERE external_id='u-2'").get() as { id: string }).id;
     sqlite.prepare("INSERT INTO staff_account_access(staff_id, line_account_id) VALUES(?, 'acc-a')").run(id);
-    const r = await syncExternalUsers(d, ENV, f({ ok: true, users: USERS.users.filter((u) => u.userId !== 'u-2' && u.userId !== 'u-3') }));
+    const r = await syncExternalUsers(d, { ...ENV, BEYOND_ADMIN_ALLOWED_TENANT_IDS: 't-1,t-2' }, f({ ok: true, users: USERS.users.filter((u) => u.userId !== 'u-2' && u.userId !== 'u-3') }));
     expect(r).toEqual({ synced: 2, deactivated: 1 });
     expect(sqlite.prepare("SELECT is_active FROM staff_members WHERE external_id='u-2'").get()).toEqual({ is_active: 0 });
     expect(sqlite.prepare('SELECT COUNT(*) c FROM staff_account_access').get()).toEqual({ c: 1 });
@@ -205,9 +205,23 @@ describe('beyond admin のユーザー一覧の同期(スタッフ管理に、�
     expect(sqlite.prepare("SELECT COUNT(*) c FROM staff_members WHERE external_id = 'u-9'").get()).toEqual({ c: 0 });
   });
 
+  test('入れてよい会社の設定が空でも、名簿にいる会社だけに固定する(別の会社は映さない・ログインさせない)。名簿が空のうちは何も映さない', async () => {
+    const { resolveExternalStaff } = await import('./external-auth.js');
+    const { d, sqlite } = db();
+    expect(await syncExternalUsers(d, ENV, f(USERS))).toEqual({ synced: 0, deactivated: 0 });
+    // 最初にログインした会社が登録される
+    const profile = (u: (typeof USERS.users)[number]) => ({ userId: u.userId, tenantId: u.tenantId, tenantName: u.tenantName, name: u.name, email: u.email, role: u.role as 'owner' | 'manager' | 'staff' });
+    expect(await resolveExternalStaff(d, profile(USERS.users[0]), ENV)).not.toBeNull();
+    // 以後、別の会社の人は、ログインも同期もできない
+    expect(await resolveExternalStaff(d, profile(USERS.users[3]), ENV)).toBeNull();
+    await syncExternalUsers(d, ENV, f(USERS));
+    expect(sqlite.prepare("SELECT COUNT(*) c FROM staff_members WHERE external_id = 'u-9'").get()).toEqual({ c: 0 });
+    expect(sqlite.prepare("SELECT COUNT(*) c FROM staff_members WHERE external_tenant_id = 't-1'").get()).toEqual({ c: 3 });
+  });
+
   test('取れなかったとき(通信失敗・拒否・形が崩れた応答・設定なし)は、何も変えない', async () => {
     const { d, sqlite } = db();
-    await syncExternalUsers(d, ENV, f(USERS));
+    await syncExternalUsers(d, { ...ENV, BEYOND_ADMIN_ALLOWED_TENANT_IDS: 't-1,t-2' }, f(USERS));
     const before = sqlite.prepare('SELECT COUNT(*) c FROM staff_members WHERE is_active = 1').get();
     expect(await syncExternalUsers(d, ENV, f({ error: 'unauthorized' }, 401))).toBeNull();
     expect(await syncExternalUsers(d, ENV, f({ ok: true }))).toBeNull();
@@ -223,7 +237,7 @@ describe('beyond admin のユーザー一覧の同期(スタッフ管理に、�
     app.use('*', authMiddleware);
     app.route('/', staffRoutes);
     vi.spyOn(globalThis, 'fetch').mockImplementation((async () => okResponse(USERS)) as unknown as typeof fetch);
-    const res = await app.request('/api/staff', { headers: { Authorization: 'Bearer owner-key' } }, { DB: d, API_KEY: 'env-key', ...ENV } as unknown as Env['Bindings']);
+    const res = await app.request('/api/staff', { headers: { Authorization: 'Bearer owner-key' } }, { DB: d, API_KEY: 'env-key', ...ENV, BEYOND_ADMIN_ALLOWED_TENANT_IDS: 't-1,t-2' } as unknown as Env['Bindings']);
     const list = (await res.json() as { data: Array<{ name: string; external: boolean; isActive: boolean }> }).data;
     expect(list.filter((s) => s.external).map((s) => s.name).sort()).toEqual(['別会社の人', '山田 花子', '有坂 将希', '退職 太郎'].sort());
     expect(list.find((s) => s.name === 'Owner')).toMatchObject({ external: false });

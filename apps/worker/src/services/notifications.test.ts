@@ -165,3 +165,17 @@ describe('通知を送る(beyond admin の宛先へ)', () => {
     expect(await listAdminDestinations(ENV, null)).toMatchObject({ available: false });
   });
 });
+
+describe('契約(会社)の特定', () => {
+  test('スタッフ名簿の契約が1つだけなら、環境変数のオーナーでもそれを使う。複数なら特定しない', async () => {
+    const { resolveTenantId } = await import('./notifications.js');
+    const { db, sqlite } = setup();
+    expect(await resolveTenantId(db, ENV, 'env-owner')).toBeNull();
+    sqlite.exec(`INSERT INTO staff_members(id,name,role,api_key,external_tenant_id) VALUES('s1','A','admin','k1','tenant-1'),('s2','B','staff','k2','tenant-1')`);
+    expect(await resolveTenantId(db, ENV, 'env-owner')).toBe('tenant-1');
+    sqlite.exec(`INSERT INTO staff_members(id,name,role,api_key,external_tenant_id) VALUES('s3','C','staff','k3','tenant-2')`);
+    expect(await resolveTenantId(db, ENV, 'env-owner')).toBeNull();
+    // 本人の契約があれば、それが優先
+    expect(await resolveTenantId(db, ENV, 's3')).toBe('tenant-2');
+  });
+});

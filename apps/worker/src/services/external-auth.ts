@@ -125,8 +125,28 @@ export async function verifyAdminSession(
   return profile;
 }
 
-/** 確認できた利用者を、スタッフとして作る/更新する(停止されている人は null) */
-export async function resolveExternalStaff(db: D1Database, profile: ExternalProfile): Promise<StaffMember | null> {
+/**
+ * 入れてよい会社(契約)。設定(BEYOND_ADMIN_ALLOWED_TENANT_IDS)があればそれ。
+ * 設定が空のときは「すでにスタッフ名簿にいる会社」だけに固定する(先に入った会社のものになる)。
+ * これで、設定を忘れていても、あとから別の会社が beyond line を契約して入ってくることはできない。
+ * 名簿がまだ空(最初の1社目)のときだけ bound=false で、最初にログインした会社が登録される。
+ */
+export async function permittedTenants(db: D1Database, env: ExternalAuthEnv): Promise<{ ids: string[]; bound: boolean }> {
+  const configured = (env.BEYOND_ADMIN_ALLOWED_TENANT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (configured.length > 0) return { ids: configured, bound: true };
+  const rows = await db.prepare('SELECT DISTINCT external_tenant_id FROM staff_members WHERE external_tenant_id IS NOT NULL').all<{ external_tenant_id: string }>();
+  const ids = (rows.results ?? []).map((r) => r.external_tenant_id);
+  return { ids, bound: ids.length > 0 };
+}
+
+export async function isTenantPermitted(db: D1Database, env: ExternalAuthEnv, tenantId: string): Promise<boolean> {
+  const { ids, bound } = await permittedTenants(db, env);
+  return !bound || ids.includes(tenantId);
+}
+
+/** 確認できた利用者を、スタッフとして作る/更新する(停止されている人・入れない会社の人は null) */
+export async function resolveExternalStaff(db: D1Database, profile: ExternalProfile, env: ExternalAuthEnv): Promise<StaffMember | null> {
+  if (!(await isTenantPermitted(db, env, profile.tenantId))) return null;
   const member = await upsertExternalStaff(db, {
     externalId: profile.userId,
     tenantId: profile.tenantId,
@@ -197,8 +217,9 @@ export async function syncExternalUsers(
   }
   if (!users) return null;
 
-  const allowed = (env.BEYOND_ADMIN_ALLOWED_TENANT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const targets = allowed.length > 0 ? users.filter((u) => allowed.includes(u.tenantId)) : users;
+  // 入れてよい会社だけ映す(設定が空なら、すでに名簿にいる会社だけ。名簿が空のうちは、最初のログインで会社が決まるまで何も映さない)
+  const permitted = await permittedTenants(db, env);
+  const targets = permitted.bound ? users.filter((u) => permitted.ids.includes(u.tenantId)) : [];
   for (const u of targets) {
     await upsertExternalStaff(db, {
       externalId: u.userId,

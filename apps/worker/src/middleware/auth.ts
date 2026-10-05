@@ -137,7 +137,7 @@ async function authenticateExternal(c: Context<Env>): Promise<AuthenticatedStaff
   if (!sessionId) return null;
   const profile = await verifyAdminSession(c.env, sessionId);
   if (!profile) return null;
-  const member = await resolveExternalStaff(c.env.DB, profile);
+  const member = await resolveExternalStaff(c.env.DB, profile, c.env);
   return member ? { id: member.id, name: member.name, role: member.role, external: true } : null;
 }
 

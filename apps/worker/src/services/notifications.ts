@@ -115,7 +115,11 @@ export async function resolveTenantId(db: D1Database, env: NotifyEnv, staffId: s
     if (row?.external_tenant_id) return row.external_tenant_id;
   }
   const allowed = (env.BEYOND_ADMIN_ALLOWED_TENANT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  return allowed.length === 1 ? allowed[0] : null;
+  if (allowed.length === 1) return allowed[0];
+  // 環境変数のオーナーなど契約を持たないログインのとき: スタッフ名簿の契約(会社)が1つだけなら、それを使う
+  const rows = await db.prepare('SELECT DISTINCT external_tenant_id FROM staff_members WHERE external_tenant_id IS NOT NULL LIMIT 2').all<{ external_tenant_id: string }>();
+  const ids = (rows.results ?? []).map((r) => r.external_tenant_id);
+  return ids.length === 1 ? ids[0] : null;
 }
 
 // ── 通知スケジュール(日本時間) ──────────────────────────────────────────────
