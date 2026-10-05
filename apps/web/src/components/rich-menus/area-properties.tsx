@@ -1,6 +1,8 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import type { Area } from './canvas-editor'
+import { EmojiPicker } from './emoji-picker'
 
 type PageOption = { id: string; name: string }
 
@@ -46,8 +48,30 @@ function NumField({
   )
 }
 
+/** LINEのメッセージアクションの送信テキストは、300文字まで(改行も1文字)。 */
+const MESSAGE_TEXT_LIMIT = 300
+
 export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
   const data = (area.actionData ?? {}) as Record<string, unknown>
+  const textRef = useRef<HTMLTextAreaElement>(null)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const messageText = (data.text as string) ?? ''
+  const messageLength = [...messageText].length
+
+  // 絵文字は、カーソルの位置(選択している文字があれば置き換え)に入れる
+  const insertEmoji = (emoji: string) => {
+    const el = textRef.current
+    const start = el?.selectionStart ?? messageText.length
+    const end = el?.selectionEnd ?? messageText.length
+    const next = messageText.slice(0, start) + emoji + messageText.slice(end)
+    onUpdate({ actionData: { ...data, text: next } })
+    const pos = start + emoji.length
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(pos, pos)
+    })
+  }
+
 
   return (
     <div className="space-y-3 text-sm">
@@ -110,14 +134,32 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
       )}
 
       {area.actionType === 'message' && (
-        <label className="block">
-          <span className="text-xs text-gray-500">送信テキスト</span>
-          <input
-            value={(data.text as string) ?? ''}
+        <div className="block">
+          <div className="flex items-center justify-between">
+            <label htmlFor="area-message-text" className="text-xs text-gray-500">送信テキスト</label>
+            <button
+              type="button"
+              onClick={() => setEmojiOpen((v) => !v)}
+              aria-expanded={emojiOpen}
+              className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+            >
+              <span aria-hidden>😊</span> 絵文字
+            </button>
+          </div>
+          <textarea
+            id="area-message-text"
+            ref={textRef}
+            rows={4}
+            value={messageText}
             onChange={(e) => onUpdate({ actionData: { ...data, text: e.target.value } })}
-            className="mt-0.5 block w-full border border-gray-300 rounded px-2 py-1 text-sm"
+            placeholder={'タップしたときに送信されるテキスト(Enterで改行できます)'}
+            className="mt-0.5 block w-full resize-y border border-gray-300 rounded px-2 py-1 text-sm leading-relaxed"
           />
-        </label>
+          {emojiOpen && <EmojiPicker onPick={insertEmoji} />}
+          <p className={`mt-1 text-[11px] ${messageLength > MESSAGE_TEXT_LIMIT ? 'text-red-600' : 'text-gray-500'}`}>
+            {messageLength}/{MESSAGE_TEXT_LIMIT}文字{messageLength > MESSAGE_TEXT_LIMIT ? '(LINEの上限を超えています。公開できません)' : ''}
+          </p>
+        </div>
       )}
 
       {area.actionType === 'postback' && (
