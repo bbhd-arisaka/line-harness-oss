@@ -243,7 +243,37 @@ function applyFilters(rows: UnansweredRow[], opts: UnansweredInboxOptions): Unan
  * 4. JS で各 incoming を判定: 応答あり証拠 OR silent ルール match で「マッチ済」、
  *    マッチしない最新の incoming を preview として採用。全部マッチした thread のみ除外。
  */
+// 未対応の集計は messages_log を丸ごと走査する重いクエリ(1回で数万行の読み取り)。サイドバーのバッジ(5分ごと)・
+// トーク一覧(30秒ごと)・個別トークが、開いている画面の数だけ呼ぶので、D1 の読み取り上限(無料枠は1日500万行)を
+// 使い切る原因になった(2026-10-06 に API が全停止)。短時間だけ結果を使い回す。
+// 手動返信・対応マーク変更など、自分で変えたときは invalidateUnansweredCache() で即座に捨てる。
+const UNANSWERED_CACHE_TTL_MS = 30_000;
+const unansweredCache = new WeakMap<object, { at: number; rows?: UnansweredRow[]; pending?: Promise<UnansweredRow[]> }>();
+
+export function invalidateUnansweredCache(db: object): void {
+  unansweredCache.delete(db);
+}
+
 async function getAllUnansweredRows(db: D1Database): Promise<UnansweredRow[]> {
+  const hit = unansweredCache.get(db);
+  const now = Date.now();
+  if (hit?.rows && now - hit.at < UNANSWERED_CACHE_TTL_MS) return hit.rows;
+  if (hit?.pending) return hit.pending; // 同時に来た要求は、1回の計算を分け合う
+  const pending = computeAllUnansweredRows(db).then(
+    (rows) => {
+      unansweredCache.set(db, { at: Date.now(), rows });
+      return rows;
+    },
+    (err) => {
+      unansweredCache.delete(db);
+      throw err;
+    },
+  );
+  unansweredCache.set(db, { at: now, pending });
+  return pending;
+}
+
+async function computeAllUnansweredRows(db: D1Database): Promise<UnansweredRow[]> {
   const candidatesResult = await db.prepare(CANDIDATES_SQL).all<RawCandidateRow>();
   const candidates = candidatesResult.results ?? [];
   if (candidates.length === 0) return [];

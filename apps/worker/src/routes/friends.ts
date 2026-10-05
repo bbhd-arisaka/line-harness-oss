@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { invalidateUnansweredCache } from '../services/unanswered-inbox.js';
 import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
 import {
   getFriends,
@@ -751,6 +752,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
       )
       .bind(logId, friend.id, messageType, body.content, jstNow())
       .run();
+    invalidateUnansweredCache(db);
 
     return c.json({ success: true, data: { messageId: logId } });
   } catch (err) {

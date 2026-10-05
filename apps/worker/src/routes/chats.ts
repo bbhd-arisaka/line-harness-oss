@@ -20,6 +20,7 @@ import {
   listFriendEvents,
   jstNow,
 } from '@line-crm/db';
+import { invalidateUnansweredCache } from '../services/unanswered-inbox.js';
 import type { Env } from '../index.js';
 
 const chats = new Hono<Env>();
@@ -518,6 +519,7 @@ chats.put('/api/chats/:id', async (c) => {
     const body = await c.req.json<{ operatorId?: string | null; status?: string; notes?: string }>();
     const before = await getChatById(c.env.DB, resolved.id);
     await updateChat(c.env.DB, resolved.id, body);
+    invalidateUnansweredCache(c.env.DB);
     const updated = await getChatById(c.env.DB, resolved.id);
     if (!updated) return c.json({ success: false, error: 'Not found' }, 404);
     // 通知設定(対応マーク変更時)
@@ -637,6 +639,7 @@ chats.post('/api/chats/:id/send', async (c) => {
       .prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, source, line_account_id, created_at) VALUES (?, ?, 'outgoing', ?, ?, 'manual', ?, ?)`)
       .bind(logId, friend.id, log.messageType, log.content, lineAccountId, jstNow())
       .run();
+    invalidateUnansweredCache(c.env.DB);
 
     // チャットの最終メッセージ日時を更新（chat.id を直接使う — friend_id で呼ばれても resolveOrCreateChat 済み）
     await updateChat(c.env.DB, chat.id, { status: 'in_progress', lastMessageAt: jstNow() });
