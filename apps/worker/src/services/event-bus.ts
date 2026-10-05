@@ -22,6 +22,7 @@ import {
 import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import { sendAdConversions } from './ad-conversion.js';
+import { notifyEvent } from './notifications.js';
 import { keywordMatches } from './keyword-match.js';
 import {
   claimTagEffects,
@@ -70,6 +71,11 @@ export async function fireEvent(
     const account = await resolveTagEventAccount(db, payload.friendId, lineAccountId);
     lineAccessToken = account.accessToken;
     lineAccountId = account.accountId;
+  }
+  // 通知設定(タグ追加時)
+  if (eventType === 'tag_change' && payload.friendId && payload.eventData?.action === 'add' && typeof payload.eventData?.tagId === 'string') {
+    const tag = await db.prepare('SELECT name FROM tags WHERE id = ?').bind(payload.eventData.tagId).first<{ name: string }>();
+    await notifyEvent(db, { accountId: lineAccountId, timing: 'tag_added', friendId: payload.friendId, detail: tag ? `タグ「${tag.name}」が追加されました` : 'タグが追加されました' });
   }
   // Phase 1: fire webhooks, apply scoring rules, and ad conversion postback concurrently.
   const phase1: Promise<unknown>[] = [

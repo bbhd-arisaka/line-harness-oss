@@ -342,6 +342,49 @@ export type QuotaUsage = {
   noticeUrl: string | null
 }
 
+// ── 通知設定(Lステップの「通知」) ──
+export type NotificationDestinationItem = { kind: 'line' | 'mail'; id: string; name: string }
+export type NotificationScheduleItem =
+  | { mode: 'always' }
+  | { mode: 'weekly'; days: number[]; from: string; to: string }
+export type NotificationSettingInput = {
+  title: string
+  status: 'on' | 'off'
+  schedule: NotificationScheduleItem
+  timings: Array<{ key: string; formIds?: string[] }>
+  filterTagIds: string[]
+  destinations: NotificationDestinationItem[]
+}
+export type NotificationSettingItem = NotificationSettingInput & {
+  id: string
+  lineAccountId: string
+  isDefault: boolean
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+export type NotificationTimingCategory = {
+  key: string
+  label: string
+  description: string
+  timings: Array<{ key: string; label: string; available: boolean; note?: string }>
+}
+export type NotificationDestinationList = {
+  available: boolean
+  reason?: string
+  adminUrl?: string
+  line: NotificationDestinationItem[]
+  mail: NotificationDestinationItem[]
+}
+export type NotificationDeliveryItem = {
+  timing: string
+  destination_kind: string
+  destination_id: string
+  status: 'sent' | 'failed'
+  error: string | null
+  created_at: string
+}
+
 export type SavedFriendSearch = {
   id: string
   lineAccountId: string
@@ -435,6 +478,25 @@ export const api = {
       }),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/tags/${id}`, { method: 'DELETE' }),
+  },
+  notificationSettings: {
+    list: (lineAccountId: string) =>
+      fetchApi<ApiResponse<NotificationSettingItem[]> & { adminLinked: boolean }>(
+        `/api/notification-settings?lineAccountId=${encodeURIComponent(lineAccountId)}`,
+      ),
+    catalog: () => fetchApi<ApiResponse<NotificationTimingCategory[]>>('/api/notification-settings/catalog'),
+    destinations: () => fetchApi<ApiResponse<NotificationDestinationList>>('/api/notification-destinations'),
+    addMailDestination: (data: { email: string; displayName?: string }) =>
+      fetchApi<ApiResponse<null>>('/api/notification-destinations/mail', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: NotificationSettingInput & { lineAccountId: string }) =>
+      fetchApi<ApiResponse<NotificationSettingItem>>('/api/notification-settings', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<NotificationSettingInput>) =>
+      fetchApi<ApiResponse<NotificationSettingItem>>(`/api/notification-settings/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) => fetchApi<ApiResponse<null>>(`/api/notification-settings/${id}`, { method: 'DELETE' }),
+    test: (id: string) =>
+      fetchApi<ApiResponse<Array<{ kind: 'line' | 'mail'; name: string; ok: boolean; error?: string }>>>(`/api/notification-settings/${id}/test`, { method: 'POST' }),
+    deliveries: (id: string) =>
+      fetchApi<ApiResponse<NotificationDeliveryItem[]>>(`/api/notification-settings/${id}/deliveries`),
   },
   scenarios: {
     list: (params?: { accountId?: string }) => {

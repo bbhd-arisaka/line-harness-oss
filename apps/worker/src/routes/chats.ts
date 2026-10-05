@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
+import { notifyEvent } from '../services/notifications.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
 import type { Message } from '@line-crm/line-sdk';
 import { messageToLogPayload } from '../services/step-delivery.js';
@@ -515,9 +516,15 @@ chats.put('/api/chats/:id', async (c) => {
     const resolved = await resolveOrCreateChat(c.env.DB, id);
     if (!resolved) return c.json({ success: false, error: 'Not found' }, 404);
     const body = await c.req.json<{ operatorId?: string | null; status?: string; notes?: string }>();
+    const before = await getChatById(c.env.DB, resolved.id);
     await updateChat(c.env.DB, resolved.id, body);
     const updated = await getChatById(c.env.DB, resolved.id);
     if (!updated) return c.json({ success: false, error: 'Not found' }, 404);
+    // 通知設定(対応マーク変更時)
+    if (body.status && before && before.status !== updated.status) {
+      const label: Record<string, string> = { unread: '未読', in_progress: '対応中', resolved: '解決済' };
+      await notifyEvent(c.env.DB, { accountId: null, timing: 'status_change', friendId: updated.friend_id, detail: `「${label[before.status] ?? before.status}」→「${label[updated.status] ?? updated.status}」` });
+    }
     return c.json({
       success: true,
       // 公開 ID は friend_id に統一

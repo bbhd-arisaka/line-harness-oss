@@ -20,6 +20,7 @@ import {
 import type { FollowerImportClient } from '../services/follower-import.js';
 import type { Env } from '../index.js';
 import { countAccountMonthlyMessages, jstYyyyMmDd } from '../services/quota.js';
+import { listAdminDestinations, resolveTenantId } from '../services/notifications.js';
 import { countDeliverableAudience } from '../services/quota-alert.js';
 import { ensureLiffApp, LiffSetupError } from '../services/liff-setup.js';
 
@@ -654,6 +655,17 @@ lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
       }
     } catch (err) {
       console.error('[line-accounts] failed to auto-enroll into main pool', err);
+    }
+
+    // 通知設定: アカウントを追加したタイミングで、標準の設定(チャット通知・友だち追加通知)を自動で作る。
+    // 通知先は、beyond admin に登録・検証済みの宛先すべて(まだ無ければ、オフのまま作る)。失敗しても、アカウントの追加は成功させる。
+    try {
+      const { ensureDefaultNotificationSettings } = await import('@line-crm/db');
+      const tenantId = await resolveTenantId(c.env.DB, c.env, c.get('staff')?.id);
+      const listed = await listAdminDestinations(c.env, tenantId);
+      await ensureDefaultNotificationSettings(c.env.DB, account.id, listed.available ? [...listed.line, ...listed.mail] : []);
+    } catch (err) {
+      console.error('[line-accounts] failed to create default notification settings', err);
     }
 
     const liffSetup = await autoSetupLiff(c, account.id);

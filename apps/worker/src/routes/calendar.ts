@@ -13,6 +13,7 @@ import {
   toJstString,
 } from '@line-crm/db';
 import { GoogleCalendarClient } from '../services/google-calendar.js';
+import { notifyEvent } from '../services/notifications.js';
 import type { Env } from '../index.js';
 
 const calendar = new Hono<Env>();
@@ -208,6 +209,11 @@ calendar.post('/api/integrations/google-calendar/book', async (c) => {
       }
     }
 
+    // 通知設定(カレンダー予約: 予約時)
+    if (booking.friend_id) {
+      await notifyEvent(c.env.DB, { accountId: null, timing: 'calendar_booked', friendId: booking.friend_id, detail: `${booking.title}(${booking.start_at})` });
+    }
+
     return c.json({
       success: true,
       data: {
@@ -253,6 +259,11 @@ calendar.put('/api/integrations/google-calendar/bookings/:id/status', async (c) 
     }
 
     await updateCalendarBookingStatus(c.env.DB, id, status);
+    // 通知設定(カレンダー予約: 予約キャンセル時)
+    if (status === 'cancelled') {
+      const cancelled = await getCalendarBookingById(c.env.DB, id);
+      if (cancelled?.friend_id) await notifyEvent(c.env.DB, { accountId: null, timing: 'calendar_cancelled', friendId: cancelled.friend_id, detail: `${cancelled.title}(${cancelled.start_at}) がキャンセルされました` });
+    }
     return c.json({ success: true, data: null });
   } catch (err) {
     console.error('PUT /api/integrations/google-calendar/bookings/:id/status error:', err);

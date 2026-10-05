@@ -12,6 +12,7 @@ import {
 } from '@line-crm/db';
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
+import { notifyEvent } from '../services/notifications.js';
 import type { TrackedLink } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { isLinkPreviewBot } from '../lib/og-bot.js';
@@ -380,6 +381,11 @@ trackedLinks.get('/t/:linkId', async (c) => {
       try {
         // Record the click (link.id, not the raw param — it may be a short code)
         const click = await recordLinkClick(c.env.DB, link.id, friendId);
+
+        // 通知設定(URLクリック検出時)
+        if (friendId) {
+          await notifyEvent(c.env.DB, { accountId: link.line_account_id ?? null, timing: 'url_click', friendId, detail: `「${link.name}」のリンクがクリックされました` });
+        }
 
         if (friendId) {
           await awardActivityMileage(c.env.DB, {

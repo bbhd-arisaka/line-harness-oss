@@ -545,6 +545,65 @@ const spec = {
         responses: { '200': { description: 'Deleted' }, '404': { description: 'Not found' } },
       },
     },
+    '/api/notification-settings': {
+      get: {
+        tags: ['Notifications'],
+        summary: '通知設定の一覧(公式アカウントごと・管理者以上)。1つも無い古いアカウントは、標準の設定をオフで作る',
+        parameters: [{ name: 'lineAccountId', in: 'query', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Settings' }, '400': { description: 'lineAccountId missing' }, '403': { description: 'Account not allowed' } },
+      },
+      post: {
+        tags: ['Notifications'],
+        summary: '通知設定を作る(通知先は、beyond admin に登録・検証済みの宛先だけ)',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['lineAccountId', 'title', 'timings', 'destinations'], properties: { lineAccountId: { type: 'string' }, title: { type: 'string' }, status: { type: 'string', enum: ['on', 'off'] }, schedule: { type: 'object' }, timings: { type: 'array', items: {} }, filterTagIds: { type: 'array', items: { type: 'string' } }, destinations: { type: 'array', items: { type: 'object' } } } } } } },
+        responses: { '201': { description: 'Created' }, '400': { description: 'Invalid input / unknown destination' }, '403': { description: 'Account not allowed' } },
+      },
+    },
+    '/api/notification-settings/catalog': {
+      get: { tags: ['Notifications'], summary: '選べる通知タイミングの一覧(Lステップと同じ分け方)', responses: { '200': { description: 'Catalog' } } },
+    },
+    '/api/notification-settings/{id}': {
+      put: {
+        tags: ['Notifications'],
+        summary: '通知設定を更新する(オン/オフの切り替えも)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: { '200': { description: 'Updated' }, '400': { description: 'Invalid input' }, '404': { description: 'Not found' } },
+      },
+      delete: {
+        tags: ['Notifications'],
+        summary: '通知設定を削除する',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Deleted' }, '404': { description: 'Not found' } },
+      },
+    },
+    '/api/notification-settings/{id}/test': {
+      post: {
+        tags: ['Notifications'],
+        summary: 'テスト通知を、その設定の通知先すべてへ送る',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Results per destination' }, '400': { description: 'beyond admin not linked' }, '404': { description: 'Not found' } },
+      },
+    },
+    '/api/notification-settings/{id}/deliveries': {
+      get: {
+        tags: ['Notifications'],
+        summary: '直近の通知の送信記録(失敗の確認用)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Recent deliveries' }, '404': { description: 'Not found' } },
+      },
+    },
+    '/api/notification-destinations/mail': {
+      post: {
+        tags: ['Notifications'],
+        summary: 'メールの通知先を beyond admin に登録する(確認メールが届き、リンクを開くと通知先として選べる)',
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email'], properties: { email: { type: 'string' }, displayName: { type: 'string' } } } } } },
+        responses: { '200': { description: 'Verification mail sent' }, '400': { description: 'Invalid email / not linked' } },
+      },
+    },
+    '/api/notification-destinations': {
+      get: { tags: ['Notifications'], summary: '通知先の候補(beyond admin に登録・検証済みのLINE・メール宛先)', responses: { '200': { description: 'Destinations' } } },
+    },
     '/api/imports/lstep/review': {
       get: {
         tags: ['Imports'],

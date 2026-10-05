@@ -805,6 +805,18 @@ CREATE TABLE IF NOT EXISTS mileage_rules (
   updated_at     TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id               TEXT PRIMARY KEY,
+  setting_id       TEXT NOT NULL REFERENCES notification_settings(id) ON DELETE CASCADE,
+  timing           TEXT NOT NULL,
+  friend_id        TEXT,
+  destination_kind TEXT NOT NULL,
+  destination_id   TEXT NOT NULL,
+  status           TEXT NOT NULL CHECK (status IN ('sent', 'failed')),
+  error            TEXT,
+  created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
 CREATE TABLE IF NOT EXISTS notification_rules (
   id           TEXT PRIMARY KEY,
   name         TEXT NOT NULL,
@@ -815,6 +827,26 @@ CREATE TABLE IF NOT EXISTS notification_rules (
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   line_account_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notification_settings (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT NOT NULL REFERENCES line_accounts(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'on' CHECK (status IN ('on', 'off')),
+  -- {"mode":"always"} または {"mode":"weekly","days":[0..6],"from":"09:00","to":"21:00"}(日本時間・0=日曜)
+  schedule        TEXT NOT NULL DEFAULT '{"mode":"always"}',
+  -- 通知するタイミングの配列。例 ["friend_add","message","form_answered"] / フォームを絞るときは {"key":"form_answered","formIds":["…"]}
+  timings         TEXT NOT NULL DEFAULT '[]',
+  -- 絞り込み: このタグを持つ友だちのときだけ通知(空なら全員)。友だち追加時の通知には使わない
+  filter_tag_ids  TEXT NOT NULL DEFAULT '[]',
+  -- [{"kind":"line"|"mail","id":"<beyond admin の宛先ID>","name":"表示名"}]
+  destinations    TEXT NOT NULL DEFAULT '[]',
+  -- 自動で作った標準の設定か(アカウント追加時)
+  is_default      INTEGER NOT NULL DEFAULT 0,
+  created_by      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -1466,6 +1498,10 @@ CREATE INDEX IF NOT EXISTS idx_mileage_ledger_user
 
 CREATE INDEX IF NOT EXISTS idx_mileage_rules_match
   ON mileage_rules(program_id, event_type, source, is_active);
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_setting ON notification_deliveries(setting_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_notification_settings_account ON notification_settings(line_account_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications (created_at);
 

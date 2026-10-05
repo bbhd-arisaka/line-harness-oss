@@ -19,6 +19,7 @@ import {
   type EventTargetType,
 } from '../services/event-booking-types.js';
 import { getSlotsWithRemaining } from '../services/event-availability.js';
+import { notifyEvent } from '../services/notifications.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
 import { computeIdentityKey } from '../lib/identity-key.js';
 import {
@@ -736,6 +737,8 @@ events.post('/api/liff/events/me/:bookingId/cancel', async (c) => {
     .bind(nowIso, nowIso, row.id)
     .run();
   await cancelPendingRemindersFor(c.env.DB, row.id);
+  // 通知設定(イベント予約: 予約キャンセル時)
+  await notifyEvent(c.env.DB, { accountId: account_id, timing: 'event_cancelled', friendId: friend.id, detail: 'お客様が予約をキャンセルしました' });
   return c.json({ ok: true });
 });
 
@@ -1113,6 +1116,9 @@ events.post('/api/liff/events/:id/bookings', async (c) => {
     await insertRemindersForBooking(c.env.DB, id, reminders);
   }
 
+  // 通知設定(イベント予約: 予約時)
+  await notifyEvent(c.env.DB, { accountId: account_id, timing: 'event_booked', friendId: friend.id, detail: `イベント「${event.name}」${startsAtJst(slot.starts_at)} の予約${status === 'requested' ? '(承認待ち)' : ''}` });
+
   // best-effort notification: do not fail the booking if push fails.
   try {
     const acc = await c.env.DB
@@ -1370,6 +1376,8 @@ events.post('/api/events/admin/events/:id/bookings/:bookingId/decide', async (c)
   }
 
   await notifyBookingFriend(c.env.DB, booking.id, action === 'confirm' ? 'confirmed' : 'rejected');
+  // 通知設定(イベント予約: 予約承認時・予約拒否時)
+  await notifyEvent(c.env.DB, { accountId: account_id, timing: action === 'confirm' ? 'event_approved' : 'event_rejected', friendId: (booking as { friend_id?: string | null }).friend_id ?? null, detail: action === 'confirm' ? '予約を承認しました' : '予約を拒否しました' });
   const updated = await c.env.DB
     .prepare(`SELECT * FROM event_bookings WHERE id = ?`)
     .bind(booking.id)
@@ -1400,6 +1408,8 @@ events.post('/api/events/admin/events/:id/bookings/:bookingId/cancel', async (c)
   if ((upd.meta?.changes ?? 0) === 0) return bad(c, 'invalid_state', 409);
   await cancelPendingRemindersFor(c.env.DB, booking.id);
   await notifyBookingFriend(c.env.DB, booking.id, 'cancelled_by_admin');
+  // 通知設定(イベント予約: 予約キャンセル時)
+  await notifyEvent(c.env.DB, { accountId: account_id, timing: 'event_cancelled', friendId: (booking as { friend_id?: string | null }).friend_id ?? null, detail: '店舗が予約をキャンセルしました' });
   return c.json({ ok: true });
 });
 

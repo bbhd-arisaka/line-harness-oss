@@ -32,6 +32,7 @@ export * from './auto-replies';
 export * from './traffic-pools';
 export * from './message-templates';
 export * from './rich-menus';
+export * from './notification-settings';
 export * from './affiliate-links';
 export * from './affiliate-offers';
 export * from './mileage';

@@ -68,6 +68,8 @@ import { adminAuth } from './routes/admin-auth.js';
 import { appAuth } from './routes/app-auth.js';
 import { legal } from './routes/legal.js';
 import { friendSearches } from './routes/friend-searches.js';
+import { notificationSettings } from './routes/notification-settings.js';
+import { bindNotificationEnv } from './services/notifications.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import { defaultCachePolicyMiddleware } from './middleware/cache-policy.js';
 import booking from './routes/booking.js';
@@ -129,6 +131,8 @@ export type Env = {
     BEYOND_ADMIN_URL?: string;
     BEYOND_ADMIN_INTERNAL_TOKEN?: string;
     BEYOND_ADMIN_ALLOWED_TENANT_IDS?: string;
+    // 通知の本文に付ける、beyond line 管理画面の URL(任意。例 https://beyond-line-admin.cms-manager.jp)
+    ADMIN_WEB_URL?: string;
     // 公開ページ(/privacy, /support)の問い合わせ先メール。無ければ routes/legal.ts の既定値
     SUPPORT_EMAIL?: string;
     X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
@@ -187,6 +191,11 @@ const app = new Hono<Env>();
 // Private Workers Cache pilot: only responses that deliberately declare a
 // public Cache-Control policy may enter the cache. This wrapper runs after all
 // downstream handlers and supplies no-store to every unmarked response.
+// 通知(services/notifications.ts)が、友だち追加などの深い処理から beyond admin の接続情報を使えるように、リクエストの入口で控える
+app.use('*', async (c, next) => {
+  bindNotificationEnv(c.env);
+  await next();
+});
 app.use('*', defaultCachePolicyMiddleware);
 
 // Public form endpoint used by the-harness.com. Keep this allowlist separate
@@ -275,6 +284,7 @@ app.route('/', adminAuth);
 app.route('/', appAuth);
 app.route('/', legal);
 app.route('/', friendSearches);
+app.route('/', notificationSettings);
 app.route('/', trafficPools);
 app.route('/', booking);
 app.route('/', events);

@@ -11,6 +11,7 @@ import {
 } from './step-delivery.js';
 
 import { keywordMatches } from './keyword-match.js';
+import { notifyEvent } from './notifications.js';
 export { keywordMatches } from './keyword-match.js';
 
 /**
@@ -107,6 +108,13 @@ export async function matchAndReply(
     normalizeText: opts.inputKind !== 'postback',
   }));
   if (!rule) return { matched: false, replyTokenConsumed: false };
+  // 通知設定(自動応答反応時)
+  await notifyEvent(db, {
+    accountId: lineAccountId,
+    timing: 'auto_reply',
+    friendId: friend.id,
+    detail: opts.inputKind === 'postback' ? 'リッチメニュー等のボタンに反応' : `「${incomingText}」に反応`,
+  });
   if (rule.response_type === 'silent') return { matched: true, replyTokenConsumed: false };
 
   let replyTokenConsumed = false;

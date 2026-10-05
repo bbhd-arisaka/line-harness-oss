@@ -28,6 +28,7 @@ import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import { ensureSchedulerArmed } from '../durable-objects/tenant-scheduler.js';
 import { notifyIncomingMessage } from '../services/push-notify.js';
 import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
+import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import type { IncomingMessageNotice } from '../services/push-notify.js';
 
 const webhook = new Hono<Env>();
@@ -367,6 +368,8 @@ async function handleEvent(
 
     // イベントバス発火: friend_add（replyToken は Step 0 で使用済みの可能性あり）
     await fireEvent(db, 'friend_add', { friendId: friend.id, eventData: { displayName: friend.display_name } }, lineAccessToken, lineAccountId);
+    // 通知設定(友だち追加時)
+    await notifyEvent(db, { accountId: lineAccountId, timing: 'friend_add', friendId: friend.id, friendName: friend.display_name });
     return;
   }
 
@@ -376,6 +379,12 @@ async function handleEvent(
     if (!userId) return;
 
     await updateFriendFollowStatus(db, userId, false, lineAccountId);
+    // 通知設定(ブロック時)
+    const blocked = await db
+      .prepare('SELECT id FROM friends WHERE line_user_id = ? AND (line_account_id = ? OR (? IS NULL AND line_account_id IS NULL)) LIMIT 1')
+      .bind(userId, lineAccountId ?? null, lineAccountId ?? null)
+      .first<{ id: string }>();
+    if (blocked) await notifyEvent(db, { accountId: lineAccountId, timing: 'friend_block', friendId: blocked.id });
     return;
   }
 
@@ -534,6 +543,8 @@ async function handleEvent(
     await upsertChatOnMessage(db, friend.id);
     // アプリへ通知(非 text は常に要対応扱い=unread にした場合と同じ)
     onIncoming?.({ friendId: friend.id, accountId: lineAccountId, messageType: msg.type, content: finalContent });
+    // 通知設定(通常メッセージ)
+    await notifyEvent(db, { accountId: lineAccountId, timing: 'message', friendId: friend.id, detail: describeIncomingMessage(msg.type, finalContent) });
     return;
   }
 
@@ -600,6 +611,8 @@ async function handleEvent(
       await upsertChatOnMessage(db, friend.id);
       // 自動返信で処理済み(matched)のものは、未対応にしないのと同じく通知もしない
       onIncoming?.({ friendId: friend.id, accountId: lineAccountId, messageType: 'text', content: incomingText });
+      // 通知設定(通常メッセージ。自動応答で処理済みのものは、通常メッセージとしては通知しない)
+      await notifyEvent(db, { accountId: lineAccountId, timing: 'message', friendId: friend.id, detail: describeIncomingMessage('text', incomingText) });
     }
 
     // イベントバス発火: message_received

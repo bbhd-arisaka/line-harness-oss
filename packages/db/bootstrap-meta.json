@@ -97,7 +97,8 @@
     "089_staff_deletion_request.sql",
     "090_saved_friend_searches.sql",
     "091_lstep_match_review.sql",
-    "092_lstep_match_review_pairs.sql"
+    "092_lstep_match_review_pairs.sql",
+    "093_notification_settings.sql"
   ],
-  "migrationCount": 98
+  "migrationCount": 99
 }
