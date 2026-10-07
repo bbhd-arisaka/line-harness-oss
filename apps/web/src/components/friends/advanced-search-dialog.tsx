@@ -261,6 +261,8 @@ export function AdvancedSearchDialog({
   initialSort,
   initialPageSize,
   onApply,
+  title = '絞り込み条件を設定',
+  conditionOnly = false,
 }: {
   open: boolean
   onClose: () => void
@@ -269,6 +271,10 @@ export function AdvancedSearchDialog({
   initialSort: SortMode
   initialPageSize: number
   onApply: (filter: FriendFilter, sort: SortMode, pageSize: number, ctx: DescribeContext) => void
+  /** 見出し。既定は「絞り込み条件を設定」 */
+  title?: string
+  /** 条件だけを決める画面にする(友だちの表示設定・並び替え・表示数を出さない。アクションの条件ONなどで使う) */
+  conditionOnly?: boolean
 }) {
   const [andItems, setAndItems] = useState<Draft[]>([])
   const [orGroups, setOrGroups] = useState<OrGroup[]>([])
@@ -336,7 +342,7 @@ export function AdvancedSearchDialog({
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
       <Dialog size="lg" className="p-0">
         <div className="flex items-center justify-between border-b border-kumo-line px-5 py-3">
-          <Dialog.Title className="text-base font-semibold text-kumo-strong">絞り込み条件を設定</Dialog.Title>
+          <Dialog.Title className="text-base font-semibold text-kumo-strong">{title}</Dialog.Title>
           <Button type="button" size="xs" shape="square" variant="ghost" icon={XIcon} aria-label="閉じる" onClick={onClose} />
         </div>
 
@@ -386,6 +392,7 @@ export function AdvancedSearchDialog({
             「いずれか1つ以上を満たす」必要がある条件(or条件)を追加
           </Button>
 
+          {conditionOnly ? null : (
           <div className="grid gap-3 rounded-lg border border-kumo-line p-4 sm:grid-cols-[150px_1fr]">
             <span className="text-sm font-semibold text-kumo-strong">友だちの絞り込み</span>
             <div className="space-y-2">
@@ -397,6 +404,9 @@ export function AdvancedSearchDialog({
             </div>
           </div>
 
+          )}
+
+          {conditionOnly ? null : (
           <div className="grid gap-3 rounded-lg border border-kumo-line p-4 sm:grid-cols-[150px_1fr]">
             <span className="text-sm font-semibold text-kumo-strong">並び替え・表示数</span>
             <div className="flex flex-wrap gap-3">
@@ -414,6 +424,7 @@ export function AdvancedSearchDialog({
               />
             </div>
           </div>
+          )}
 
           {error ? <p className="text-sm text-kumo-danger" role="alert">{error}</p> : null}
         </div>

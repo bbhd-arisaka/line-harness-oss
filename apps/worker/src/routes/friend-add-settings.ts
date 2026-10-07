@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { FriendAddSettingError, getFriendAddSettings, saveFriendAddSetting } from '@line-crm/db';
+import { FilterError, parseFriendFilter } from '../services/friend-filter.js';
 import type { FriendAddKind } from '@line-crm/db';
 import { requireRole } from '../middleware/role-guard.js';
 import type { Env } from '../index.js';
@@ -31,8 +32,13 @@ friendAddSettings.put('/api/friend-add-settings/:kind', requireRole('owner', 'ad
   if (!accountAllowed(c, accountId)) return c.json({ success: false, error: 'このアカウントは操作できません' }, 403);
   try {
     const body = await c.req.json<{ scenarioId?: unknown; actions?: unknown }>().catch(() => ({}) as { scenarioId?: unknown; actions?: unknown });
+    // 条件(友だち絞り込み)は、形を検証してから保存する
+    if (Array.isArray(body.actions)) {
+      body.actions = (body.actions as Array<{ condition?: unknown }>).map((a) => (a && a.condition ? { ...a, condition: parseFriendFilter(a.condition) } : a));
+    }
     return c.json({ success: true, data: await saveFriendAddSetting(c.env.DB, accountId, kind as FriendAddKind, body) });
   } catch (err) {
+    if (err instanceof FilterError) return c.json({ success: false, error: '条件の設定が正しくありません: ' + err.message }, 400);
     if (err instanceof FriendAddSettingError) return c.json({ success: false, error: err.message }, 400);
     console.error('friend-add-settings error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

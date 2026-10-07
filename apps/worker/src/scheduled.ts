@@ -8,6 +8,7 @@ import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts, processQueuedBroadcasts } from './services/broadcast.js';
 import { startBulkSendJobs } from './services/quota.js';
 import { processReminderDeliveries } from './services/reminder-delivery.js';
+import { processDeferredFriendAddActions } from './services/friend-add-settings.js';
 import { checkAccountHealth } from './services/ban-monitor.js';
 import { refreshLineAccessTokens } from './services/token-refresh.js';
 import { processInsightFetch } from './services/insight-fetcher.js';
@@ -203,6 +204,8 @@ export async function scheduled(
     () => processStepDeliveries(env.DB, defaultLineClient, env.WORKER_URL, env),
   ]));
   jobs.push(processReminderDeliveries(env.DB, defaultLineClient));
+  // 友だち追加時設定の「送信を遅らせる／時刻を指定する」
+  jobs.push(processDeferredFriendAddActions(env.DB, { workerUrl: env.WORKER_URL }).then(() => undefined));
 
   // Mileage is an eventually-consistent projection. Reuse the existing
   // minute cron invocation, but drain only every five minutes and at most 100

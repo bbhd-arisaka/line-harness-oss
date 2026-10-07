@@ -378,6 +378,7 @@ async function handleEvent(
         friendId: friend.id,
         lineAccountId: lineAccountId ?? null,
         lineAccessToken,
+        workerUrl,
         onEnrolled: async (scenarioId, enrollment) => {
           await pushImmediateFirstStep(db, friend.id, scenarioId, { defaultAccessToken: lineAccessToken, workerUrl }, { enrollment });
         },

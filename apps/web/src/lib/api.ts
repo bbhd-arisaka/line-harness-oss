@@ -36,6 +36,7 @@ import type {
 } from '@line-crm/shared'
 import { getApiBase } from './api-base'
 import type { FriendFilter } from './friend-filter'
+import type { FriendAddActionItem, FriendAddKindItem, FriendAddSettingItem } from './friend-add-actions'
 
 /** Per-account delivery-health snapshot for the dashboard cards. */
 export type AccountDeliveryHealth = {
@@ -342,22 +343,7 @@ export type QuotaUsage = {
   noticeUrl: string | null
 }
 
-// ── 友だち追加時設定(Lステップの「友だち追加時設定」) ──
-export type FriendAddKindItem = 'new' | 'returning'
-export type FriendAddActionItem =
-  | { type: 'add_tag'; params: { tagId: string } }
-  | { type: 'remove_tag'; params: { tagId: string } }
-  | { type: 'send_message'; params: { template_id: string } }
-  | { type: 'switch_rich_menu_group'; params: { groupId: string } }
-  | { type: 'remove_rich_menu'; params: Record<string, never> }
-export type FriendAddSettingItem = {
-  lineAccountId: string
-  kind: FriendAddKindItem
-  scenarioId: string | null
-  actions: FriendAddActionItem[]
-  updatedAt: string | null
-}
-
+// ── 友だち追加時設定(Lステップの「友だち追加時設定」)。型は friend-add-actions.ts ──
 // ── 通知設定(Lステップの「通知」) ──
 export type NotificationDestinationItem = { kind: 'line' | 'mail'; id: string; name: string }
 export type NotificationScheduleItem =
