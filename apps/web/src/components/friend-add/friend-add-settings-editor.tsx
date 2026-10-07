@@ -115,6 +115,7 @@ export default function FriendAddSettingsEditor({ accountId }: { accountId: stri
                 <p className="mb-4 text-sm text-gray-700">{card.description}</p>
                 <label className="mb-1 block text-sm font-bold text-gray-800">シナリオ</label>
                 <Select
+                  className="w-full"
                   value={d.scenarioId}
                   onValueChange={(v) => setDrafts({ ...drafts, [card.kind]: { ...d, scenarioId: v ?? NONE } })}
                   aria-label={`${card.title}のシナリオ`}

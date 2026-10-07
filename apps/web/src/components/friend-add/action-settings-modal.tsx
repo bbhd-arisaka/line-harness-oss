@@ -64,7 +64,7 @@ export default function ActionSettingsModal({
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose() }}>
-      <Dialog size="lg" className="p-0">
+      <Dialog size="lg" className="p-0 !w-[min(920px,94vw)] !max-w-none">
         <div className="flex items-center justify-between border-b border-kumo-line px-5 py-3">
           <Dialog.Title className="text-base font-normal text-kumo-strong">アクション設定</Dialog.Title>
           <Button type="button" size="xs" shape="square" variant="ghost" icon={XIcon} aria-label="閉じる" onClick={onClose} />
@@ -191,6 +191,7 @@ function ActionBody({ action: a, lookups, onChange }: { action: FriendAddActionI
       return (
         <Row label="メニュー変更">
           <Select
+            className="w-full"
             value={String(p.menu ?? 'default')}
             onValueChange={(v) => set({ menu: v ?? 'default' })}
             aria-label="メニュー変更"
@@ -215,6 +216,7 @@ function ActionBody({ action: a, lookups, onChange }: { action: FriendAddActionI
         <>
           <Row label="テンプレート">
             <Select
+              className="w-full"
               value={String(p.templateId ?? '')}
               onValueChange={(v) => set({ templateId: v ?? '' })}
               aria-label="テンプレート"
@@ -252,6 +254,7 @@ function ActionBody({ action: a, lookups, onChange }: { action: FriendAddActionI
               ))}
             </div>
             <Select
+              className="w-full"
               value=""
               onValueChange={(v) => { if (v) set({ tagIds: [...ids, v] }) }}
               aria-label="タグ選択"
@@ -268,6 +271,7 @@ function ActionBody({ action: a, lookups, onChange }: { action: FriendAddActionI
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <Select
+                  className="w-full"
                   value={String(p.fieldKey ?? '')}
                   onValueChange={(v) => set({ fieldKey: v ?? '' })}
                   aria-label="友だち情報欄選択"
@@ -286,6 +290,7 @@ function ActionBody({ action: a, lookups, onChange }: { action: FriendAddActionI
               <span className="text-sm">を</span>
               <div className="w-36">
                 <Select
+                  className="w-full"
                   value={String(p.op ?? 'set')}
                   onValueChange={(v) => set({ op: v ?? 'set' })}
                   aria-label="操作"
@@ -316,6 +321,7 @@ function ActionBody({ action: a, lookups, onChange }: { action: FriendAddActionI
           </Row>
           <Row label="リマインダ選択">
             <Select
+              className="w-full"
               value={String(p.reminderId ?? '')}
               onValueChange={(v) => set({ reminderId: v ?? '' })}
               aria-label="リマインダ選択"
@@ -330,6 +336,7 @@ function ActionBody({ action: a, lookups, onChange }: { action: FriendAddActionI
           <p className="mb-2 rounded bg-sky-50 px-3 py-2 text-xs text-sky-800">広告連携しているコンバージョンを通過すると、自動的に広告媒体に送信されます。</p>
           <Row label="コンバージョン">
             <Select
+              className="w-full"
               value={String(p.conversionPointId ?? '')}
               onValueChange={(v) => set({ conversionPointId: v ?? '' })}
               aria-label="コンバージョン"
@@ -348,6 +355,7 @@ function TimingEditor({ value, onChange }: { value: FriendAddTimingItem | undefi
     <div className="flex flex-wrap items-center gap-2">
       <div className="w-48">
         <Select
+          className="w-full"
           value={t.mode}
           onValueChange={(v) => {
             if (v === 'delay') onChange({ mode: 'delay', amount: 10, unit: 'minutes' })
@@ -369,6 +377,7 @@ function TimingEditor({ value, onChange }: { value: FriendAddTimingItem | undefi
           </div>
           <div className="w-28">
             <Select
+              className="w-full"
               value={t.unit}
               onValueChange={(v) => onChange({ ...t, unit: (v ?? 'minutes') as 'minutes' | 'hours' | 'days' })}
               aria-label="単位"
