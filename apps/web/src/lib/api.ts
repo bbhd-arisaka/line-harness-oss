@@ -342,6 +342,22 @@ export type QuotaUsage = {
   noticeUrl: string | null
 }
 
+// ── 友だち追加時設定(Lステップの「友だち追加時設定」) ──
+export type FriendAddKindItem = 'new' | 'returning'
+export type FriendAddActionItem =
+  | { type: 'add_tag'; params: { tagId: string } }
+  | { type: 'remove_tag'; params: { tagId: string } }
+  | { type: 'send_message'; params: { template_id: string } }
+  | { type: 'switch_rich_menu_group'; params: { groupId: string } }
+  | { type: 'remove_rich_menu'; params: Record<string, never> }
+export type FriendAddSettingItem = {
+  lineAccountId: string
+  kind: FriendAddKindItem
+  scenarioId: string | null
+  actions: FriendAddActionItem[]
+  updatedAt: string | null
+}
+
 // ── 通知設定(Lステップの「通知」) ──
 export type NotificationDestinationItem = { kind: 'line' | 'mail'; id: string; name: string }
 export type NotificationScheduleItem =
@@ -478,6 +494,15 @@ export const api = {
       }),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/tags/${id}`, { method: 'DELETE' }),
+  },
+  friendAddSettings: {
+    get: (lineAccountId: string) =>
+      fetchApi<ApiResponse<Record<FriendAddKindItem, FriendAddSettingItem>>>(`/api/friend-add-settings?lineAccountId=${encodeURIComponent(lineAccountId)}`),
+    save: (lineAccountId: string, kind: FriendAddKindItem, data: { scenarioId: string | null; actions: FriendAddActionItem[] }) =>
+      fetchApi<ApiResponse<FriendAddSettingItem>>(`/api/friend-add-settings/${kind}?lineAccountId=${encodeURIComponent(lineAccountId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   },
   notificationSettings: {
     list: (lineAccountId: string) =>

@@ -593,6 +593,12 @@ const spec = {
         responses: { '200': { description: 'Recent deliveries' }, '404': { description: 'Not found' } },
       },
     },
+    '/api/friend-add-settings': {
+      get: { tags: ['Friends'], summary: '友だち追加時設定(新規友だち/再フォロー・導入前からの友だち)を取得', parameters: [{ name: 'lineAccountId', in: 'query', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Settings' } } },
+    },
+    '/api/friend-add-settings/{kind}': {
+      put: { tags: ['Friends'], summary: '友だち追加時設定を保存(kind = new | returning)', parameters: [{ name: 'kind', in: 'path', required: true, schema: { type: 'string', enum: ['new', 'returning'] } }, { name: 'lineAccountId', in: 'query', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { scenarioId: { type: 'string', nullable: true }, actions: { type: 'array', items: { type: 'object' } } } } } } }, responses: { '200': { description: 'Saved' }, '400': { description: 'Invalid' } } },
+    },
     '/api/notification-destinations/mail': {
       post: {
         tags: ['Notifications'],

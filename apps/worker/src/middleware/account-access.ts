@@ -95,6 +95,9 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
   // 友だちリストの「保存した検索」: アカウントの確認は、各ハンドラーが行う
   if (path === '/api/friend-searches' || path.startsWith('/api/friend-searches/')) return next();
 
+  // 友だち追加時設定: アカウントの確認は、各ハンドラーが行う
+  if (path === '/api/friend-add-settings' || path.startsWith('/api/friend-add-settings/')) return next();
+
   // 通知設定: アカウントの確認は、各ハンドラーが行う(通知先の候補は、アカウントに関係しない)
   if (path === '/api/notification-settings' || path.startsWith('/api/notification-settings/') || path === '/api/notification-destinations') return next();
 

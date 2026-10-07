@@ -238,6 +238,10 @@ async function handleEvent(
 
     console.log(`[follow] profile=${profile?.displayName ?? 'null'}`);
 
+    // 友だち追加時設定の区分: すでに名簿にいた人(ブロック解除・導入前からの友だち)か、はじめての人か
+    const { getFriendByLineUserIdForAccount: findExistingFriend } = await import('@line-crm/db');
+    const alreadyKnown = lineAccountId ? !!(await findExistingFriend(db, userId, lineAccountId)) : false;
+
     const friend = await upsertFriend(db, {
       lineUserId: userId,
       lineAccountId,
@@ -364,6 +368,20 @@ async function handleEvent(
           console.error('[follow] referral scenario enrollment failed', err);
         }
       }
+    }
+
+    // 友だち追加時設定(シナリオ・その他のアクション)
+    {
+      const { applyFriendAddSettings } = await import('../services/friend-add-settings.js');
+      await applyFriendAddSettings(db, {
+        kind: alreadyKnown ? 'returning' : 'new',
+        friendId: friend.id,
+        lineAccountId: lineAccountId ?? null,
+        lineAccessToken,
+        onEnrolled: async (scenarioId, enrollment) => {
+          await pushImmediateFirstStep(db, friend.id, scenarioId, { defaultAccessToken: lineAccessToken, workerUrl }, { enrollment });
+        },
+      });
     }
 
     // イベントバス発火: friend_add（replyToken は Step 0 で使用済みの可能性あり）

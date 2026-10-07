@@ -450,6 +450,16 @@ CREATE TABLE IF NOT EXISTS forms (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 , on_submit_message_type TEXT CHECK (on_submit_message_type IN ('text', 'flex')) DEFAULT NULL, on_submit_message_content TEXT DEFAULT NULL, on_submit_webhook_url TEXT, on_submit_webhook_headers TEXT, on_submit_webhook_fail_message TEXT, og_title TEXT, og_description TEXT, og_image_url TEXT, expires_at TEXT, capacity_limit INTEGER, answer_limit_per_friend TEXT NOT NULL DEFAULT 'unlimited', restore_previous_answer INTEGER NOT NULL DEFAULT 0, thanks_url TEXT, primary_color TEXT, on_submit_stop_scenarios INTEGER NOT NULL DEFAULT 0, custom_design_enabled INTEGER NOT NULL DEFAULT 0, background_color TEXT, form_background_color TEXT, header_image_url TEXT, background_image_url TEXT, hide_header_icon INTEGER NOT NULL DEFAULT 0, custom_css_enabled INTEGER NOT NULL DEFAULT 0, custom_css TEXT, google_sheets_enabled INTEGER NOT NULL DEFAULT 0, google_sheet_url TEXT, google_sheet_name TEXT, theme_main_color TEXT, theme_sub_color TEXT, theme_error_color TEXT, theme_text_color TEXT, theme_font TEXT, folder_id TEXT REFERENCES form_folders (id), lstep_options TEXT);
 
+CREATE TABLE IF NOT EXISTS friend_add_settings (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT NOT NULL REFERENCES line_accounts(id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL CHECK (kind IN ('new', 'returning')),
+  scenario_id     TEXT,
+  actions         TEXT NOT NULL DEFAULT '[]',
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  UNIQUE (line_account_id, kind)
+);
+
 CREATE TABLE IF NOT EXISTS friend_events (
   id              TEXT PRIMARY KEY,
   friend_id       TEXT NOT NULL REFERENCES friends(id) ON DELETE CASCADE,

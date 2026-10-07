@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { Scenario, LineAccount } from '@line-crm/shared'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
+import FriendAddSettingsEditor from '@/components/friend-add/friend-add-settings-editor'
 import Header from '@/components/layout/header'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Switch } from '@cloudflare/kumo/components/switch'
@@ -24,7 +25,7 @@ interface AccountRow {
 
 export default function FriendAddSettingsPage() {
   const router = useRouter()
-  const { setSelectedAccountId } = useAccount()
+  const { setSelectedAccountId, selectedAccount } = useAccount()
   const [rows, setRows] = useState<AccountRow[]>([])
   const [orphanScenarios, setOrphanScenarios] = useState<ScenarioWithCount[]>([])
   const [loading, setLoading] = useState(true)
@@ -187,10 +188,21 @@ export default function FriendAddSettingsPage() {
     <div className="min-h-screen bg-gray-50">
       <Header
         title="友だち追加時設定"
-        description="各 LINE アカウントに友だち追加した瞬間に何が配信されるかを管理します。アクティブなシナリオが0件のアカウントは新規友だちに何も届きません。"
+        description="友だち追加されたときに、何が起きるかを設定します（Lステップの「友だち追加時設定」と同じ使い方です）。"
       />
 
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+        {selectedAccount ? (
+          <FriendAddSettingsEditor key={selectedAccount.id} accountId={selectedAccount.id} accountName={selectedAccount.displayName || selectedAccount.name} />
+        ) : (
+          <p className="text-sm text-gray-500">アカウントを選択してください。</p>
+        )}
+
+        <div className="pt-4">
+          <h2 className="text-sm font-semibold text-gray-800">友だち追加で自動的に始まるシナリオ（アカウント別の一覧）</h2>
+          <p className="mt-1 text-xs text-gray-500">「友だち追加」で始まる設定のシナリオです。アクティブなシナリオが0件のアカウントでは、新規友だちにシナリオは届きません。</p>
+        </div>
+
         {error && (
           <div className="p-3 rounded bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
         )}

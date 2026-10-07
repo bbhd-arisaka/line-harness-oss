@@ -272,6 +272,26 @@ function matchConditions(
   return true;
 }
 
+/** 友だち追加時設定など、アクションの並びをそのまま実行する(1つ失敗しても残りは続ける) */
+export async function runActionList(
+  db: D1Database,
+  actions: Array<{ type: string; params: Record<string, string> }>,
+  payload: EventPayload,
+  lineAccessToken?: string,
+  lineAccountId?: string | null,
+): Promise<Array<{ action: string; success: boolean; error?: string }>> {
+  const results: Array<{ action: string; success: boolean; error?: string }> = [];
+  for (const action of actions) {
+    try {
+      await executeAction(db, action, payload, lineAccessToken, lineAccountId);
+      results.push({ action: action.type, success: true });
+    } catch (err) {
+      results.push({ action: action.type, success: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return results;
+}
+
 /** アクション実行 */
 async function executeAction(
   db: D1Database,
