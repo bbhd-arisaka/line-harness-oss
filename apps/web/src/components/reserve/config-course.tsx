@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { ArrowDownIcon, ArrowUpIcon, CopyIcon, FunnelIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
+import { useMemo, useRef, useState } from 'react'
+import { CopyIcon, FunnelIcon, ListIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
+import ImageUploader from '@/components/shared/image-uploader'
 import { AdvancedSearchDialog } from '@/components/friends/advanced-search-dialog'
 import { useActionLookups } from '@/components/friend-add/use-action-lookups'
 import { errorText } from '@/lib/error-text'
@@ -120,13 +121,14 @@ function SlotEditor({ bundle, slot, onClose, onSaved }: { bundle: CalendarBundle
   const [html, setHtml] = useState(slot?.descriptionHtml ?? false)
   const [condition, setCondition] = useState<FriendFilter | null>(slot?.condition ?? null)
   const [visible, setVisible] = useState(slot?.visible ?? true)
+  const [iconUrl, setIconUrl] = useState(slot?.iconUrl ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const save = async () => {
     setBusy(true)
     setError('')
     try {
-      const body = { name, capacity: useDefault ? null : capacity, price, autoAssign, priority, description: desc, descriptionHtml: html, condition, visible }
+      const body = { name, capacity: useDefault ? null : capacity, price, autoAssign, priority, description: desc, descriptionHtml: html, condition, visible, iconUrl }
       const res = slot ? await reserveApi.updateSlot(slot.id, body) : await reserveApi.createSlot(calendar.id, body)
       if (!res.success) throw new Error(res.error)
       onSaved()
@@ -138,6 +140,7 @@ function SlotEditor({ bundle, slot, onClose, onSaved }: { bundle: CalendarBundle
   }
   return (
     <ModalShell title={calendar.slotSettings.title} heading={`${calendar.slotSettings.title}設定`} onClose={onClose} onSave={() => void save()} busy={busy} error={error} saveLabel="変更を確定する">
+      <div className="mb-4 flex justify-center"><div className="w-56"><ImageUploader mode="url" label="アイコンを設定する" value={iconUrl ? { mode: 'url', url: iconUrl } : null} onChange={(v) => setIconUrl(v && v.mode === 'url' ? v.url : '')} /></div></div>
       <div className="divide-y divide-gray-200 border-b border-gray-200">
       <Row label={<span>{calendar.slotSettings.title}名 <span className="ml-1 rounded bg-[#f0627f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span></span>}><input className={inputCls} value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></Row>
       <Row label="同時予約可能数" note="「デフォルト」は、予約枠設定の同時予約可能数が使われます。">
@@ -216,11 +219,11 @@ function CourseEditor({ bundle, course, onClose, onSaved }: { bundle: CalendarBu
   )
 }
 
-function ItemRow({ name, visible, sub, color, onVisible, onEdit, onCopy, onDelete, onUp, onDown }: { name: string; visible: boolean; sub?: string; color?: string; onVisible: (v: boolean) => void; onEdit: () => void; onCopy: () => void; onDelete: () => void; onUp?: () => void; onDown?: () => void }) {
+function ItemRow({ name, visible, sub, color, icon, onVisible, onEdit, onCopy, onDelete, onDragStart, onDropHere }: { name: string; visible: boolean; sub?: string; color?: string; icon?: string; onVisible: (v: boolean) => void; onEdit: () => void; onCopy: () => void; onDelete: () => void; onDragStart: () => void; onDropHere: () => void }) {
   const ic = 'rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30'
   return (
-    <div className="flex items-center gap-3 border-b border-gray-200 py-2.5">
-      {color ? <span className="h-3 w-3 rounded-full" style={{ background: color }} /> : <span className="h-7 w-7 rounded-full bg-gray-700 text-center text-xs leading-7 text-white">{name.charAt(0)}</span>}
+    <div className="flex items-center gap-3 border-b border-gray-200 py-2.5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); onDropHere() }}>
+      {color ? <span className="h-3 w-3 rounded-full" style={{ background: color }} /> : icon ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={icon} alt="" className="h-7 w-7 rounded-full object-cover" /> : <span className="h-7 w-7 rounded-full bg-gray-700 text-center text-xs leading-7 text-white">{name.charAt(0)}</span>}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate font-medium">{name}</span>
         {sub ? <span className="shrink-0 rounded-full bg-[#8fb8e8] px-2 py-0.5 text-[11px] font-medium text-white">{sub}</span> : null}
@@ -229,8 +232,7 @@ function ItemRow({ name, visible, sub, color, onVisible, onEdit, onCopy, onDelet
       <button type="button" aria-label="編集" className={ic} onClick={onEdit}><PencilSimpleIcon size={16} /></button>
       <button type="button" aria-label="複製" className={ic} onClick={onCopy}><CopyIcon size={16} /></button>
       <button type="button" aria-label="削除" className={ic} onClick={onDelete}><TrashIcon size={16} /></button>
-      <button type="button" aria-label="上へ" className={ic} disabled={!onUp} onClick={onUp}><ArrowUpIcon size={16} /></button>
-      <button type="button" aria-label="下へ" className={ic} disabled={!onDown} onClick={onDown}><ArrowDownIcon size={16} /></button>
+      <span aria-label="ドラッグして並べ替え" title="ドラッグして並べ替え" draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart() }} className="cursor-grab rounded p-1.5 text-gray-500 hover:bg-gray-100"><ListIcon size={16} /></span>
     </div>
   )
 }
@@ -260,11 +262,14 @@ export default function CourseConfig({ bundle, reload }: { bundle: CalendarBundl
     }
   }
 
-  const move = (list: Array<{ id: string }>, i: number, dir: -1 | 1, order: (ids: string[]) => Promise<{ success: boolean; error?: string }>) => {
+  const dragFrom = useRef<{ kind: 'slot' | 'course'; index: number } | null>(null)
+  const dropAt = (kind: 'slot' | 'course', list: Array<{ id: string }>, to: number, order: (ids: string[]) => Promise<{ success: boolean; error?: string }>) => {
+    const from = dragFrom.current
+    dragFrom.current = null
+    if (!from || from.kind !== kind || from.index === to) return
     const ids = list.map((x) => x.id)
-    const j = i + dir
-    if (j < 0 || j >= ids.length) return
-    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    const [moved] = ids.splice(from.index, 1)
+    ids.splice(to, 0, moved)
     void run(() => order(ids))
   }
 
@@ -321,14 +326,15 @@ export default function CourseConfig({ bundle, reload }: { bundle: CalendarBundl
             <ItemRow
               key={s.id}
               name={s.name}
+              icon={s.iconUrl}
               visible={s.visible}
               sub={s.autoAssign ? `自動振り分け 優先度${s.priority}` : undefined}
               onVisible={(v) => void run(() => reserveApi.updateSlot(s.id, { visible: v }))}
               onEdit={() => setSlotEditor({ slot: s })}
               onCopy={() => void run(() => reserveApi.duplicateSlot(s.id))}
               onDelete={() => { if (window.confirm(`「${s.name}」を削除しますか?この予約枠の予約は、予約枠なしになります。`)) void run(() => reserveApi.deleteSlot(s.id)) }}
-              onUp={i > 0 ? () => move(slots, i, -1, (ids) => reserveApi.orderSlots(calendar.id, ids)) : undefined}
-              onDown={i < slots.length - 1 ? () => move(slots, i, 1, (ids) => reserveApi.orderSlots(calendar.id, ids)) : undefined}
+              onDragStart={() => { dragFrom.current = { kind: 'slot', index: i } }}
+              onDropHere={() => dropAt('slot', slots, i, (ids) => reserveApi.orderSlots(calendar.id, ids))}
             />
           ))}
           <button type="button" className="mt-3 inline-flex w-full items-center justify-center gap-1 py-2 text-sm text-[#e8355d]" onClick={() => setSlotEditor({ slot: null })}><PlusIcon size={14} weight="bold" /> 予約枠を追加する</button>
@@ -363,8 +369,8 @@ export default function CourseConfig({ bundle, reload }: { bundle: CalendarBundl
               onEdit={() => setCourseEditor({ course: c })}
               onCopy={() => void run(() => reserveApi.duplicateCourse(c.id))}
               onDelete={() => { if (window.confirm(`「${c.name}」を削除しますか?`)) void run(() => reserveApi.deleteCourse(c.id)) }}
-              onUp={i > 0 ? () => move(courses, i, -1, (ids) => reserveApi.orderCourses(calendar.id, ids)) : undefined}
-              onDown={i < courses.length - 1 ? () => move(courses, i, 1, (ids) => reserveApi.orderCourses(calendar.id, ids)) : undefined}
+              onDragStart={() => { dragFrom.current = { kind: 'course', index: i } }}
+              onDropHere={() => dropAt('course', courses, i, (ids) => reserveApi.orderCourses(calendar.id, ids))}
             />
           ))}
           <button type="button" className="mt-3 inline-flex w-full items-center justify-center gap-1 py-2 text-sm text-[#e8355d]" onClick={() => setCourseEditor({ course: null })}><PlusIcon size={14} weight="bold" /> コースを追加する</button>

@@ -110,7 +110,7 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
               <div className="h-8 border-b border-gray-300" />
               {visibleSlots.map((s) => (
                 <div key={s.id} className="flex h-11 items-center gap-2 border-b border-gray-200 px-2 text-sm font-medium text-gray-800">
-                  <span className="h-6 w-6 shrink-0 rounded-full bg-gray-700 text-center text-[11px] leading-6 text-white">{s.name.charAt(0)}</span>
+                  {s.iconUrl ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={s.iconUrl} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="h-6 w-6 shrink-0 rounded-full bg-gray-700 text-center text-[11px] leading-6 text-white">{s.name.charAt(0)}</span>}
                   <span className="truncate">{s.name}</span>
                 </div>
               ))}

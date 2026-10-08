@@ -183,7 +183,7 @@ function DayView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, loading])
 
-  const rows = [...slots.filter((s) => !hiddenSlots.includes(s.id)).map((s) => ({ id: s.id as string | null, name: s.name })), ...(hiddenSlots.includes('none') || (calendar.slotSettings.required && !bookings.some((b) => (b.slotId ?? null) === null)) ? [] : [{ id: null as string | null, name: '未指定' }])]
+  const rows = [...slots.filter((s) => !hiddenSlots.includes(s.id)).map((s) => ({ id: s.id as string | null, name: s.name, icon: s.iconUrl as string })), ...(hiddenSlots.includes('none') || (calendar.slotSettings.required && !bookings.some((b) => (b.slotId ?? null) === null)) ? [] : [{ id: null as string | null, name: '未指定', icon: '' }])]
   const courseColor = new Map(courses.map((c) => [c.id, c.color]))
   const width = 24 * pxPerHour
   const unit = calendar.screen.unitMinutes
@@ -197,7 +197,7 @@ function DayView({
           <div className="h-8 border-b border-gray-300" />
           {rows.map((r) => (
             <div key={r.id ?? 'none'} className="flex items-center gap-2 border-b border-gray-200 px-2 text-sm font-medium text-gray-800" style={{ height: rowH }}>
-              <span className="h-6 w-6 shrink-0 rounded-full bg-gray-700 text-center text-[11px] leading-6 text-white">{r.name.charAt(0)}</span>
+              {r.icon ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={r.icon} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="h-6 w-6 shrink-0 rounded-full bg-gray-700 text-center text-[11px] leading-6 text-white">{r.name.charAt(0)}</span>}
               <span className="truncate">{r.name}</span>
             </div>
           ))}

@@ -169,6 +169,7 @@ export interface ReserveSlot {
   description: string
   descriptionHtml: boolean
   condition: FriendFilter | null
+  iconUrl: string
   sortOrder: number
 }
 export interface ReserveCourse {

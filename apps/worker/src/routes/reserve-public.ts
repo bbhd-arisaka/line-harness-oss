@@ -78,7 +78,7 @@ export function sanitizeHtml(html: string): string {
 }
 
 function publicSlot(s: ReserveSlot) {
-  return { id: s.id, name: s.name, price: s.price, description: s.descriptionHtml ? sanitizeHtml(s.description) : s.description, descriptionHtml: s.descriptionHtml };
+  return { id: s.id, name: s.name, iconUrl: s.iconUrl, price: s.price, description: s.descriptionHtml ? sanitizeHtml(s.description) : s.description, descriptionHtml: s.descriptionHtml };
 }
 function publicCourse(x: ReserveCourse) {
   return { id: x.id, name: x.name, price: x.price, color: x.color, minutes: x.displayMinutes ?? x.durationMinutes, description: x.descriptionHtml ? sanitizeHtml(x.description) : x.description, descriptionHtml: x.descriptionHtml };

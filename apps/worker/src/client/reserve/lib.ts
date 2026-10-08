@@ -26,6 +26,7 @@ export interface Option {
   price: number;
   description: string;
   descriptionHtml: boolean;
+  iconUrl?: string;
   /** コースだけ: 友だちに見せる時間(分)・色 */
   minutes?: number;
   color?: string;

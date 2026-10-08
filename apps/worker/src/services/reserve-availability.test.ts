@@ -17,6 +17,7 @@ const slot = (id: string, over: Partial<ReserveSlot> = {}): ReserveSlot => ({
   description: '',
   descriptionHtml: false,
   condition: null,
+  iconUrl: "",
   sortOrder: 0,
   ...over,
 });

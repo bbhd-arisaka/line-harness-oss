@@ -103,7 +103,8 @@
     "095_friend_add_deferred_actions.sql",
     "096_friend_profile_checked_at.sql",
     "097_backfill_chats_for_new_friends.sql",
-    "098_reserve_calendars.sql"
+    "098_reserve_calendars.sql",
+    "099_reserve_slot_icon.sql"
   ],
-  "migrationCount": 104
+  "migrationCount": 105
 }

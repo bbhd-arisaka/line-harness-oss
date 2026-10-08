@@ -64,6 +64,7 @@ export interface ReserveSlot {
   description: string;
   descriptionHtml: boolean;
   condition: Record<string, unknown> | null;
+  iconUrl: string;
   sortOrder: number;
 }
 
@@ -311,6 +312,7 @@ interface SlotRow {
   description: string | null;
   description_html: number;
   condition: string | null;
+  icon_url: string | null;
   sort_order: number;
 }
 
@@ -335,6 +337,7 @@ function toSlot(r: SlotRow): ReserveSlot {
     description: r.description ?? '',
     descriptionHtml: r.description_html === 1,
     condition,
+    iconUrl: r.icon_url ?? '',
     sortOrder: r.sort_order,
   };
 }
@@ -354,6 +357,7 @@ export interface SlotInput {
   description?: unknown;
   descriptionHtml?: unknown;
   condition?: unknown;
+  iconUrl?: unknown;
 }
 
 const nonNegInt = (v: unknown, label: string, max = 10_000_000): number => {
@@ -382,6 +386,7 @@ function slotValues(input: SlotInput, base?: ReserveSlot) {
     description: desc,
     descriptionHtml: (input.descriptionHtml === undefined ? (base?.descriptionHtml ?? false) : input.descriptionHtml === true) ? 1 : 0,
     condition: input.condition === undefined ? (base?.condition ? JSON.stringify(base.condition) : null) : input.condition ? JSON.stringify(input.condition) : null,
+    iconUrl: input.iconUrl === undefined ? (base?.iconUrl ?? '') : /^https:\/\/\S{1,1000}$/.test(String(input.iconUrl)) ? String(input.iconUrl) : '',
   };
 }
 
@@ -390,8 +395,8 @@ export async function createReserveSlot(db: D1Database, calendarId: string, inpu
   const id = newId();
   const order = await db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM reserve_slots WHERE calendar_id = ?').bind(calendarId).first<{ n: number }>();
   await db
-    .prepare('INSERT INTO reserve_slots (id, calendar_id, name, visible, price, capacity, auto_assign, priority, description, description_html, condition, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, calendarId, v.name, v.visible, v.price, v.capacity, v.autoAssign, v.priority, v.description, v.descriptionHtml, v.condition, order?.n ?? 0)
+    .prepare('INSERT INTO reserve_slots (id, calendar_id, name, visible, price, capacity, auto_assign, priority, description, description_html, condition, icon_url, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, calendarId, v.name, v.visible, v.price, v.capacity, v.autoAssign, v.priority, v.description, v.descriptionHtml, v.condition, v.iconUrl || null, order?.n ?? 0)
     .run();
   // 既存のコースすべてと紐づける(あとから紐づけ画面で外せる)
   await db.prepare('INSERT OR IGNORE INTO reserve_slot_courses (slot_id, course_id) SELECT ?, id FROM reserve_courses WHERE calendar_id = ?').bind(id, calendarId).run();
@@ -408,8 +413,8 @@ export async function updateReserveSlot(db: D1Database, id: string, input: SlotI
   if (!cur) throw new ReserveError('予約枠が見つかりません');
   const v = slotValues(input, cur);
   await db
-    .prepare(`UPDATE reserve_slots SET name = ?, visible = ?, price = ?, capacity = ?, auto_assign = ?, priority = ?, description = ?, description_html = ?, condition = ?, updated_at = ${NOW_JST} WHERE id = ?`)
-    .bind(v.name, v.visible, v.price, v.capacity, v.autoAssign, v.priority, v.description, v.descriptionHtml, v.condition, id)
+    .prepare(`UPDATE reserve_slots SET name = ?, visible = ?, price = ?, capacity = ?, auto_assign = ?, priority = ?, description = ?, description_html = ?, condition = ?, icon_url = ?, updated_at = ${NOW_JST} WHERE id = ?`)
+    .bind(v.name, v.visible, v.price, v.capacity, v.autoAssign, v.priority, v.description, v.descriptionHtml, v.condition, v.iconUrl || null, id)
     .run();
   return (await getReserveSlot(db, id))!;
 }
