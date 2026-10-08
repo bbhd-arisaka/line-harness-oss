@@ -429,7 +429,7 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
     }
   }
 
-  const sel = 'w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
+  const sel = 'w-full min-w-0 rounded border border-gray-300 bg-white px-1.5 py-1.5 text-xs'
   const fl = 'pt-1.5 text-xs font-semibold text-gray-700'
   return (
     <div>
@@ -482,9 +482,9 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
             </table>
           </div>
         </div>
-        <aside className="w-full shrink-0 rounded border border-gray-300 bg-white p-4 lg:w-72">
+        <aside className="w-full shrink-0 rounded border border-gray-300 bg-white p-4 lg:w-80">
           <h3 className="mb-3 border-b-2 border-[#9fc77e] pb-1 text-base font-semibold text-gray-900">絞り込みメニュー</h3>
-          <div className="grid grid-cols-[74px_1fr] items-start gap-x-2 gap-y-2.5">
+          <div className="grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-2 gap-y-2.5">
             <span className={fl}>{calendar.slotSettings.title}</span>
             <select className={sel} value={slotId} onChange={(e) => setSlotId(e.target.value)}><option value="">-- 全て --</option><option value="none">未指定</option>{slots.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
             <span className={fl}>日付</span>
