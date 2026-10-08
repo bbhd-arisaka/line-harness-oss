@@ -9,20 +9,28 @@ import { Block, PageTitle, Radio, Row, SaveBar, inputCls, orangeBtn, smallInput,
 
 const KIND_LABEL: Record<TextKind, string> = { none: 'フォーマットなし', name: '名前', kana: '名前(カタカナ)', email: 'メールアドレス', phone: '電話番号', integer: '整数' }
 
-function Shell({ title, children, onClose, onOk, okLabel = 'OK' }: { title: string; children: React.ReactNode; onClose: () => void; onOk: () => void; okLabel?: string }) {
+/** Lステップと同じ作り: 中央のタイトル+右上の×、見出し、下に丸い登録ボタン */
+function Shell({ title, heading, children, onClose, onOk, okLabel = 'OK' }: { title: string; heading?: string; children: React.ReactNode; onClose: () => void; onOk: () => void; okLabel?: string }) {
   return (
     <Dialog.Root open onOpenChange={(o) => { if (!o) onClose() }}>
       <Dialog size="lg" className="p-0 !w-[min(680px,95vw)] !max-w-none">
-        <div className="border-b border-gray-200 px-5 py-3 text-base font-semibold">{title}</div>
-        <div className="max-h-[70vh] space-y-3 overflow-y-auto px-5 py-4 text-sm">{children}</div>
-        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
-          <button type="button" className="rounded border border-gray-300 px-4 py-2 text-sm" onClick={onClose}>キャンセル</button>
-          <button type="button" className="rounded bg-[#e8355d] px-5 py-2 text-sm font-medium text-white hover:bg-[#d02850]" onClick={onOk}>{okLabel}</button>
+        <div className="relative border-b-2 border-[#9fc77e] px-5 py-3 text-center text-base font-semibold">
+          {title}
+          <button type="button" aria-label="閉じる" className="absolute right-4 top-1/2 -translate-y-1/2 text-2xl leading-none text-gray-400 hover:text-gray-600" onClick={onClose}>×</button>
+        </div>
+        <div className="max-h-[72vh] overflow-y-auto px-8 py-5 text-sm">
+          {heading ? <h3 className="mb-4 text-lg font-semibold text-gray-900">{heading}</h3> : null}
+          <div className="divide-y divide-gray-200 border-b border-gray-200">{children}</div>
+          <div className="py-6 text-center">
+            <button type="button" className="rounded-full bg-[#e8355d] px-8 py-2.5 text-sm font-medium text-white shadow hover:bg-[#d02850]" onClick={onOk}>{okLabel}</button>
+          </div>
         </div>
       </Dialog>
     </Dialog.Root>
   )
 }
+
+const REQUIRED_BADGE = <span className="ml-1 rounded bg-[#f0627f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span>
 
 function FieldEditor({ field, isNew, fieldKeys, onClose, onSave }: { field: ScreenField; isNew: boolean; fieldKeys: Array<{ key: string; label: string }>; onClose: () => void; onSave: (f: ScreenField) => void }) {
   const [f, setF] = useState<ScreenField>(field)
@@ -36,13 +44,15 @@ function FieldEditor({ field, isNew, fieldKeys, onClose, onSave }: { field: Scre
     onSave({ ...f, label: f.label.trim(), options: f.type === 'select' ? opts : [], linkGoogle: f.textKind === 'name' || f.textKind === 'kana' ? true : f.linkGoogle, linkRealName: f.textKind === 'name' && f.linkRealName })
   }
   return (
-    <Shell title={isNew ? '予約情報取得項目の追加' : '予約情報取得項目の編集'} onClose={onClose} onOk={ok} okLabel={isNew ? '追加する' : '更新する'}>
-      <Row label="項目名" note="友だち予約画面に表示されます。"><input className={inputCls} value={f.label} maxLength={100} onChange={(e) => setF({ ...f, label: e.target.value })} /></Row>
+    <Shell title="予約情報取得項目" onClose={onClose} onOk={ok} okLabel={isNew ? '登録する' : '変更を確定する'}>
+      <Row label={<span>取得情報名 (表示名){REQUIRED_BADGE}</span>} note="友だち予約画面に表示されます。"><input className={inputCls} value={f.label} maxLength={100} onChange={(e) => setF({ ...f, label: e.target.value })} /></Row>
       <Row label="説明文" note="友だち予約画面の、項目の下に表示されます。"><textarea className={inputCls} rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Row>
-      <Row label="入力タイプ" note={locked ? '登録後は、入力タイプを変更できません。変えたいときは、項目を作り直してください。' : undefined}>
-        <Radio disabled={locked} checked={f.type === 'text'} onChange={() => setF({ ...f, type: 'text' })} label="記述式(テキストボックス)" />
-        <Radio disabled={locked} checked={f.type === 'textarea'} onChange={() => setF({ ...f, type: 'textarea', textKind: 'none' })} label="段落(テキストエリア)" />
-        <Radio disabled={locked} checked={f.type === 'select'} onChange={() => setF({ ...f, type: 'select', textKind: 'none' })} label="プルダウン" />
+      <Row label={<span>取得情報入力タイプ{REQUIRED_BADGE}</span>} note="※取得情報入力タイプは登録後の変更ができません。">
+        <select disabled={locked} className={`${smallInput} w-64`} value={f.type} onChange={(e) => { const t = e.target.value as ScreenField['type']; setF({ ...f, type: t, textKind: t === 'text' ? f.textKind : 'none' }) }}>
+          <option value="text">記述式 (テキストボックス)</option>
+          <option value="textarea">段落 (テキストエリア)</option>
+          <option value="select">プルダウン</option>
+        </select>
       </Row>
       {f.type === 'text' ? (
         <Row label="取得情報種別" note="「名前」は予約一覧に表示されます。">
@@ -64,7 +74,7 @@ function FieldEditor({ field, isNew, fieldKeys, onClose, onSave }: { field: Scre
         <label className={`mb-1 flex items-center gap-2 ${f.textKind === 'name' || f.textKind === 'kana' ? 'opacity-60' : ''}`}><input type="checkbox" disabled={f.textKind === 'name' || f.textKind === 'kana'} checked={f.linkGoogle || f.textKind === 'name' || f.textKind === 'kana'} onChange={(e) => setF({ ...f, linkGoogle: e.target.checked })} /> Googleカレンダーに連携する</label>
         <label className={`flex items-center gap-2 ${f.type === 'text' && f.textKind === 'name' ? '' : 'opacity-60'}`}><input type="checkbox" disabled={!(f.type === 'text' && f.textKind === 'name')} checked={f.linkRealName} onChange={(e) => setF({ ...f, linkRealName: e.target.checked })} /> 取得情報と本名を紐づける</label>
       </Row>
-      {error ? <p className="text-red-600">{error}</p> : null}
+      {error ? <p className="py-3 text-red-600">{error}</p> : null}
     </Shell>
   )
 }
@@ -158,18 +168,18 @@ export default function ScreenConfig({ bundle, reload }: { bundle: CalendarBundl
       <SaveBar busy={busy} message={message} onSave={() => void save({ ...s, unitMinutes: unit })} />
 
       {dialog === 'admin' ? (
-        <Shell title="管理者情報" onClose={() => setDialog(null)} onOk={() => { setS({ ...s, adminInfo: adminDraft }); setDialog(null) }}>
-          <Row label="イメージ画像URL"><input className={inputCls} placeholder="https://" value={adminDraft.imageUrl} onChange={(e) => setAdminDraft({ ...adminDraft, imageUrl: e.target.value })} /></Row>
-          <Row label="管理者名" note="予約画面の上部にも表示されます。空のときは「予約ページ」と表示します。"><input className={inputCls} value={adminDraft.name} onChange={(e) => setAdminDraft({ ...adminDraft, name: e.target.value })} /></Row>
+        <Shell title="管理者情報" heading="管理者情報" okLabel="管理者情報を登録する" onClose={() => setDialog(null)} onOk={() => { setS({ ...s, adminInfo: adminDraft }); setDialog(null) }}>
+          <Row label="イメージ画像URL" note="※画像のURLを入力してください。"><input className={inputCls} placeholder="https://" value={adminDraft.imageUrl} onChange={(e) => setAdminDraft({ ...adminDraft, imageUrl: e.target.value })} /></Row>
+          <Row label="管理者名" note="※15文字より多い文字を指定すると友だちの予約画面で15文字目以降が「…」のように省略表記されます。"><input className={inputCls} value={adminDraft.name} onChange={(e) => setAdminDraft({ ...adminDraft, name: e.target.value })} /></Row>
           <Row label="所在地"><input className={inputCls} value={adminDraft.address} onChange={(e) => setAdminDraft({ ...adminDraft, address: e.target.value })} /></Row>
           <Row label="電話番号"><input className={inputCls} value={adminDraft.phone} onChange={(e) => setAdminDraft({ ...adminDraft, phone: e.target.value })} /></Row>
-          <Row label="説明文"><textarea className={inputCls} rows={5} value={adminDraft.description} onChange={(e) => setAdminDraft({ ...adminDraft, description: e.target.value })} /></Row>
+          <Row label="説明文" note={`※5000文字以内で入力してください。(${adminDraft.description.length}/5000)`}><textarea className={inputCls} rows={8} maxLength={5000} value={adminDraft.description} onChange={(e) => setAdminDraft({ ...adminDraft, description: e.target.value })} /></Row>
         </Shell>
       ) : null}
       {dialog === 'consent' ? (
-        <Shell title="同意事項" onClose={() => setDialog(null)} onOk={() => { setS({ ...s, consent: consentDraft }); setDialog(null) }}>
-          <Row label="同意事項の項目名"><input className={inputCls} placeholder="注意事項・利用規約" value={consentDraft.title} onChange={(e) => setConsentDraft({ ...consentDraft, title: e.target.value })} /></Row>
-          <Row label="説明文"><textarea className={inputCls} rows={8} value={consentDraft.body} onChange={(e) => setConsentDraft({ ...consentDraft, body: e.target.value })} /></Row>
+        <Shell title="同意事項情報" heading="同意事項情報" okLabel="同意事項情報を登録する" onClose={() => setDialog(null)} onOk={() => { setS({ ...s, consent: consentDraft }); setDialog(null) }}>
+          <Row label="同意事項項目名" note="※何も入力しない場合、デフォルトで「注意事項・利用規約」が表示されます。※項目名を「注意事項」に設定した場合、友だち予約画面には「注意事項に同意する」のように表示されます。"><input className={inputCls} placeholder="注意事項・利用規約" value={consentDraft.title} onChange={(e) => setConsentDraft({ ...consentDraft, title: e.target.value })} /></Row>
+          <Row label="説明文"><textarea className={inputCls} rows={10} value={consentDraft.body} onChange={(e) => setConsentDraft({ ...consentDraft, body: e.target.value })} /></Row>
         </Shell>
       ) : null}
       {fieldEdit ? (

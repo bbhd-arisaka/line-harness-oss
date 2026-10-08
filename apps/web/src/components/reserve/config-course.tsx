@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowDownIcon, ArrowUpIcon, CopyIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
+import { ArrowDownIcon, ArrowUpIcon, CopyIcon, FunnelIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { AdvancedSearchDialog } from '@/components/friends/advanced-search-dialog'
 import { useActionLookups } from '@/components/friend-add/use-action-lookups'
@@ -20,7 +20,7 @@ function ConditionField({ value, onChange, accountId }: { value: FriendFilter | 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" onClick={() => setOpen(true)}>絞り込み</button>
+        <button type="button" className="inline-flex items-center gap-1.5 rounded bg-[#3b8fd6] px-6 py-2 text-sm font-medium text-white hover:bg-[#2f7fc4]" onClick={() => setOpen(true)}><FunnelIcon size={14} weight="fill" /> 絞り込み</button>
         {value ? <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => onChange(null)}>条件を外す</button> : null}
       </div>
       <p className="mt-1 text-xs text-gray-600">{value ? describeFilter(value, ctx) || '(条件なし)' : '絞り込みなし(全員に表示)'}</p>
@@ -44,21 +44,56 @@ function ConditionField({ value, onChange, accountId }: { value: FriendFilter | 
   )
 }
 
-function ModalShell({ title, children, onClose, onSave, busy, error, saveLabel }: { title: string; children: React.ReactNode; onClose: () => void; onSave: () => void; busy: boolean; error: string; saveLabel: string }) {
+/** Lステップと同じ作り: 中央のタイトル+右上の×、見出し付きの本文、下に丸い「変更を確定する」 */
+function ModalShell({ title, heading, children, onClose, onSave, busy, error, saveLabel }: { title: string; heading: string; children: React.ReactNode; onClose: () => void; onSave: () => void; busy: boolean; error: string; saveLabel: string }) {
   return (
     <Dialog.Root open onOpenChange={(o) => { if (!o) onClose() }}>
-      <Dialog size="lg" className="p-0 !w-[min(720px,95vw)] !max-w-none">
-        <div className="border-b border-gray-200 px-5 py-3 text-base font-semibold">{title}</div>
-        <div className="max-h-[70vh] space-y-3 overflow-y-auto px-5 py-4 text-sm">
-          {children}
-          {error ? <p className="text-red-600">{error}</p> : null}
+      <Dialog size="lg" className="p-0 !w-[min(700px,95vw)] !max-w-none">
+        <div className="relative border-b-2 border-[#9fc77e] px-5 py-3 text-center text-base font-semibold">
+          {title}
+          <button type="button" aria-label="閉じる" className="absolute right-4 top-1/2 -translate-y-1/2 text-2xl leading-none text-gray-400 hover:text-gray-600" onClick={onClose}>×</button>
         </div>
-        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
-          <button type="button" className="rounded border border-gray-300 px-4 py-2 text-sm" onClick={onClose}>キャンセル</button>
-          <button type="button" className="rounded bg-[#e8355d] px-5 py-2 text-sm font-medium text-white hover:bg-[#d02850] disabled:opacity-60" disabled={busy} onClick={onSave}>{busy ? '保存中…' : saveLabel}</button>
+        <div className="max-h-[72vh] overflow-y-auto px-8 py-5 text-sm">
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">{heading}</h3>
+          {children}
+          {error ? <p className="mt-3 text-red-600">{error}</p> : null}
+          <div className="py-6 text-center">
+            <button type="button" className="rounded-full bg-[#e8355d] px-8 py-2.5 text-sm font-medium text-white shadow hover:bg-[#d02850] disabled:opacity-60" disabled={busy} onClick={onSave}>{busy ? '保存中…' : saveLabel}</button>
+          </div>
         </div>
       </Dialog>
     </Dialog.Root>
+  )
+}
+
+function SubHeading({ children }: { children: React.ReactNode }) {
+  return <h4 className="mb-2 mt-5 text-base font-semibold text-gray-900">{children}</h4>
+}
+
+function VisibleSelect({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <select className={smallInput} aria-label="表示設定" value={value ? '1' : '0'} onChange={(e) => onChange(e.target.value === '1')}>
+      <option value="1">表示</option>
+      <option value="0">非表示</option>
+    </select>
+  )
+}
+
+/** 時間 + 分(5分刻み)の入力。合計を分で受け渡す */
+function HourMinute({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
+  const h = Math.floor(value / 60)
+  const m = value % 60
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <select className={smallInput} aria-label="時間" disabled={disabled} value={h} onChange={(e) => onChange(Number(e.target.value) * 60 + m)}>
+        {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{i}</option>)}
+      </select>
+      時間
+      <select className={smallInput} aria-label="分" disabled={disabled} value={m - (m % 5)} onChange={(e) => onChange(h * 60 + Number(e.target.value))}>
+        {Array.from({ length: 12 }, (_, i) => <option key={i} value={i * 5}>{i * 5}</option>)}
+      </select>
+      分
+    </span>
   )
 }
 
@@ -67,7 +102,7 @@ function DescriptionField({ value, html, onChange }: { value: string; html: bool
     <div>
       <textarea className={inputCls} rows={5} value={value} onChange={(e) => onChange(e.target.value, html)} />
       <label className="mt-1 inline-flex items-center gap-2 text-xs text-gray-600">
-        <input type="checkbox" checked={html} onChange={(e) => onChange(value, e.target.checked)} /> HTMLモード(HTMLタグで、レイアウトをカスタマイズできます)
+        <input type="checkbox" checked={html} onChange={(e) => onChange(value, e.target.checked)} /> HTMLモード
       </label>
     </div>
   )
@@ -84,13 +119,14 @@ function SlotEditor({ bundle, slot, onClose, onSaved }: { bundle: CalendarBundle
   const [desc, setDesc] = useState(slot?.description ?? '')
   const [html, setHtml] = useState(slot?.descriptionHtml ?? false)
   const [condition, setCondition] = useState<FriendFilter | null>(slot?.condition ?? null)
+  const [visible, setVisible] = useState(slot?.visible ?? true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const save = async () => {
     setBusy(true)
     setError('')
     try {
-      const body = { name, capacity: useDefault ? null : capacity, price, autoAssign, priority, description: desc, descriptionHtml: html, condition }
+      const body = { name, capacity: useDefault ? null : capacity, price, autoAssign, priority, description: desc, descriptionHtml: html, condition, visible }
       const res = slot ? await reserveApi.updateSlot(slot.id, body) : await reserveApi.createSlot(calendar.id, body)
       if (!res.success) throw new Error(res.error)
       onSaved()
@@ -101,11 +137,15 @@ function SlotEditor({ bundle, slot, onClose, onSaved }: { bundle: CalendarBundle
     }
   }
   return (
-    <ModalShell title={slot ? `${calendar.slotSettings.title}の編集` : `${calendar.slotSettings.title}を追加`} onClose={onClose} onSave={() => void save()} busy={busy} error={error} saveLabel={slot ? '更新する' : '登録する'}>
-      <Row label="名前"><input className={inputCls} value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></Row>
-      <Row label="同時予約可能数" note="予約枠ごとに、同じ時間帯に何件まで予約を許可するかです。">
-        <label className="mr-4 inline-flex items-center gap-1.5"><input type="checkbox" checked={useDefault} onChange={(e) => setUseDefault(e.target.checked)} /> デフォルトを使う</label>
-        {!useDefault ? <input type="number" min={1} className={`${smallInput} w-24`} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} /> : null}
+    <ModalShell title={calendar.slotSettings.title} heading={`${calendar.slotSettings.title}設定`} onClose={onClose} onSave={() => void save()} busy={busy} error={error} saveLabel="変更を確定する">
+      <div className="divide-y divide-gray-200 border-b border-gray-200">
+      <Row label={<span>{calendar.slotSettings.title}名 <span className="ml-1 rounded bg-[#f0627f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span></span>}><input className={inputCls} value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></Row>
+      <Row label="同時予約可能数" note="「デフォルト」は、予約枠設定の同時予約可能数が使われます。">
+        <div className="flex items-center">
+          <Radio checked={useDefault} onChange={() => setUseDefault(true)} label="デフォルト" />
+          <Radio checked={!useDefault} onChange={() => setUseDefault(false)} label="個別に設定" />
+        </div>
+        <input type="number" min={1} disabled={useDefault} className={`${smallInput} mt-1 w-24 disabled:bg-gray-100`} value={useDefault ? calendar.slotSettings.defaultCapacity ?? '' : capacity} onChange={(e) => setCapacity(Number(e.target.value))} />
       </Row>
       {calendar.slotSettings.priceEnabled ? <Row label="料金"><input type="number" min={0} className={`${smallInput} w-32`} value={price} onChange={(e) => setPrice(Number(e.target.value))} /> 円</Row> : null}
       {!calendar.slotSettings.required && calendar.slotSettings.autoAssign ? (
@@ -116,7 +156,12 @@ function SlotEditor({ bundle, slot, onClose, onSaved }: { bundle: CalendarBundle
         </Row>
       ) : null}
       <Row label="説明文"><DescriptionField value={desc} html={html} onChange={(v, h) => { setDesc(v); setHtml(h) }} /></Row>
-      <Row label="友だち予約可能条件" note="条件を満たす友だちにだけ、この予約枠を表示します。管理画面から予約するときは、条件に関係なく選べます。"><ConditionField accountId={calendar.lineAccountId} value={condition} onChange={setCondition} /></Row>
+      </div>
+      <SubHeading>友だち予約可能条件の設定</SubHeading>
+      <ConditionField accountId={calendar.lineAccountId} value={condition} onChange={setCondition} />
+      <p className="mt-1 text-xs text-gray-500">条件を満たす友だちにだけ、この予約枠を表示します。管理画面から予約するときは、条件に関係なく選べます。</p>
+      <SubHeading>表示設定</SubHeading>
+      <VisibleSelect value={visible} onChange={setVisible} />
     </ModalShell>
   )
 }
@@ -132,13 +177,14 @@ function CourseEditor({ bundle, course, onClose, onSaved }: { bundle: CalendarBu
   const [desc, setDesc] = useState(course?.description ?? '')
   const [html, setHtml] = useState(course?.descriptionHtml ?? false)
   const [condition, setCondition] = useState<FriendFilter | null>(course?.condition ?? null)
+  const [visible, setVisible] = useState(course?.visible ?? true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const save = async () => {
     setBusy(true)
     setError('')
     try {
-      const body = { name, color, durationMinutes: duration, displayMinutes: showOn ? display : null, price, description: desc, descriptionHtml: html, condition }
+      const body = { name, color, durationMinutes: duration, displayMinutes: showOn ? display : null, price, description: desc, descriptionHtml: html, condition, visible }
       const res = course ? await reserveApi.updateCourse(course.id, body) : await reserveApi.createCourse(calendar.id, body)
       if (!res.success) throw new Error(res.error)
       onSaved()
@@ -149,17 +195,23 @@ function CourseEditor({ bundle, course, onClose, onSaved }: { bundle: CalendarBu
     }
   }
   return (
-    <ModalShell title={course ? `${calendar.courseSettings.title}の編集` : `${calendar.courseSettings.title}を追加`} onClose={onClose} onSave={() => void save()} busy={busy} error={error} saveLabel={course ? '更新する' : 'コースを登録する'}>
-      <Row label="コース名"><input className={inputCls} value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></Row>
-      <Row label="カラー" note="予約一覧に表示される色です。"><input type="color" aria-label="カラー" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-16 rounded border border-gray-300" /></Row>
-      <Row label="所要時間" note="予約一覧など、システム上で確保される時間です。"><input type="number" min={5} className={`${smallInput} w-24`} value={duration} onChange={(e) => setDuration(Number(e.target.value))} /> 分</Row>
-      <Row label="表示時間" note="友だちの予約画面に表示する時間です。入れないときは、所要時間と同じ時間を表示します。">
-        <label className="mr-3 inline-flex items-center gap-1.5"><input type="checkbox" checked={showOn} onChange={(e) => setShowOn(e.target.checked)} /> 設定する</label>
-        {showOn ? <><input type="number" min={1} className={`${smallInput} w-24`} value={display} onChange={(e) => setDisplay(Number(e.target.value))} /> 分</> : null}
+    <ModalShell title={calendar.courseSettings.title} heading={`${calendar.courseSettings.title}設定`} onClose={onClose} onSave={() => void save()} busy={busy} error={error} saveLabel="変更を確定する">
+      <div className="divide-y divide-gray-200 border-b border-gray-200">
+      <Row label={<span>{calendar.courseSettings.title}名 <span className="ml-1 rounded bg-[#f0627f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span></span>}><input className={inputCls} value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></Row>
+      <Row label="カラー"><input type="color" aria-label="カラー" value={color} onChange={(e) => setColor(e.target.value)} className="h-9 w-16 rounded border border-gray-300" /></Row>
+      <Row label={<span>所要時間 <span className="ml-1 rounded bg-[#f0627f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span></span>} note="予約一覧など、システム上で確保される時間です。"><HourMinute value={duration} onChange={setDuration} /></Row>
+      <Row label="表示時間" note="友だちの予約画面に表示する時間です。設定しないときは、所要時間と同じ時間を表示します。">
+        <label className="mb-1 inline-flex items-center gap-1.5"><input type="checkbox" checked={showOn} onChange={(e) => setShowOn(e.target.checked)} /> 設定する</label>
+        <div><HourMinute value={display} onChange={setDisplay} disabled={!showOn} /></div>
       </Row>
       {calendar.courseSettings.priceEnabled ? <Row label="コース料金"><input type="number" min={0} className={`${smallInput} w-32`} value={price} onChange={(e) => setPrice(Number(e.target.value))} /> 円</Row> : null}
       <Row label="説明文"><DescriptionField value={desc} html={html} onChange={(v, h) => { setDesc(v); setHtml(h) }} /></Row>
-      <Row label="友だち予約可能条件" note="条件を満たす友だちにだけ、このコースを表示します。"><ConditionField accountId={calendar.lineAccountId} value={condition} onChange={setCondition} /></Row>
+      </div>
+      <SubHeading>友だち予約可能条件の設定</SubHeading>
+      <ConditionField accountId={calendar.lineAccountId} value={condition} onChange={setCondition} />
+      <p className="mt-1 text-xs text-gray-500">条件を満たす友だちにだけ、このコースを表示します。</p>
+      <SubHeading>表示設定</SubHeading>
+      <VisibleSelect value={visible} onChange={setVisible} />
     </ModalShell>
   )
 }
@@ -169,9 +221,9 @@ function ItemRow({ name, visible, sub, color, onVisible, onEdit, onCopy, onDelet
   return (
     <div className="flex items-center gap-3 border-b border-gray-200 py-2.5">
       {color ? <span className="h-3 w-3 rounded-full" style={{ background: color }} /> : <span className="h-7 w-7 rounded-full bg-gray-700 text-center text-xs leading-7 text-white">{name.charAt(0)}</span>}
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{name}</div>
-        {sub ? <div className="text-xs text-gray-500">{sub}</div> : null}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate font-medium">{name}</span>
+        {sub ? <span className="shrink-0 rounded-full bg-[#8fb8e8] px-2 py-0.5 text-[11px] font-medium text-white">{sub}</span> : null}
       </div>
       <select className={smallInput} aria-label="表示" value={visible ? '1' : '0'} onChange={(e) => onVisible(e.target.value === '1')}><option value="1">表示する</option><option value="0">非表示</option></select>
       <button type="button" aria-label="編集" className={ic} onClick={onEdit}><PencilSimpleIcon size={16} /></button>
@@ -270,7 +322,7 @@ export default function CourseConfig({ bundle, reload }: { bundle: CalendarBundl
               key={s.id}
               name={s.name}
               visible={s.visible}
-              sub={`同時予約可能数 ${s.capacity ?? (calendar.slotSettings.defaultCapacity ?? '無制限')}${s.autoAssign ? ` / 自動振り分け(優先度${s.priority})` : ''}`}
+              sub={s.autoAssign ? `自動振り分け 優先度${s.priority}` : undefined}
               onVisible={(v) => void run(() => reserveApi.updateSlot(s.id, { visible: v }))}
               onEdit={() => setSlotEditor({ slot: s })}
               onCopy={() => void run(() => reserveApi.duplicateSlot(s.id))}
