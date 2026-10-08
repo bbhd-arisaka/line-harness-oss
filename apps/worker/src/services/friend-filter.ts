@@ -29,7 +29,8 @@ export type FriendCondition =
   | { type: 'scenario'; scenarioId: string; state: ScenarioState }
   | { type: 'form'; formId: string; answered: boolean }
   | { type: 'lastReaction'; from: string | null; to: string | null }
-  | { type: 'inflow'; value: string };
+  | { type: 'inflow'; value: string }
+  | { type: 'reserve'; calendarId: string; state: ReserveState; slotId: string | null; courseId: string | null };
 
 export interface FriendFilter {
   and: FriendCondition[];
@@ -38,6 +39,9 @@ export interface FriendFilter {
   showFollowing: boolean;
   showBlocked: boolean;
 }
+
+export type ReserveState = 'booked' | 'ever' | 'visited' | 'none';
+const RESERVE_STATES: readonly ReserveState[] = ['booked', 'ever', 'visited', 'none'];
 
 const MAX_CONDITIONS = 40;
 const MAX_TEXT = 200;
@@ -111,6 +115,16 @@ function parseCondition(x: unknown): FriendCondition {
       return { type: 'lastReaction', from: date(c.from, '最終反応日(開始)'), to: date(c.to, '最終反応日(終了)') };
     case 'inflow':
       return { type: 'inflow', value: text(c.value ?? '', '流入経路') };
+    case 'reserve': {
+      if (!RESERVE_STATES.includes(c.state as ReserveState)) throw new FilterError('カレンダー予約の条件が正しくありません');
+      return {
+        type: 'reserve',
+        calendarId: id(c.calendarId, 'カレンダー'),
+        state: c.state as ReserveState,
+        slotId: c.slotId ? id(c.slotId, '予約枠') : null,
+        courseId: c.courseId ? id(c.courseId, 'コース') : null,
+      };
+    }
     default:
       throw new FilterError('未対応の条件です');
   }
@@ -219,6 +233,17 @@ function conditionSql(c: FriendCondition): Piece {
       if (c.from) { parts.push(`${last} >= ?`); binds.push(c.from); }
       if (c.to) { parts.push(`${last} <= ?`); binds.push(c.to); }
       return { sql: `(${parts.join(' AND ')})`, binds };
+    }
+    case 'reserve': {
+      const parts = ['rb.friend_id = f.id', 'rb.calendar_id = ?', 'rb.is_block = 0'];
+      const binds: unknown[] = [c.calendarId];
+      if (c.slotId) { parts.push('rb.slot_id = ?'); binds.push(c.slotId); }
+      if (c.courseId) { parts.push('rb.course_id = ?'); binds.push(c.courseId); }
+      if (c.state === 'booked') parts.push("rb.status IN ('confirmed', 'pending')", "rb.ends_at >= strftime('%Y-%m-%dT%H:%M', 'now', '+9 hours')");
+      else if (c.state === 'visited') parts.push("rb.status = 'confirmed'", 'rb.visited = 1');
+      else parts.push("rb.status IN ('confirmed', 'pending')");
+      const e = `EXISTS (SELECT 1 FROM reserve_bookings rb WHERE ${parts.join(' AND ')})`;
+      return { sql: c.state === 'none' ? `NOT ${e}` : e, binds };
     }
     case 'inflow':
       return {

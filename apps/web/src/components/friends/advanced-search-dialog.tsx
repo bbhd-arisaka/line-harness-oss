@@ -8,10 +8,12 @@ import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Input } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
 import { api, fetchApi } from '@/lib/api'
+import { reserveApi } from '@/lib/reserve'
 import {
   CHAT_STATUS_LABEL,
   FIELD_OP_LABEL,
   MEMO_OP_LABEL,
+  RESERVE_STATE_LABEL,
   SCENARIO_STATE_LABEL,
   TAG_MODE_LABEL,
   cleanFilter,
@@ -23,6 +25,7 @@ import {
   type FriendFilter,
   type MemoOp,
   type NameTarget,
+  type ReserveState,
   type ScenarioState,
   type TagMode,
 } from '@/lib/friend-filter'
@@ -54,6 +57,7 @@ const ADD_CHIPS: Array<{ type: FriendCondition['type']; label: string }> = [
   { type: 'form', label: '回答フォーム' },
   { type: 'lastReaction', label: '最終反応日' },
   { type: 'inflow', label: '流入経路' },
+  { type: 'reserve', label: 'カレンダー予約' },
 ]
 
 const TYPE_LABEL: Record<FriendCondition['type'], string> = Object.fromEntries(ADD_CHIPS.map((c) => [c.type, c.label])) as Record<FriendCondition['type'], string>
@@ -74,6 +78,7 @@ function newCondition(type: FriendCondition['type']): FriendCondition {
     case 'form': return { type, formId: '', answered: true }
     case 'lastReaction': return { type, from: null, to: null }
     case 'inflow': return { type, value: '' }
+    case 'reserve': return { type, calendarId: '', state: 'booked', slotId: null, courseId: null }
   }
 }
 
@@ -223,6 +228,16 @@ function ConditionRow({
         />
       </div>
     )
+  } else if (cond.type === 'reserve') {
+    const cal = ctx.reserves?.find((x) => x.id === cond.calendarId)
+    body = (
+      <div className="space-y-2">
+        <Select aria-label="カレンダー" placeholder="カレンダーを選ぶ" value={cond.calendarId} onValueChange={(v) => set({ calendarId: v ?? '', slotId: null, courseId: null } as Partial<FriendCondition>)} items={(ctx.reserves ?? []).map((x) => ({ value: x.id, label: x.name }))} />
+        <Select aria-label="予約の状態" value={cond.state} onValueChange={(v) => set({ state: (v ?? 'booked') as ReserveState } as Partial<FriendCondition>)} items={toItems(RESERVE_STATE_LABEL)} />
+        {cal && cal.slots.length > 0 ? <Select aria-label="予約枠" placeholder="予約枠を問わない" value={cond.slotId ?? ''} onValueChange={(v) => set({ slotId: v || null } as Partial<FriendCondition>)} items={[{ value: '', label: '予約枠を問わない' }, ...cal.slots.map((s) => ({ value: s.id, label: s.name }))]} /> : null}
+        {cal && cal.courses.length > 0 ? <Select aria-label="コース" placeholder="コースを問わない" value={cond.courseId ?? ''} onValueChange={(v) => set({ courseId: v || null } as Partial<FriendCondition>)} items={[{ value: '', label: 'コースを問わない' }, ...cal.courses.map((s) => ({ value: s.id, label: s.name }))]} /> : null}
+      </div>
+    )
   } else if (cond.type === 'inflow') {
     body = <Input aria-label="流入経路" placeholder="流入経路名・コード" value={cond.value} onValueChange={(v) => set({ value: v } as Partial<FriendCondition>)} />
   }
@@ -286,6 +301,7 @@ export function AdvancedSearchDialog({
   const [fields, setFields] = useState<FieldDef[]>([])
   const [scenarios, setScenarios] = useState<Ctx['scenarios']>([])
   const [forms, setForms] = useState<Ctx['forms']>([])
+  const [reserves, setReserves] = useState<NonNullable<Ctx['reserves']>>([])
   const [error, setError] = useState('')
 
   // 開くたびに、いまの条件から作り直す(条件が無いときは、Lステップと同じく 名前・タグ・友だち情報 の行から始める)
@@ -310,9 +326,16 @@ export function AdvancedSearchDialog({
     fetchApi<{ success: boolean; data: FieldDef[] }>('/api/friend-fields/definitions').then((r) => { if (r.success) setFields(r.data) }).catch(() => undefined)
     api.scenarios.list({ accountId: accountId ?? undefined }).then((r) => { if (r.success) setScenarios(r.data.map((s) => ({ id: s.id, name: s.name }))) }).catch(() => undefined)
     fetchApi<{ success: boolean; data: Array<{ id: string; name: string }> }>('/api/forms').then((r) => { if (r.success) setForms(r.data.map((f) => ({ id: f.id, name: f.name }))) }).catch(() => undefined)
+    if (accountId) {
+      reserveApi.list(accountId).then(async (r) => {
+        if (!r.success) return
+        const bundles = await Promise.all(r.data.slice(0, 10).map((x) => reserveApi.get(x.id).catch(() => null)))
+        setReserves(bundles.flatMap((b) => (b && b.success ? [{ id: b.data.calendar.id, name: b.data.calendar.name, slots: b.data.slots.map((s) => ({ id: s.id, name: s.name })), courses: b.data.courses.map((s) => ({ id: s.id, name: s.name })) }] : [])))
+      }).catch(() => undefined)
+    }
   }, [open, accountId])
 
-  const ctx: Ctx = useMemo(() => ({ tags, fields, scenarios, forms }), [tags, fields, scenarios, forms])
+  const ctx: Ctx = useMemo(() => ({ tags, fields, scenarios, forms, reserves }), [tags, fields, scenarios, forms, reserves])
 
   const apply = () => {
     if (!showFollowing && !showBlocked) {

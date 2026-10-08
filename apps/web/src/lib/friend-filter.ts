@@ -6,6 +6,13 @@ export type FieldOp = 'eq' | 'contains' | 'exists' | 'missing' | 'neq' | 'nconta
 export type NameTarget = 'display' | 'real' | 'system'
 export type ChatStatusValue = 'unread' | 'in_progress' | 'resolved'
 export type ScenarioState = 'active' | 'ever' | 'none'
+export type ReserveState = 'booked' | 'ever' | 'visited' | 'none'
+export const RESERVE_STATE_LABEL: Record<ReserveState, string> = {
+  booked: '予約している人(これから)',
+  ever: '予約したことがある人',
+  visited: '来店/来場済みの人',
+  none: '予約していない人',
+}
 export type MemoOp = 'contains' | 'not_contains' | 'exists' | 'missing'
 
 export type FriendCondition =
@@ -20,6 +27,7 @@ export type FriendCondition =
   | { type: 'form'; formId: string; answered: boolean }
   | { type: 'lastReaction'; from: string | null; to: string | null }
   | { type: 'inflow'; value: string }
+  | { type: 'reserve'; calendarId: string; state: ReserveState; slotId: string | null; courseId: string | null }
 
 export interface FriendFilter {
   and: FriendCondition[]
@@ -85,6 +93,7 @@ export function isConditionEmpty(c: FriendCondition): boolean {
     case 'scenario': return !c.scenarioId
     case 'form': return !c.formId
     case 'inflow': return c.value.trim() === ''
+    case 'reserve': return !c.calendarId
   }
 }
 
@@ -107,6 +116,7 @@ export interface DescribeContext {
   fields: Array<{ fieldKey: string; label: string }>
   scenarios: Array<{ id: string; name: string }>
   forms: Array<{ id: string; name: string }>
+  reserves?: Array<{ id: string; name: string; slots: Array<{ id: string; name: string }>; courses: Array<{ id: string; name: string }> }>
 }
 
 function range(from: string | null, to: string | null): string {
@@ -133,6 +143,12 @@ export function describeCondition(c: FriendCondition, ctx: DescribeContext): str
     case 'form': return `フォーム「${ctx.forms.find((f) => f.id === c.formId)?.name ?? '(削除されたフォーム)'}」に${c.answered ? '回答した' : '回答していない'}`
     case 'lastReaction': return `最終反応日が${range(c.from, c.to)}`
     case 'inflow': return `流入経路に${c.value}を含む`
+    case 'reserve': {
+      const cal = ctx.reserves?.find((x) => x.id === c.calendarId)
+      const slot = c.slotId ? ` ${cal?.slots.find((s) => s.id === c.slotId)?.name ?? '(削除された予約枠)'}` : ''
+      const course = c.courseId ? ` ${cal?.courses.find((s) => s.id === c.courseId)?.name ?? '(削除されたコース)'}` : ''
+      return `カレンダー予約「${cal?.name ?? '(カレンダー)'}」${slot}${course} ${RESERVE_STATE_LABEL[c.state]}`
+    }
   }
 }
 

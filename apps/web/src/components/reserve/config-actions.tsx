@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { LightningIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
 import ActionSettingsModal from '@/components/friend-add/action-settings-modal'
 import { useActionLookups } from '@/components/friend-add/use-action-lookups'
 import { describeAction, describeTiming } from '@/lib/friend-add-actions'
 import type { FriendAddActionItem } from '@/lib/friend-add-actions'
+import { reserveApi } from '@/lib/reserve'
 import type { CalendarBundle, FollowItem, FollowSettings, ReminderItem, ReminderSettings, ReserveActionKey, ReserveActions } from '@/lib/reserve'
 import { Block, PageTitle, Row, SaveBar, orangeBtn, smallInput, useSectionSave } from './config-common'
 
@@ -244,30 +245,44 @@ export function EpisodeConfig({ bundle, reload }: { bundle: CalendarBundle; relo
 export function ExternalConfig({ bundle, reload }: { bundle: CalendarBundle; reload: () => void }) {
   const cal = bundle.calendar
   const [g, setG] = useState(cal.external.google)
+  const [conns, setConns] = useState<Array<{ id: string; calendarId: string; authType: string; lastError: string | null }> | null>(null)
   const { busy, message, save } = useSectionSave(cal.id, 'external', reload)
+  useEffect(() => {
+    let cancelled = false
+    reserveApi.googleConnections(cal.id)
+      .then((r) => { if (!cancelled) setConns(r.success ? r.data : []) })
+      .catch(() => { if (!cancelled) setConns([]) })
+    return () => { cancelled = true }
+  }, [cal.id])
+  const selected = conns?.find((x) => x.id === g.connectionId)
   return (
     <div>
       <PageTitle>外部サービス連携設定</PageTitle>
-      <Block title="Googleカレンダー連携" hint="Googleカレンダーの予定の時間帯をシフトに反映したり、予約をGoogleカレンダーの予定に反映できます。">
+      <Block title="Googleカレンダー" hint="予約をGoogleカレンダーの予定として登録したり、Googleカレンダーに入っている予定の時間を、予約を受け付けない時間にできます。">
         <Row label="連携">
           <label className="inline-flex items-center gap-2"><input type="checkbox" checked={g.enabled} onChange={(e) => setG({ ...g, enabled: e.target.checked })} /> 利用する</label>
         </Row>
         {g.enabled ? (
           <>
-            <Row label="連携対象">
-              <select className={`${smallInput} w-72`} value={g.target} onChange={(e) => setG({ ...g, target: e.target.value as typeof g.target })}>
-                <option value="all">すべて(予約をGoogleに反映・Googleをシフトに反映)</option>
-                <option value="bookings">予約をGoogleカレンダーの予定に反映</option>
-                <option value="shift">Googleカレンダーをシフトに連動</option>
+            <Row label="連携するGoogleカレンダー" note={conns && conns.length === 0 ? 'Googleカレンダーの接続がありません。「予約スタッフ」の画面で、スタッフにGoogleカレンダーを接続すると、ここで選べます。' : undefined}>
+              <select className={`${smallInput} w-80`} value={g.connectionId ?? ''} onChange={(e) => setG({ ...g, connectionId: e.target.value || null })}>
+                <option value="">-- 選んでください --</option>
+                {(conns ?? []).map((x) => <option key={x.id} value={x.id}>{x.calendarId}{x.authType === 'oauth' ? '(Googleアカウント)' : ''}</option>)}
+                {g.connectionId && !selected && conns ? <option value={g.connectionId}>(見つからない接続)</option> : null}
               </select>
+              {selected?.lastError ? <p className="mt-1 text-xs text-red-600">この接続でエラーが出ています: {selected.lastError}</p> : null}
             </Row>
-            <Row label="連携するGoogleカレンダー" note="Googleカレンダーの接続は、設定 > 外部連携 で登録したものから選びます。">
-              <input className={`${smallInput} w-72`} placeholder="接続ID(空のときは、連携されません)" value={g.connectionId ?? ''} onChange={(e) => setG({ ...g, connectionId: e.target.value || null })} />
+            <Row label="連携する内容">
+              <div className="space-y-1">
+                <label className="flex items-center gap-2"><input type="radio" checked={g.target === 'all'} onChange={() => setG({ ...g, target: 'all' })} /> 予約をGoogleの予定にする + Googleの予定の時間は予約を受け付けない</label>
+                <label className="flex items-center gap-2"><input type="radio" checked={g.target === 'bookings'} onChange={() => setG({ ...g, target: 'bookings' })} /> 予約をGoogleの予定にする(だけ)</label>
+                <label className="flex items-center gap-2"><input type="radio" checked={g.target === 'shift'} onChange={() => setG({ ...g, target: 'shift' })} /> Googleの予定の時間は予約を受け付けない(だけ)</label>
+              </div>
+              <p className="mt-2 text-xs text-gray-500">予約を受け付けない時間は、すべての予約枠に同じように適用されます。この画面で作った予約の予定は、受け付けない時間の判定には使われません。</p>
             </Row>
           </>
         ) : null}
       </Block>
-      <p className="mb-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">Googleカレンダーとの実際の同期は、現在準備中です。設定は保存されますが、反映は始まっていません。</p>
       <SaveBar busy={busy} message={message} onSave={() => void save({ google: g })} />
     </div>
   )

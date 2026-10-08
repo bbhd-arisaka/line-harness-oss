@@ -648,6 +648,12 @@ const spec = {
       put: { tags: ['Reserve'], summary: 'カレンダー予約: シフトを更新する(scope=this/following/all)', parameters: [{ name: 'shiftId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
       delete: { tags: ['Reserve'], summary: 'カレンダー予約: シフトを削除する(scope=this/following/all)', parameters: [{ name: 'shiftId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
     },
+    '/api/reserve/calendars/{id}/google-connections': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: 連携に使えるGoogleカレンダーの接続の一覧', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/friends/{friendId}/bookings': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: ある友だちの予約の一覧(全カレンダー分。友だち詳細のタブ用)', parameters: [{ name: 'friendId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
     '/api/reserve/calendars/{id}/bookings': {
       get: { tags: ['Reserve'], summary: 'カレンダー予約: 予約の一覧(日・月・リスト用。絞り込みつき)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
       post: { tags: ['Reserve'], summary: 'カレンダー予約: 管理者が予約・ブロック枠を登録する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },

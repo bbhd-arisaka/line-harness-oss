@@ -7,6 +7,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { api, fetchApi } from '@/lib/api'
 import type { FriendDetail } from '@/lib/api'
+import { errorText } from '@/lib/error-text'
+import { STATUS_LABEL, reserveApi } from '@/lib/reserve'
+import type { FriendReserveItem } from '@/lib/reserve'
 import Header from '@/components/layout/header'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Button } from '@cloudflare/kumo/components/button'
@@ -62,6 +65,49 @@ function renderValue(value: unknown): string {
   } catch {
     return '[unparseable]'
   }
+}
+
+/** 友だち詳細の「カレンダー予約」タブ: この友だちの予約(全カレンダー分) */
+function FriendReservations({ friendId }: { friendId: string }) {
+  const [items, setItems] = useState<FriendReserveItem[] | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    reserveApi.friendBookings(friendId)
+      .then((r) => { if (!cancelled) { if (r.success) setItems(r.data); else setError(r.error) } })
+      .catch((err) => { if (!cancelled) setError(errorText(err, '予約を読み込めませんでした')) })
+    return () => { cancelled = true }
+  }, [friendId])
+  return (
+    <LayerCard className="p-5">
+      <h2 className="mb-4 text-sm font-semibold text-kumo-strong">カレンダー予約</h2>
+      {error ? <p className="text-sm text-red-600">{error}</p> : items === null ? (
+        <div className="flex items-center gap-2 text-sm text-kumo-subtle"><Loader size="sm" /> 読み込み中</div>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-kumo-subtle">この友だちの予約はありません。</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="text-left text-xs text-kumo-subtle">
+              <tr><th className="py-2 pr-3 font-medium">予約日時</th><th className="py-2 pr-3 font-medium">カレンダー</th><th className="py-2 pr-3 font-medium">予約枠</th><th className="py-2 pr-3 font-medium">コース</th><th className="py-2 pr-3 font-medium">ステータス</th><th className="py-2 font-medium">来店/来場</th></tr>
+            </thead>
+            <tbody>
+              {items.map((b) => (
+                <tr key={b.id} className="border-t border-kumo-line">
+                  <td className="whitespace-nowrap py-2 pr-3">{b.startsAt.slice(0, 10).replace(/-/g, '/')} {b.startsAt.slice(11, 16)}〜{b.endsAt.slice(11, 16)}</td>
+                  <td className="py-2 pr-3"><Link className="text-kumo-link underline" href={`/reserve/detail?id=${encodeURIComponent(b.calendarId)}`}>{b.calendarName}</Link></td>
+                  <td className="py-2 pr-3">{b.slotName}</td>
+                  <td className="py-2 pr-3">{b.courseName}</td>
+                  <td className="py-2 pr-3">{STATUS_LABEL[b.status]}{b.pendingKind && b.status !== 'pending' ? `(${b.pendingKind === 'change' ? '変更' : 'キャンセル'}リクエスト)` : ''}</td>
+                  <td className="py-2">{b.visited ? '済' : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </LayerCard>
+  )
 }
 
 export default function FriendDetailPage() {
@@ -218,6 +264,7 @@ export default function FriendDetailPage() {
   const tabItems = [
     { value: 'home', label: 'ホーム' },
     { value: 'tags', label: 'タグ' },
+    { value: 'reserve', label: 'カレンダー予約' },
     ...folders
       .slice()
       .sort((a, b) => a.displayOrder - b.displayOrder)
@@ -412,7 +459,9 @@ export default function FriendDetailPage() {
             </LayerCard>
           )}
 
-          {tab !== 'home' && tab !== 'tags' && (
+          {tab === 'reserve' && <FriendReservations friendId={friend.id} />}
+
+          {tab !== 'home' && tab !== 'tags' && tab !== 'reserve' && (
             <LayerCard className="p-5">
               <h2 className="mb-4 text-sm font-semibold text-kumo-strong">
                 {tabItems.find((t) => t.value === tab)?.label}

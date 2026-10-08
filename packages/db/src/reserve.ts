@@ -1028,6 +1028,51 @@ export async function listReserveBookings(db: D1Database, calendarId: string, f:
   return { items, total: total?.c ?? 0 };
 }
 
+export interface FriendReserveItem {
+  id: string;
+  calendarId: string;
+  calendarName: string;
+  slotName: string;
+  courseName: string;
+  startsAt: string;
+  endsAt: string;
+  status: ReserveBookingStatus;
+  pendingKind: string | null;
+  visited: boolean;
+  price: number;
+}
+
+/** 友だち詳細の「カレンダー予約」タブ用: ある友だちの予約を、全カレンダー分、新しい順に */
+export async function listReserveBookingsForFriend(db: D1Database, friendId: string, limit = 100): Promise<FriendReserveItem[]> {
+  const rows = await db
+    .prepare(
+      `SELECT b.id, b.calendar_id, c.name AS calendar_name, s.name AS slot_name, co.name AS course_name,
+              b.starts_at, b.ends_at, b.status, b.pending_kind, b.visited, b.price
+         FROM reserve_bookings b
+         JOIN reserve_calendars c ON c.id = b.calendar_id
+         LEFT JOIN reserve_slots s ON s.id = b.slot_id
+         LEFT JOIN reserve_courses co ON co.id = b.course_id
+        WHERE b.friend_id = ? AND b.is_block = 0
+        ORDER BY b.starts_at DESC
+        LIMIT ?`,
+    )
+    .bind(friendId, Math.min(limit, 500))
+    .all<{ id: string; calendar_id: string; calendar_name: string; slot_name: string | null; course_name: string | null; starts_at: string; ends_at: string; status: ReserveBookingStatus; pending_kind: string | null; visited: number; price: number }>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id,
+    calendarId: r.calendar_id,
+    calendarName: r.calendar_name,
+    slotName: r.slot_name ?? '',
+    courseName: r.course_name ?? '',
+    startsAt: r.starts_at,
+    endsAt: r.ends_at,
+    status: r.status,
+    pendingKind: r.pending_kind,
+    visited: r.visited === 1,
+    price: r.price,
+  }));
+}
+
 /** 空きの計算用: ある期間にかかる、有効な予約(予約済み・承認待ち・ブロック枠)を取り出す */
 export async function listActiveBookingsOverlapping(db: D1Database, calendarId: string, from: string, to: string): Promise<ReserveBooking[]> {
   const rows = await db

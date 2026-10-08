@@ -289,7 +289,23 @@ function bookingQs(q: BookingQuery): string {
   return p.toString()
 }
 
+export interface FriendReserveItem {
+  id: string
+  calendarId: string
+  calendarName: string
+  slotName: string
+  courseName: string
+  startsAt: string
+  endsAt: string
+  status: BookingStatus
+  pendingKind: string | null
+  visited: boolean
+  price: number
+}
+
 export const reserveApi = {
+  googleConnections: (calendarId: string) => fetchApi<ApiRes<Array<{ id: string; calendarId: string; authType: string; lastError: string | null }>>>(`/api/reserve/calendars/${enc(calendarId)}/google-connections`),
+  friendBookings: (friendId: string) => fetchApi<ApiRes<FriendReserveItem[]>>(`/api/reserve/friends/${enc(friendId)}/bookings`),
   list: (lineAccountId: string) => fetchApi<ApiRes<CalendarListItem[]>>(`/api/reserve/calendars?lineAccountId=${enc(lineAccountId)}`),
   create: (lineAccountId: string, name: string) => fetchApi<ApiRes<{ id: string }>>('/api/reserve/calendars', { method: 'POST', ...json({ lineAccountId, name }) }),
   get: (id: string) => fetchApi<ApiRes<CalendarBundle>>(`/api/reserve/calendars/${id}`),

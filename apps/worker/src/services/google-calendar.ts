@@ -216,6 +216,70 @@ export class GoogleCalendarClient {
     return this.parseCreatedEvent(await res.json(), requireMeet);
   }
 
+  /** 既存の予定の、タイトル・説明・時間を更新する(予定が無ければ作り直す) */
+  async updateEvent(eventId: string, event: { summary: string; description?: string; start: string; end: string }): Promise<void> {
+    const url = `${GCAL_BASE}/calendars/${encodeURIComponent(this.config.calendarId)}/events/${encodeURIComponent(eventId)}`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${this.config.accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary: event.summary,
+        description: event.description,
+        status: 'confirmed',
+        start: { dateTime: event.start, timeZone: TIMEZONE },
+        end: { dateTime: event.end, timeZone: TIMEZONE },
+      }),
+    });
+    if (res.status === 404) {
+      await this.createEvent({ ...event, externalId: eventId });
+      return;
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Google Calendar updateEvent error ${res.status}: ${text}`);
+    }
+  }
+
+  /**
+   * 予定のある時間帯(終日予定も含む)を返す。「予定なし」扱いの予定・キャンセル済み・誕生日などは除く。
+   * excludeIdPrefix で始まるIDの予定(この予約システム自身が作ったもの)は含めない。
+   */
+  async listBusyIntervals(timeMin: string, timeMax: string, excludeIdPrefix = ''): Promise<BusyInterval[]> {
+    const intervals: BusyInterval[] = [];
+    let pageToken: string | undefined;
+    do {
+      const url = new URL(`${GCAL_BASE}/calendars/${encodeURIComponent(this.config.calendarId)}/events`);
+      url.searchParams.set('timeMin', timeMin);
+      url.searchParams.set('timeMax', timeMax);
+      url.searchParams.set('timeZone', TIMEZONE);
+      url.searchParams.set('singleEvents', 'true');
+      url.searchParams.set('showDeleted', 'false');
+      url.searchParams.set('maxResults', '2500');
+      if (pageToken) url.searchParams.set('pageToken', pageToken);
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${this.config.accessToken}` } });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Google Calendar events.list error ${res.status}: ${text}`);
+      }
+      const data = (await res.json()) as {
+        items?: Array<{ id?: string; status?: string; eventType?: string; transparency?: string; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }>;
+        nextPageToken?: string;
+      };
+      for (const ev of data.items ?? []) {
+        if (ev.status === 'cancelled' || ev.transparency === 'transparent') continue;
+        if (ev.eventType === 'birthday' || ev.eventType === 'workingLocation') continue;
+        if (excludeIdPrefix && ev.id?.startsWith(excludeIdPrefix)) continue;
+        if (ev.start?.dateTime && ev.end?.dateTime) {
+          intervals.push({ start: new Date(ev.start.dateTime).toISOString(), end: new Date(ev.end.dateTime).toISOString() });
+        } else if (ev.start?.date && ev.end?.date) {
+          intervals.push({ start: new Date(`${ev.start.date}T00:00:00+09:00`).toISOString(), end: new Date(`${ev.end.date}T00:00:00+09:00`).toISOString() });
+        }
+      }
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+    return mergeBusyIntervals(intervals);
+  }
+
   /**
    * Delete an event from Google Calendar.
    */

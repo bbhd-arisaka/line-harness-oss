@@ -185,7 +185,7 @@ reservePublic.get('/api/liff/reserve/availability', async (c) => {
     if ((slotId && !slot) || (courseId && !course)) return c.json({ success: true, data: { days: {}, noOptions: true } });
     if (sel.slots.length === 0 && calendar.slotSettings.required) return c.json({ success: true, data: { days: {}, noOptions: true } });
     const end = to > addDays(from, 41) ? addDays(from, 41) : to;
-    const ctx = await loadAvailabilityContext(c.env.DB, calendar, sel, { from, to: end }, now);
+    const ctx = await loadAvailabilityContext(c.env.DB, calendar, sel, { from, to: end }, now, c.env);
     return c.json({ success: true, data: { days: computeAvailability(ctx, from, end, slot?.id ?? null, course), noOptions: false } });
   } catch (err) {
     return fail(c, err);

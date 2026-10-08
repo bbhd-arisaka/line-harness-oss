@@ -22,6 +22,12 @@ function setup() {
   sqlite.exec(`INSERT INTO forms(id,name,fields) VALUES('form1','カウンセリング','[]')`);
   sqlite.exec(`INSERT INTO form_submissions(id,form_id,friend_id,data) VALUES('sub1','form1','f2','{}')`);
   sqlite.exec(`INSERT INTO messages_log(id,friend_id,direction,message_type,content,created_at) VALUES('m1','f1','incoming','text','こんにちは','2026-10-03T11:33:00.000+09:00'),('m2','f2','incoming','text','やあ','2026-09-01T10:00:00.000+09:00')`);
+  sqlite.exec(`INSERT INTO reserve_calendars(id,line_account_id,name) VALUES('cal1','acc','面談')`);
+  sqlite.exec(`INSERT INTO reserve_slots(id,calendar_id,name) VALUES('sl1','cal1','S1')`);
+  sqlite.exec(`INSERT INTO reserve_courses(id,calendar_id,name,duration_minutes) VALUES('co1','cal1','C1',30)`);
+  sqlite.exec(`INSERT INTO reserve_bookings(id,calendar_id,line_account_id,friend_id,slot_id,course_id,starts_at,ends_at,status,visited) VALUES
+    ('b1','cal1','acc','f1','sl1','co1','2999-01-01T10:00','2999-01-01T10:30','confirmed',0),
+    ('b2','cal1','acc','f2',NULL,NULL,'2020-01-01T10:00','2020-01-01T10:30','confirmed',1)`);
   const run = (filter: unknown): string[] => {
     const pieces = buildFriendFilterPieces(parseFriendFilter(filter));
     const where = pieces.length ? `WHERE ${pieces.map((p) => p.sql).join(' AND ')}` : '';
@@ -58,6 +64,17 @@ describe('友だちの詳細検索(条件→SQL)', () => {
     expect(run({ and: [{ type: 'addedDate', from: '2026-01-01', to: null }] })).toEqual(['f1']);
     expect(run({ and: [{ type: 'addedDate', from: '2025-10-01', to: '2025-10-31' }] })).toEqual(['f2']);
     expect(run({ and: [{ type: 'inflow', value: 'insta' }] })).toEqual(['f1']);
+  });
+
+  test('カレンダー予約: 予約している人・来店済みの人・予約枠やコースの指定', () => {
+    const { run } = setup();
+    expect(run({ and: [{ type: 'reserve', calendarId: 'cal1', state: 'booked', slotId: null, courseId: null }] })).toEqual(['f1']);
+    expect(run({ and: [{ type: 'reserve', calendarId: 'cal1', state: 'ever', slotId: null, courseId: null }] })).toEqual(['f1', 'f2']);
+    expect(run({ and: [{ type: 'reserve', calendarId: 'cal1', state: 'visited', slotId: null, courseId: null }] })).toEqual(['f2']);
+    expect(run({ and: [{ type: 'reserve', calendarId: 'cal1', state: 'none', slotId: null, courseId: null }] })).toEqual([]);
+    expect(run({ and: [{ type: 'reserve', calendarId: 'cal1', state: 'booked', slotId: 'sl1', courseId: 'co1' }] })).toEqual(['f1']);
+    expect(run({ and: [{ type: 'reserve', calendarId: 'cal1', state: 'booked', slotId: 'other', courseId: null }] })).toEqual([]);
+    expect(() => parseFriendFilter({ and: [{ type: 'reserve', calendarId: 'cal1', state: 'x' }] })).toThrow(FilterError);
   });
 
   test('対応マーク・シナリオ・回答フォーム・最終反応日', () => {

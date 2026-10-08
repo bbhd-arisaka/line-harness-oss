@@ -24,6 +24,8 @@ import {
   getReserveSlot,
   listReserveBookingLogs,
   listReserveBookings,
+  listReserveBookingsForFriend,
+  getCalendarConnections,
   listReserveCalendars,
   listReserveCourses,
   listReserveLinks,
@@ -407,6 +409,28 @@ function bookingFilter(c: Ctx): BookingFilter {
 
 const displayName = (f: { displayName: string | null; realName: string | null; systemDisplayName: string | null } | null, guest: string | null): string => guest || f?.realName || f?.systemDisplayName || f?.displayName || '(名前なし)';
 
+reserve.get('/api/reserve/calendars/:id/google-connections', async (c) => {
+  const cal = await calendarOf(c, c.req.param('id') ?? '');
+  if (!cal) return notFound(c);
+  try {
+    const conns = await getCalendarConnections(c.env.DB);
+    const mine = conns.filter((x) => x.is_active && (x.line_account_id === null || x.line_account_id === cal.lineAccountId));
+    return c.json({ success: true, data: mine.map((x) => ({ id: x.id, calendarId: x.calendar_id, authType: x.auth_type, lastError: x.last_error })) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
+reserve.get('/api/reserve/friends/:friendId/bookings', async (c) => {
+  try {
+    const friend = await c.env.DB.prepare('SELECT id, line_account_id FROM friends WHERE id = ?').bind(c.req.param('friendId') ?? '').first<{ id: string; line_account_id: string | null }>();
+    if (!friend || !friend.line_account_id || !allowedAccount(c, friend.line_account_id)) return c.json({ success: false, error: '友だちが見つかりません' }, 404);
+    return c.json({ success: true, data: await listReserveBookingsForFriend(c.env.DB, friend.id) });
+  } catch (err) {
+    return fail(c, err);
+  }
+});
+
 reserve.get('/api/reserve/calendars/:id/bookings', async (c) => {
   const cal = await calendarOf(c, c.req.param('id') ?? '');
   if (!cal) return notFound(c);
@@ -544,7 +568,7 @@ reserve.delete('/api/reserve/bookings/:bid', async (c) => {
   const s = await bookingOf(c);
   if (!s) return notFound(c);
   try {
-    await adminDeleteBooking(c.env.DB, { calendar: s.cal, bookingId: s.id });
+    await adminDeleteBooking(c.env.DB, { calendar: s.cal, bookingId: s.id, env: c.env });
     return c.json({ success: true, data: null });
   } catch (err) {
     return fail(c, err);

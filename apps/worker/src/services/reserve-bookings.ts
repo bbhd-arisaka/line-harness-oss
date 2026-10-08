@@ -26,6 +26,8 @@ import { evaluateCandidate, changeLimit, occupancyMinutes } from './reserve-avai
 import type { AvailabilityContext, NoReason } from './reserve-availability.js';
 import { executeFriendAddAction, friendMatchesCondition } from './friend-add-settings.js';
 import { notifyEvent } from './notifications.js';
+import { googleBusyBlocks, reconcileBookingToGoogle, removeBookingFromGoogle } from './reserve-google.js';
+import type { ReserveGoogleEnv } from './reserve-google.js';
 import { addDays, addMinutes, dateOf, nowJst, timeOf, toMs, weekdayOf } from './reserve-time.js';
 
 export class ReserveBookingError extends Error {
@@ -38,7 +40,7 @@ export class ReserveBookingError extends Error {
   }
 }
 
-export interface ReserveEnv {
+export interface ReserveEnv extends ReserveGoogleEnv {
   WORKER_URL?: string;
 }
 
@@ -90,12 +92,35 @@ export async function loadAvailabilityContext(
   sel: Selectable,
   range: { from: string; to: string },
   now: string = nowJst(),
+  env?: ReserveGoogleEnv,
 ): Promise<AvailabilityContext> {
-  const [shifts, bookings] = await Promise.all([
+  const [shifts, bookings, googleBlocks] = await Promise.all([
     listReserveShifts(db, calendar.id, range.from, range.to),
     listActiveBookingsOverlapping(db, calendar.id, `${addDays(range.from, -1)}T00:00`, `${addDays(range.to, 1)}T23:59`),
+    env ? googleBusyBlocks(db, env, calendar, sel.slots, range) : Promise.resolve([] as ReserveBooking[]),
   ]);
-  return { calendar, slots: sel.slots, links: sel.links, shifts, bookings, now };
+  return { calendar, slots: sel.slots, links: sel.links, shifts, bookings: [...bookings, ...googleBlocks], now };
+}
+
+/** Googleカレンダーの予定の文面(タイトルと説明) */
+async function googleText(db: D1Database, env: ReserveEnv, calendar: ReserveCalendar, b: ReserveBooking): Promise<{ summary: string; description: string }> {
+  const names = await bookingNames(db, b);
+  const friend = b.friendId ? await db.prepare('SELECT display_name, real_name, system_display_name FROM friends WHERE id = ?').bind(b.friendId).first<{ display_name: string | null; real_name: string | null; system_display_name: string | null }>() : null;
+  const who = b.guestName || friend?.real_name || friend?.system_display_name || friend?.display_name || '予約';
+  const parts = [names.courseName, names.slotName].filter((x) => x && x !== '指定なし');
+  const base = env.WORKER_URL ? env.WORKER_URL.replace(/\/$/, '') : '';
+  return {
+    summary: parts.length ? `${who}｜${parts.join(' / ')}` : who,
+    description: [`カレンダー予約: ${calendar.name}`, `予約ID: ${b.id}`, ...Object.values(b.answers).filter(Boolean).map((v) => String(v)), b.memo ? `メモ: ${b.memo}` : '', base ? '' : ''].filter(Boolean).join('\n'),
+  };
+}
+
+/** 予約の今の状態に、Googleカレンダーの予定を合わせる(失敗しても予約の処理は止めない) */
+export async function syncGoogle(db: D1Database, env: ReserveEnv, calendar: ReserveCalendar, bookingId: string): Promise<void> {
+  if (!calendar.external.google.enabled) return;
+  const b = await getReserveBooking(db, bookingId);
+  if (!b) return;
+  await reconcileBookingToGoogle(db, env, calendar, b, await googleText(db, env, calendar, b));
 }
 
 // ── 入力の検証 ──────────────────────────────────────────────────────────────
@@ -290,7 +315,7 @@ function pickSelections(calendar: ReserveCalendar, sel: Selectable, slotId: stri
   return { slot, course };
 }
 
-export async function createFriendBooking(db: D1Database, env: ReserveEnv, input: CreateInput): Promise<ReserveBooking> {
+async function createFriendBookingImpl(db: D1Database, env: ReserveEnv, input: CreateInput): Promise<ReserveBooking> {
   const { calendar, friend } = input;
   const now = input.now ?? nowJst();
   if (calendar.status !== 'active') throw new ReserveBookingError('stopped', '現在、予約受付を停止しています。', 403);
@@ -301,7 +326,7 @@ export async function createFriendBooking(db: D1Database, env: ReserveEnv, input
   const { clean, guestName } = validateAnswers(calendar.screen, input.answers, false);
 
   const date = dateOf(input.startsAt);
-  const ctx = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now);
+  const ctx = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now, env);
   const ev = evaluateCandidate(ctx, { startsAt: input.startsAt, slotId: slot?.id ?? null, course });
   if (!ev.ok) throw new ReserveBookingError('unavailable', REASON_TEXT[ev.reason ?? 'slot_full'], 409);
 
@@ -327,7 +352,7 @@ export async function createFriendBooking(db: D1Database, env: ReserveEnv, input
   });
 
   // 同時に、別の人が同じ枠を取っていないか、もう一度確かめる(取り合いになったら、あとの人を断る)
-  const ctx2 = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now);
+  const ctx2 = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now, env);
   const again = evaluateCandidate(ctx2, { startsAt: input.startsAt, slotId: booking.slotId, course }, { ignoreBookingId: booking.id });
   if (!again.ok) {
     await deleteReserveBooking(db, booking.id);
@@ -364,7 +389,7 @@ export interface ChangeInput {
 }
 
 /** 友だちが、予約を変更する(リクエスト制なら、リクエストにする) */
-export async function changeFriendBooking(db: D1Database, env: ReserveEnv, input: ChangeInput): Promise<ReserveBooking> {
+async function changeFriendBookingImpl(db: D1Database, env: ReserveEnv, input: ChangeInput): Promise<ReserveBooking> {
   const { calendar, friend } = input;
   const now = input.now ?? nowJst();
   const cur = assertOwner(calendar, await getReserveBooking(db, input.bookingId), friend.id);
@@ -381,7 +406,7 @@ export async function changeFriendBooking(db: D1Database, env: ReserveEnv, input
   const answersIn = input.answers ?? cur.answers;
   const { clean, guestName } = validateAnswers(calendar.screen, answersIn as Record<string, unknown>, false);
   const date = dateOf(input.startsAt);
-  const ctx = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now);
+  const ctx = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now, env);
   const ev = evaluateCandidate(ctx, { startsAt: input.startsAt, slotId: slot?.id ?? null, course }, { ignoreBookingId: cur.id });
   if (!ev.ok) throw new ReserveBookingError('unavailable', REASON_TEXT[ev.reason ?? 'slot_full'], 409);
   const assignedSlot = slot ?? (ev.assignedSlotId ? sel.slots.find((s) => s.id === ev.assignedSlotId) ?? null : null);
@@ -411,7 +436,7 @@ export async function changeFriendBooking(db: D1Database, env: ReserveEnv, input
   return updated;
 }
 
-export async function cancelFriendBooking(db: D1Database, env: ReserveEnv, input: { calendar: ReserveCalendar; friend: FriendRow; bookingId: string; now?: string }): Promise<ReserveBooking> {
+async function cancelFriendBookingImpl(db: D1Database, env: ReserveEnv, input: { calendar: ReserveCalendar; friend: FriendRow; bookingId: string; now?: string }): Promise<ReserveBooking> {
   const { calendar, friend } = input;
   const now = input.now ?? nowJst();
   const cur = assertOwner(calendar, await getReserveBooking(db, input.bookingId), friend.id);
@@ -457,7 +482,7 @@ export interface AdminCreateInput {
   memo?: string;
 }
 
-export async function adminCreateBooking(db: D1Database, env: ReserveEnv, input: AdminCreateInput): Promise<ReserveBooking> {
+async function adminCreateBookingImpl(db: D1Database, env: ReserveEnv, input: AdminCreateInput): Promise<ReserveBooking> {
   const { calendar } = input;
   const sel = await loadSelectable(db, calendar, input.friendId, true);
   const { slot, course } = pickSelections(calendar, sel, input.slotId, input.courseId, true);
@@ -513,7 +538,7 @@ export interface AdminUpdateInput {
   runActions: boolean;
 }
 
-export async function adminUpdateBooking(db: D1Database, env: ReserveEnv, input: AdminUpdateInput): Promise<ReserveBooking> {
+async function adminUpdateBookingImpl(db: D1Database, env: ReserveEnv, input: AdminUpdateInput): Promise<ReserveBooking> {
   const { calendar } = input;
   const cur = await getReserveBooking(db, input.bookingId);
   if (!cur || cur.calendarId !== calendar.id) throw new ReserveBookingError('not_found', '予約が見つかりません', 404);
@@ -556,7 +581,7 @@ export async function adminUpdateBooking(db: D1Database, env: ReserveEnv, input:
 }
 
 /** 管理者が、予約のステータスを変える(キャンセル済みに) */
-export async function adminCancelBooking(db: D1Database, env: ReserveEnv, input: { calendar: ReserveCalendar; actor: string; bookingId: string; runActions: boolean }): Promise<ReserveBooking> {
+async function adminCancelBookingImpl(db: D1Database, env: ReserveEnv, input: { calendar: ReserveCalendar; actor: string; bookingId: string; runActions: boolean }): Promise<ReserveBooking> {
   const cur = await getReserveBooking(db, input.bookingId);
   if (!cur || cur.calendarId !== input.calendar.id) throw new ReserveBookingError('not_found', '予約が見つかりません', 404);
   const updated = (await updateReserveBooking(db, cur.id, { status: 'cancelled', pendingKind: null, pendingPayload: null }))!;
@@ -569,15 +594,16 @@ export async function adminCancelBooking(db: D1Database, env: ReserveEnv, input:
   return updated;
 }
 
-export async function adminDeleteBooking(db: D1Database, input: { calendar: ReserveCalendar; bookingId: string }): Promise<void> {
+export async function adminDeleteBooking(db: D1Database, input: { calendar: ReserveCalendar; bookingId: string; env?: ReserveEnv }): Promise<void> {
   const cur = await getReserveBooking(db, input.bookingId);
   if (!cur || cur.calendarId !== input.calendar.id) throw new ReserveBookingError('not_found', '予約が見つかりません', 404);
+  if (input.env) await removeBookingFromGoogle(db, input.env, input.calendar, cur);
   await deleteReserveBooking(db, cur.id);
   if (!cur.isBlock) await notify(db, 'calendar_deleted', input.calendar, cur);
 }
 
 /** 友だちからのリクエスト(新規・変更・キャンセル)を、承認・否認する */
-export async function decideRequest(
+async function decideRequestImpl(
   db: D1Database,
   env: ReserveEnv,
   input: { calendar: ReserveCalendar; actor: string; bookingId: string; decision: 'approve' | 'reject'; runActions: boolean; now?: string },
@@ -597,7 +623,7 @@ export async function decideRequest(
       // 承認するときも、まだ空いているか確かめる(自分の分は、数えない)
       const sel = await loadSelectable(db, calendar, cur.friendId, true);
       const date = dateOf(cur.startsAt);
-      const ctx = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now);
+      const ctx = await loadAvailabilityContext(db, calendar, sel, { from: date, to: date }, now, env);
       const course = cur.courseId ? sel.courses.find((c) => c.id === cur.courseId) ?? null : null;
       const ev = evaluateCandidate(ctx, { startsAt: cur.startsAt, slotId: cur.slotId, course }, { ignoreBookingId: cur.id, adminOverride: true });
       if (!ev.ok) throw new ReserveBookingError('unavailable', REASON_TEXT[ev.reason ?? 'slot_full'], 409);
@@ -697,4 +723,46 @@ export async function processReserveDeliveries(db: D1Database, env: ReserveEnv, 
     }
   }
   return done;
+}
+
+export async function createFriendBooking(...args: Parameters<typeof createFriendBookingImpl>): Promise<ReserveBooking> {
+  const r = await createFriendBookingImpl(...args);
+  await syncGoogle(args[0], args[1], args[2].calendar, r.id);
+  return r;
+}
+
+export async function changeFriendBooking(...args: Parameters<typeof changeFriendBookingImpl>): Promise<ReserveBooking> {
+  const r = await changeFriendBookingImpl(...args);
+  await syncGoogle(args[0], args[1], args[2].calendar, r.id);
+  return r;
+}
+
+export async function cancelFriendBooking(...args: Parameters<typeof cancelFriendBookingImpl>): Promise<ReserveBooking> {
+  const r = await cancelFriendBookingImpl(...args);
+  await syncGoogle(args[0], args[1], args[2].calendar, r.id);
+  return r;
+}
+
+export async function adminCreateBooking(...args: Parameters<typeof adminCreateBookingImpl>): Promise<ReserveBooking> {
+  const r = await adminCreateBookingImpl(...args);
+  await syncGoogle(args[0], args[1], args[2].calendar, r.id);
+  return r;
+}
+
+export async function adminUpdateBooking(...args: Parameters<typeof adminUpdateBookingImpl>): Promise<ReserveBooking> {
+  const r = await adminUpdateBookingImpl(...args);
+  await syncGoogle(args[0], args[1], args[2].calendar, r.id);
+  return r;
+}
+
+export async function adminCancelBooking(...args: Parameters<typeof adminCancelBookingImpl>): Promise<ReserveBooking> {
+  const r = await adminCancelBookingImpl(...args);
+  await syncGoogle(args[0], args[1], args[2].calendar, r.id);
+  return r;
+}
+
+export async function decideRequest(...args: Parameters<typeof decideRequestImpl>): Promise<ReserveBooking> {
+  const r = await decideRequestImpl(...args);
+  await syncGoogle(args[0], args[1], args[2].calendar, r.id);
+  return r;
 }
