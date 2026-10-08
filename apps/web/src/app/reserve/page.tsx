@@ -110,7 +110,7 @@ export default function ReserveListPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded border border-gray-300 bg-white">
+          <div className="rounded border border-gray-300 bg-white">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-gray-100 text-left text-xs text-gray-600">
                 <tr>
