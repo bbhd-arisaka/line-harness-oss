@@ -139,7 +139,7 @@ export function EpisodeConfig({ bundle, reload }: { bundle: CalendarBundle; relo
 
   return (
     <div>
-      <div className="mb-10">
+      <div id="reminder" className="mb-10 scroll-mt-4">
         <div className="mb-2 flex items-center gap-3"><h2 className="text-xl font-semibold text-gray-900">リマインダ設定</h2><Toggle on={rem.enabled} label="リマインダ" onChange={(v) => setRem({ ...rem, enabled: v })} /></div>
         <p className="mb-1 text-sm text-gray-600">予約した友だちに対して、予約日前の効果的なタイミングでリマインドアクションを起こすことができます。</p>
         <p className="mb-4 text-sm font-semibold text-gray-800">設定前に入っている予約にはリマインダは送信されません。</p>
@@ -179,7 +179,7 @@ export function EpisodeConfig({ bundle, reload }: { bundle: CalendarBundle; relo
         <div className="mt-4"><button type="button" className="rounded-full bg-[#e8355d] px-8 py-2.5 text-sm font-medium text-white hover:bg-[#d02850] disabled:opacity-60" disabled={remSave.busy} onClick={() => void remSave.save(rem)}>設定を保存する</button>{remSave.message ? <span className={`ml-3 text-sm ${remSave.message.ok ? 'text-green-700' : 'text-red-600'}`}>{remSave.message.text}</span> : null}</div>
       </div>
 
-      <div>
+      <div id="follow" className="scroll-mt-4">
         <div className="mb-2 flex items-center gap-3"><h2 className="text-xl font-semibold text-gray-900">フォロー設定</h2><Toggle on={fol.enabled} label="フォロー" onChange={(v) => setFol({ ...fol, enabled: v })} /></div>
         <p className="mb-1 text-sm text-gray-600">友だちが来店・来場した後に、任意のタイミングで感謝のメッセージやアンケートの送付などができます。</p>
         <p className="mb-1 text-sm text-gray-600">実際に来店・来場したかどうかは、「来店/来場済み」ステータスで管理できます。</p>

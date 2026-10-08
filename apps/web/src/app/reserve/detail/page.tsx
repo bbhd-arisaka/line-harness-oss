@@ -24,7 +24,7 @@ const SECTIONS: Array<{ key: Section; label: string; subs?: Array<{ id: string; 
   { key: 'course', label: '予約枠 / コース', subs: [{ id: 'slots', label: '予約枠' }, { id: 'courses', label: 'コース' }, { id: 'links', label: '予約枠とコースの紐づけ' }] },
   { key: 'screen', label: '予約画面', subs: [{ id: 'view', label: 'カレンダー表示' }, { id: 'admin', label: '管理者情報' }, { id: 'thanks', label: 'サンクスページURL' }, { id: 'fields', label: '予約情報取得項目' }] },
   { key: 'action', label: 'アクション', subs: [{ id: 'basic', label: '基本予約アクション' }, { id: 'req-new', label: '新規予約リクエストアクション' }, { id: 'req-change', label: '変更リクエストアクション' }, { id: 'req-cancel', label: 'キャンセルリクエストアクション' }] },
-  { key: 'episode', label: 'リマインダ / フォロー' },
+  { key: 'episode', label: 'リマインダ / フォロー', subs: [{ id: 'reminder', label: 'リマインダ設定' }, { id: 'follow', label: 'フォロー設定' }] },
   { key: 'external', label: '外部サービス連携' },
 ]
 
