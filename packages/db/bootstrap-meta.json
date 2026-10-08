@@ -101,7 +101,8 @@
     "093_notification_settings.sql",
     "094_friend_add_settings.sql",
     "095_friend_add_deferred_actions.sql",
-    "096_friend_profile_checked_at.sql"
+    "096_friend_profile_checked_at.sql",
+    "097_backfill_chats_for_new_friends.sql"
   ],
-  "migrationCount": 102
+  "migrationCount": 103
 }

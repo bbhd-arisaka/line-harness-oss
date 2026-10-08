@@ -252,6 +252,21 @@ async function handleEvent(
 
     console.log(`[follow] friend.id=${friend.id} friend.line_account_id=${(friend as any).line_account_id}`);
 
+    // 友だち追加だけで、まだメッセージが無い人も、個別トークの一覧に出す(トークの行を作る/追加時刻に更新する)。
+    // 対応マークは「対応済み」のまま(未読・未対応には数えない)
+    try {
+      const { getChatByFriendId, createChat, updateChat } = await import('@line-crm/db');
+      const existingChat = await getChatByFriendId(db, friend.id);
+      if (existingChat) {
+        await updateChat(db, existingChat.id, { lastMessageAt: new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 23) });
+      } else {
+        const created = await createChat(db, { friendId: friend.id });
+        await updateChat(db, created.id, { status: 'resolved' });
+      }
+    } catch (err) {
+      console.error('[follow] failed to create chat row', err);
+    }
+
     // 新規・再フォローのどちらでも、最初の友だち登録マイルを同じキーで非同期投入する。
     // first_followed_at を使うため再フォローやWebhook再送では二重加算されない。
     const firstFollowedAt = friend.first_followed_at ?? friend.created_at;
