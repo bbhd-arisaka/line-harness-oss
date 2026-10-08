@@ -465,6 +465,28 @@ friends.get('/api/friends/:id/mileage', async (c) => {
 });
 
 // GET /api/friends/:id - get single friend with tags
+// POST /api/friends/:id/refresh-profile - プロフィール画像などを、LINEから取り直す(画面で画像が出なかったとき用)
+friends.post('/api/friends/:id/refresh-profile', async (c) => {
+  try {
+    const row = await c.env.DB
+      .prepare('SELECT f.id, f.line_user_id, f.picture_url, f.display_name, f.profile_checked_at, a.channel_access_token AS token FROM friends f LEFT JOIN line_accounts a ON a.id = f.line_account_id WHERE f.id = ?')
+      .bind(c.req.param('id'))
+      .first<{ id: string; line_user_id: string; picture_url: string | null; display_name: string | null; profile_checked_at: string | null; token: string | null }>();
+    if (!row) return c.json({ success: false, error: 'Friend not found' }, 404);
+    // 画像を設定していない人は、開くたびに取り直しても同じ。1時間以内に取り直していれば、LINEには聞かない
+    const hourAgo = new Date(Date.now() + 9 * 3600 * 1000 - 3_600_000).toISOString().slice(0, 23);
+    if (row.profile_checked_at && row.profile_checked_at > hourAgo) {
+      return c.json({ success: true, data: { refreshed: false, pictureUrl: row.picture_url, displayName: row.display_name } });
+    }
+    const { refreshFriendProfile } = await import('../services/profile-refresh.js');
+    const result = await refreshFriendProfile(c.env.DB, row, row.token ?? c.env.LINE_CHANNEL_ACCESS_TOKEN ?? '');
+    return c.json({ success: true, data: { refreshed: result.ok, pictureUrl: result.pictureUrl, displayName: result.displayName } });
+  } catch (err) {
+    console.error('POST /api/friends/:id/refresh-profile error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 friends.get('/api/friends/:id', async (c) => {
   try {
     const id = c.req.param('id');

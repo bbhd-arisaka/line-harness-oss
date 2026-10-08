@@ -10,6 +10,7 @@ import { Button } from '@cloudflare/kumo/components/button'
 import { Empty } from '@cloudflare/kumo/components/empty'
 import { Select } from '@cloudflare/kumo/components/select'
 import { Table } from '@cloudflare/kumo/components/table'
+import FriendAvatar from './friend-avatar'
 
 interface FriendTableProps {
   friends: FriendWithTags[]
@@ -105,17 +106,7 @@ export default function FriendTable({ friends, allTags, onRefresh }: FriendTable
                   {/* Avatar + Name */}
                   <Table.Cell>
                     <div className="flex items-center gap-3">
-                      {friend.pictureUrl ? (
-                        <img
-                          src={friend.pictureUrl}
-                          alt={friend.displayName}
-                          className="w-9 h-9 rounded-full object-cover bg-gray-100"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-medium">
-                          {friend.displayName?.charAt(0) ?? '?'}
-                        </div>
-                      )}
+                      <FriendAvatar friendId={friend.id} url={friend.pictureUrl} name={friend.displayName} size="w-9 h-9" />
                       <div>
                         <p className="text-sm font-medium text-gray-900">{friend.displayName}</p>
                         {friend.statusMessage && (

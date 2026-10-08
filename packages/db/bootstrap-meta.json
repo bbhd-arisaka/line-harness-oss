@@ -100,7 +100,8 @@
     "092_lstep_match_review_pairs.sql",
     "093_notification_settings.sql",
     "094_friend_add_settings.sql",
-    "095_friend_add_deferred_actions.sql"
+    "095_friend_add_deferred_actions.sql",
+    "096_friend_profile_checked_at.sql"
   ],
-  "migrationCount": 101
+  "migrationCount": 102
 }

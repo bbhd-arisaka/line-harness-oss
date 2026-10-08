@@ -16,6 +16,7 @@ import { LayerCard } from '@cloudflare/kumo/components/layer-card'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { Select } from '@cloudflare/kumo/components/select'
 import { Tabs } from '@cloudflare/kumo/components/tabs'
+import FriendAvatar from '@/components/friends/friend-avatar'
 
 // Lステップの「友だち詳細」画面のレイアウト(基本情報カードの上のタブが
 // 固定タブ+フォルダ分けされたカスタムフィールドのタブという構成)を模倣する。
@@ -255,14 +256,7 @@ export default function FriendDetailPage() {
       ) : (
         <>
           <LayerCard className="mb-4 flex items-start gap-3 p-4">
-            {friend.pictureUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={friend.pictureUrl} alt="" className="h-14 w-14 flex-shrink-0 rounded-full" />
-            ) : (
-              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-kumo-control-secondary text-lg text-kumo-subtle">
-                {resolveFriendName(friend).charAt(0)}
-              </div>
-            )}
+            <FriendAvatar friendId={friend.id} url={friend.pictureUrl} name={resolveFriendName(friend)} size="h-14 w-14" tone="bg-kumo-control-secondary text-kumo-subtle" textSize="text-lg" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-kumo-strong">{resolveFriendName(friend)}</p>
               <p className="mt-0.5 text-xs text-kumo-subtle">友だちID: {friend.id}</p>

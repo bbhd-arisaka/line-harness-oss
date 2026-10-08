@@ -568,7 +568,7 @@ CREATE TABLE IF NOT EXISTS friends (
   unfollow_count   INTEGER NOT NULL DEFAULT 0,
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-, ref_code TEXT, metadata TEXT NOT NULL DEFAULT '{}', line_account_id TEXT REFERENCES line_accounts(id), first_tracked_link_id TEXT REFERENCES tracked_links (id) ON DELETE SET NULL, real_name TEXT, memo TEXT, system_display_name TEXT, line_user_id TEXT);
+, ref_code TEXT, metadata TEXT NOT NULL DEFAULT '{}', line_account_id TEXT REFERENCES line_accounts(id), first_tracked_link_id TEXT REFERENCES tracked_links (id) ON DELETE SET NULL, real_name TEXT, memo TEXT, system_display_name TEXT, line_user_id TEXT, profile_checked_at TEXT);
 
 CREATE TABLE IF NOT EXISTS google_calendar_connections (
   id            TEXT PRIMARY KEY,
@@ -1449,6 +1449,8 @@ CREATE INDEX IF NOT EXISTS idx_friends_ig_igsid ON friends (ig_igsid);
 CREATE INDEX IF NOT EXISTS idx_friends_line_user_id ON friends (line_user_key);
 
 CREATE INDEX IF NOT EXISTS idx_friends_line_user_real ON friends (line_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_friends_profile_checked ON friends (profile_checked_at);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_friends_uid_account ON friends (line_user_id, line_account_id);
 

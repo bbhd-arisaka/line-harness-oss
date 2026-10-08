@@ -9,6 +9,7 @@ import type { FriendListItem } from '@/lib/api'
 import TagBadge from './tag-badge'
 import { resolveFriendName } from './friend-name-edit-dialog'
 import { FieldValue, type FieldValueDef } from './field-value'
+import FriendAvatar from './friend-avatar'
 
 /** ★(お気に入り)が付いた友だち情報欄。友だち一覧の「★つきタグ・友だち情報」に値を出す。 */
 export interface FavoriteField extends FieldValueDef {
@@ -74,17 +75,7 @@ export default function FriendListRow({ friend, onTagEditClick, favoriteFields =
 
       {/* 名前 + アバター + 登録日 */}
       <div className="flex items-start gap-2">
-        {friend.pictureUrl ? (
-          <img
-            src={friend.pictureUrl}
-            alt={name}
-            className="h-9 w-9 flex-shrink-0 rounded-full bg-kumo-tint object-cover"
-          />
-        ) : (
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-kumo-fill text-sm font-medium text-kumo-subtle">
-            {name.charAt(0) || '?'}
-          </div>
-        )}
+        <FriendAvatar friendId={friend.id} url={friend.pictureUrl} name={name} size="h-9 w-9" tone="bg-kumo-fill text-kumo-subtle" />
         <div className="min-w-0">
           {/* Lステップの友だちリストは名前がそのまま詳細画面へのリンクになっている。
               行全体のクリックはチャットへの近道として残しつつ、名前だけは

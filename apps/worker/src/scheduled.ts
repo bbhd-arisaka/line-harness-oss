@@ -9,6 +9,7 @@ import { processScheduledBroadcasts, processQueuedBroadcasts } from './services/
 import { startBulkSendJobs } from './services/quota.js';
 import { processReminderDeliveries } from './services/reminder-delivery.js';
 import { processDeferredFriendAddActions } from './services/friend-add-settings.js';
+import { refreshStaleProfiles } from './services/profile-refresh.js';
 import { checkAccountHealth } from './services/ban-monitor.js';
 import { refreshLineAccessTokens } from './services/token-refresh.js';
 import { processInsightFetch } from './services/insight-fetcher.js';
@@ -219,6 +220,8 @@ export async function scheduled(
     // 5分毎に全アカウント分の quota API を叩くと bot/info を分足→5分に
     // 落とした経緯 (上のコメント参照) と同じ過剰負荷になる。
     jobs.push(checkAccountHealth(env.DB, { checkQuota: isHourlyTick(event) }));
+    // プロフィール画像のURLは時間がたつと切れるので、古い順に少しずつ取り直す(1回20人)
+    jobs.push(refreshStaleProfiles(env.DB, { fallbackToken: env.LINE_CHANNEL_ACCESS_TOKEN }).then(() => undefined));
     jobs.push(
       processPendingMileageEvents(env.DB, { limit: 100 }).then((result) => {
         if (result.claimed > 0) {

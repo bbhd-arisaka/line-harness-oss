@@ -399,6 +399,9 @@ export type SavedFriendSearch = {
 export const api = {
   usage: () => fetchApi<ApiResponse<QuotaUsage>>('/api/usage'),
   friends: {
+    /** プロフィール画像などを、LINEから取り直す(画像が出なかったとき用) */
+    refreshProfile: (id: string) =>
+      fetchApi<ApiResponse<{ refreshed: boolean; pictureUrl: string | null; displayName: string | null }>>(`/api/friends/${id}/refresh-profile`, { method: 'POST' }),
     list: (params?: FriendListParams) => {
       const query: Record<string, string> = {}
       if (params?.offset) query.offset = String(params.offset)

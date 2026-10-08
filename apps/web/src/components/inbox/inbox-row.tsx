@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import FriendAvatar from '@/components/friends/friend-avatar'
 import { Badge } from '@cloudflare/kumo/components/badge'
 
 export interface InboxRowData {
@@ -86,16 +87,7 @@ export default function InboxRow({ row }: Props) {
       href={`/chats?friend=${encodeURIComponent(row.friendId)}&unanswered=1`}
       className="flex items-start gap-3 border-b border-kumo-line px-4 py-3 hover:bg-kumo-tint"
     >
-      {row.pictureUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={row.pictureUrl}
-          alt=""
-          className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div className="h-10 w-10 flex-shrink-0 rounded-full bg-kumo-fill" />
-      )}
+      <FriendAvatar friendId={row.friendId} url={row.pictureUrl} name={row.displayName} tone="bg-kumo-fill text-kumo-subtle" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-kumo-strong">

@@ -20,6 +20,7 @@ import { Checkbox } from '@cloudflare/kumo/components/checkbox'
 import { Input } from '@cloudflare/kumo/components/input'
 import { Radio } from '@cloudflare/kumo/components/radio'
 import { Select } from '@cloudflare/kumo/components/select'
+import FriendAvatar from '@/components/friends/friend-avatar'
 
 interface Chat {
   id: string
@@ -235,13 +236,7 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </Button>
-        {friend?.pictureUrl ? (
-          <img src={friend.pictureUrl} alt="" className="w-8 h-8 rounded-full" />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-            <span className="text-gray-500 text-xs">{(friend?.displayName || '?').charAt(0)}</span>
-          </div>
-        )}
+        <FriendAvatar friendId={friend?.id} url={friend?.pictureUrl} name={friend?.displayName} size="w-8 h-8" textSize="text-xs" />
         <div>
           <p className="text-sm font-bold text-gray-900">{friend?.displayName || '不明'}</p>
           <p className="text-xs text-gray-400">メッセージ履歴</p>
@@ -954,11 +949,7 @@ export default function ChatsPage() {
                       className={`h-auto w-full justify-start gap-3 rounded-none border-b border-gray-100 px-4 py-3 text-left ${selectedChatId === f.id ? 'bg-green-50' : ''}`}
                       onClick={() => { setSelectedFriendId(null); handleSelectChat(f.id); setNameQuery('') }}
                     >
-                      {f.pictureUrl ? (
-                        <img src={f.pictureUrl} alt="" className="h-10 w-10 flex-shrink-0 rounded-full" />
-                      ) : (
-                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-500">{display.charAt(0)}</span>
-                      )}
+                      <FriendAvatar friendId={f.id} url={f.pictureUrl} name={display} />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium text-gray-900">{display}</span>
                         {f.displayName && display !== f.displayName ? <span className="block truncate text-xs text-gray-400">LINE名: {f.displayName}</span> : null}
@@ -1013,13 +1004,7 @@ export default function ChatsPage() {
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        {chat.friendPictureUrl ? (
-                          <img src={chat.friendPictureUrl} alt="" className="w-10 h-10 rounded-full flex-shrink-0" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                            <span className="text-gray-500 text-sm">{chat.friendName.charAt(0)}</span>
-                          </div>
-                        )}
+                        <FriendAvatar friendId={chat.friendId} url={chat.friendPictureUrl} name={chat.friendName} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -1097,13 +1082,7 @@ export default function ChatsPage() {
                       </svg>
                     </Button>
                     <Link href={`/friends/detail?id=${chatDetail.friendId ?? chatDetail.id}`} title="友だち詳細を開く" className="flex-shrink-0">
-                      {chatDetail.friendPictureUrl ? (
-                        <img src={chatDetail.friendPictureUrl} alt="" className="h-8 w-8 rounded-full" />
-                      ) : (
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-sm text-gray-500">
-                          {chatDetail.friendName.charAt(0)}
-                        </span>
-                      )}
+                      <FriendAvatar friendId={chatDetail.friendId ?? chatDetail.id} url={chatDetail.friendPictureUrl} name={chatDetail.friendName} size="h-8 w-8" />
                     </Link>
                     <div className="flex min-w-0 items-center gap-1">
                       <Link
@@ -1290,13 +1269,7 @@ export default function ChatsPage() {
                               aria-label={`${chatDetail.friendName}の友だち詳細を開く`}
                               className="mb-1 flex-shrink-0"
                             >
-                              {chatDetail.friendPictureUrl ? (
-                                <img src={chatDetail.friendPictureUrl} alt="" className="h-8 w-8 rounded-full" />
-                              ) : (
-                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-300 text-sm text-white">
-                                  {chatDetail.friendName.charAt(0)}
-                                </span>
-                              )}
+                              <FriendAvatar friendId={chatDetail.friendId ?? chatDetail.id} url={chatDetail.friendPictureUrl} name={chatDetail.friendName} size="h-8 w-8" tone="bg-gray-300 text-white" />
                             </Link>
                           )}
 

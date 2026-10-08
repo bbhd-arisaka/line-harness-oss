@@ -593,6 +593,9 @@ const spec = {
         responses: { '200': { description: 'Recent deliveries' }, '404': { description: 'Not found' } },
       },
     },
+    '/api/friends/{id}/refresh-profile': {
+      post: { tags: ['Friends'], summary: 'プロフィール画像などを、LINEから取り直す(画像が出なかったとき用。1時間以内に取り直していればLINEには聞かない)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Refreshed profile' }, '404': { description: 'Friend not found' } } },
+    },
     '/api/friend-add-settings': {
       get: { tags: ['Friends'], summary: '友だち追加時設定(新規友だち/再フォロー・導入前からの友だち)を取得', parameters: [{ name: 'lineAccountId', in: 'query', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Settings' } } },
     },
