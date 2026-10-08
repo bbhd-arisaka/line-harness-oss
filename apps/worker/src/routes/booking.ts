@@ -131,7 +131,7 @@ export function jstDayWindowUtc(jstDate: string): { startUtc: string; endUtc: st
   };
 }
 
-async function resolveAccountIdFromLiff(c: Context<Env>): Promise<string | null> {
+export async function resolveAccountIdFromLiff(c: Context<Env>): Promise<string | null> {
   const liffId = c.req.query('liffId');
   if (!liffId) return null;
   const acc = await c.env.DB
@@ -151,7 +151,7 @@ async function resolveAccountIdFromLiff(c: Context<Env>): Promise<string | null>
 //      ではなく Messaging channel に紐付けてる構成への保険
 //   4. id_token の aud claim を base64 デコードして直接抽出 — どの DB 値とも
 //      一致しない場合の最後の手段（LIFF が独自に発行する場合）
-async function verifyCallerLineUserId(c: Context<Env>): Promise<string | null> {
+export async function verifyCallerLineUserId(c: Context<Env>): Promise<string | null> {
   const auth = c.req.header('Authorization');
   if (!auth || !auth.startsWith('Bearer ')) return null;
   const idToken = auth.slice('Bearer '.length).trim();

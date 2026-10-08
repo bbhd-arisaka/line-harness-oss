@@ -34,6 +34,14 @@ export function sqliteD1(path = ':memory:'): { db: D1Database; sqlite: Database.
       async raw<T>() { return sqlite.prepare(sql).all(...values).map(row => Object.values(row as Record<string, SQLInputValue>)) as T[]; },
     } as D1PreparedStatement;
   }
-  const db = { prepare } as D1Database;
+  const db = {
+    prepare,
+    // 複数の文を順に実行する(本物の D1 の batch の代わり)
+    async batch(stmts: D1PreparedStatement[]) {
+      const out = [];
+      for (const s of stmts) out.push(await s.run());
+      return out;
+    },
+  } as unknown as D1Database;
   return { db, sqlite };
 }

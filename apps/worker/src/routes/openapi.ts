@@ -596,6 +596,109 @@ const spec = {
     '/api/friends/{id}/refresh-profile': {
       post: { tags: ['Friends'], summary: 'プロフィール画像などを、LINEから取り直す(画像が出なかったとき用。1時間以内に取り直していればLINEには聞かない)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Refreshed profile' }, '404': { description: 'Friend not found' } } },
     },
+    '/api/reserve/calendars': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: カレンダーの一覧(稼働状態・承認待ち件数・予約URL)', responses: { '200': { description: 'OK' } } },
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: カレンダーを作る', responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: カレンダーの全設定(予約枠・コース・紐づけ・予約URLなど)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      patch: { tags: ['Reserve'], summary: 'カレンダー予約: カレンダー名の変更・友だち予約の稼働/停止', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      delete: { tags: ['Reserve'], summary: 'カレンダー予約: カレンダーを削除する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/copy': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: カレンダーをコピーする(設定・シフトのみ)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/settings/{section}': {
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: 設定の1区分を保存(reception/slotSettings/courseSettings/screen/actions/reminders/follow/external)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'section', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/slots': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: 予約枠を作る', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/slots/{slotId}': {
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: 予約枠を更新する', parameters: [{ name: 'slotId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      delete: { tags: ['Reserve'], summary: 'カレンダー予約: 予約枠を削除する', parameters: [{ name: 'slotId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/slots/{slotId}/duplicate': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: 予約枠を複製する', parameters: [{ name: 'slotId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/slots-order': {
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: 予約枠の並び順を保存する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/courses': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: コースを作る', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/courses/{courseId}': {
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: コースを更新する', parameters: [{ name: 'courseId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      delete: { tags: ['Reserve'], summary: 'カレンダー予約: コースを削除する', parameters: [{ name: 'courseId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/courses/{courseId}/duplicate': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: コースを複製する', parameters: [{ name: 'courseId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/courses-order': {
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: コースの並び順を保存する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/links': {
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: 予約枠とコースの紐づけを保存する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/shifts': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: シフトの一覧(from・to・slotIds)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: シフトを作る(繰り返しも可)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/shifts/{shiftId}': {
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: シフトを更新する(scope=this/following/all)', parameters: [{ name: 'shiftId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      delete: { tags: ['Reserve'], summary: 'カレンダー予約: シフトを削除する(scope=this/following/all)', parameters: [{ name: 'shiftId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/bookings': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: 予約の一覧(日・月・リスト用。絞り込みつき)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: 管理者が予約・ブロック枠を登録する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/bookings.csv': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: 予約の一覧をCSVでダウンロードする', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/bookings/{bid}': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: 予約の詳細(操作履歴・友だちの直近の予約つき)', parameters: [{ name: 'bid', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      put: { tags: ['Reserve'], summary: 'カレンダー予約: 管理者が予約を変更する(メモ・完了後のステータスも)', parameters: [{ name: 'bid', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+      delete: { tags: ['Reserve'], summary: 'カレンダー予約: 予約を削除する', parameters: [{ name: 'bid', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/bookings/{bid}/cancel': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: 管理者が予約をキャンセルする', parameters: [{ name: 'bid', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/bookings/{bid}/decision': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: リクエスト(新規・変更・キャンセル)を承認・否認する', parameters: [{ name: 'bid', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/visited': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: 来店/来場済みにする(個別・一括。フォローを実行するか選べる)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/notices': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約: お知らせ(新規予約・承認待ち)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/site-links': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約: 予約枠・コースを指定した予約URLを発行する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/reserve/calendars/{id}/site-links/{linkId}': {
+      delete: { tags: ['Reserve'], summary: 'カレンダー予約: 発行した予約URLを削除する', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }, { name: 'linkId', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/liff/reserve/config': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約(LIFF): 予約画面の設定・選べる予約枠とコース', responses: { '200': { description: 'OK' } } },
+    },
+    '/api/liff/reserve/availability': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約(LIFF): 期間の空き(◯/✕)', responses: { '200': { description: 'OK' } } },
+    },
+    '/api/liff/reserve/bookings': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約(LIFF): 友だちが予約する', responses: { '200': { description: 'OK' } } },
+    },
+    '/api/liff/reserve/me': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約(LIFF): 友だちの予約履歴', responses: { '200': { description: 'OK' } } },
+    },
+    '/api/liff/reserve/bookings/{id}': {
+      get: { tags: ['Reserve'], summary: 'カレンダー予約(LIFF): 予約の確認', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/liff/reserve/bookings/{id}/change': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約(LIFF): 友だちが予約を変更する(リクエスト制ならリクエスト)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
+    '/api/liff/reserve/bookings/{id}/cancel': {
+      post: { tags: ['Reserve'], summary: 'カレンダー予約(LIFF): 友だちが予約をキャンセルする(リクエスト制ならリクエスト)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } },
+    },
     '/api/friend-add-settings': {
       get: { tags: ['Friends'], summary: '友だち追加時設定(新規友だち/再フォロー・導入前からの友だち)を取得', parameters: [{ name: 'lineAccountId', in: 'query', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Settings' } } },
     },

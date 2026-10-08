@@ -84,12 +84,15 @@ export async function friendMatchesCondition(db: D1Database, friendId: string, c
   return !!row;
 }
 
-interface Target {
+export interface ActionTarget {
   friendId: string;
   lineAccountId: string | null;
   lineAccessToken?: string;
   workerUrl?: string;
+  /** テキスト送信の中の {{キー}} を置き換える値(カレンダー予約の、予約者名・予約日時など) */
+  vars?: Record<string, string>;
 }
+type Target = ActionTarget;
 
 /** アクションを1つ実行する(条件が合わなければ何もしない) */
 export async function executeFriendAddAction(db: D1Database, target: Target, action: FriendAddAction): Promise<void> {
@@ -169,7 +172,9 @@ async function sendText(db: D1Database, target: Target, text: string): Promise<v
   const friend = await getFriendById(db, target.friendId);
   if (!friend) return;
   const metadata = await resolveMetadata(db, friend);
-  const content = expandVariables(text, { ...friend, metadata }, target.workerUrl, 'text');
+  let withVars = text;
+  if (target.vars) for (const [k, v] of Object.entries(target.vars)) withVars = withVars.split('{{' + k + '}}').join(v);
+  const content = expandVariables(withVars, { ...friend, metadata }, target.workerUrl, 'text');
   const message = buildMessage('text', content);
   await new LineClient(target.lineAccessToken).pushMessage(friend.line_user_id, [message]);
   const log = messageToLogPayload(message);

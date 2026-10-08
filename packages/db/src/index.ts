@@ -34,6 +34,8 @@ export * from './message-templates';
 export * from './rich-menus';
 export * from './notification-settings';
 export * from './friend-add-settings';
+export * from './reserve-settings';
+export * from './reserve';
 export * from './affiliate-links';
 export * from './affiliate-offers';
 export * from './mileage';
