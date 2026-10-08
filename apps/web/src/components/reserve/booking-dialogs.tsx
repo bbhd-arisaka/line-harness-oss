@@ -106,7 +106,7 @@ export function BookingEditor({
   const [friend, setFriend] = useState<{ id: string; name: string } | null>(booking?.friendId ? { id: booking.friendId, name: displayName(booking) } : null)
   const [answers, setAnswers] = useState<Record<string, string>>(booking?.answers ?? {})
   const [overwrite, setOverwrite] = useState(false)
-  const [runActions, setRunActions] = useState(true)
+  const [runActions, setRunActions] = useState(false)
   const [memo, setMemo] = useState(booking?.memo ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -144,53 +144,56 @@ export function BookingEditor({
     }
   }
 
-  const row = 'grid grid-cols-[130px_1fr] items-start gap-3 py-1.5'
-  const label = 'pt-1.5 text-right text-sm font-semibold text-gray-800'
+  const row = 'grid grid-cols-[110px_1fr] items-start gap-3 py-2'
+  const label = 'pt-1.5 text-xs font-semibold text-gray-700'
+  const req = <span className="ml-1 rounded bg-[#f0627f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span>
 
   return (
-    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose() }}>
-      <Dialog size="lg" className="p-0 !w-[min(760px,95vw)] !max-w-none">
-        <div className="border-b border-gray-200 px-5 py-3 text-base font-semibold">{editing ? '予約の編集' : '新規予約'}</div>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-3">
-          <div className={row}>
-            <span />
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="relative h-full w-[min(660px,100vw)] overflow-y-auto bg-white shadow-xl">
+        <button type="button" className="sticky left-0 top-0 z-10 flex items-center gap-1 bg-black px-3 py-2 text-sm text-white" onClick={onClose}>
+          <span aria-hidden>×</span> Close
+        </button>
+        <div className="px-6 pb-24 pt-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">{editing ? '予約の編集' : '新規予約登録'}</h2>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={isBlock} onChange={(e) => setIsBlock(e.target.checked)} /> この時間の予約をブロックする
             </label>
           </div>
           {!isBlock ? (
             <div className={row}>
-              <span className={label}>{calendar.courseSettings.title}</span>
+              <span className={label}>{calendar.courseSettings.title}{calendar.courseSettings.required ? req : null}</span>
               <select className={inputCls} value={courseId} onChange={(e) => setCourseId(e.target.value)}>
-                <option value="">未指定</option>
+                <option value="">-- 未指定 --</option>
                 {courses.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.visible ? '(非表示)' : ''} / {c.durationMinutes}分</option>)}
               </select>
             </div>
           ) : null}
           <div className={row}>
             <span className={label}>日付</span>
-            <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+            <input type="date" className={`${inputCls} w-48`} value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className={row}>
-            <span className={label}>時間</span>
+            <span className={label}>時間{req}</span>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <input type="time" step={calendar.screen.unitMinutes * 60} className={`${inputCls} w-36`} value={start} onChange={(e) => setStart(e.target.value)} />
-                <span>〜</span>
-                <input type="time" className={`${inputCls} w-36`} value={effectiveEnd} disabled={useCourseTime} onChange={(e) => setEnd(e.target.value)} />
+                <input type="time" step={calendar.screen.unitMinutes * 60} className={`${inputCls} w-32`} value={start} onChange={(e) => setStart(e.target.value)} />
+                <span>~</span>
+                <input type="time" className={`${inputCls} w-32 disabled:bg-gray-100 disabled:font-semibold`} value={effectiveEnd} disabled={useCourseTime} onChange={(e) => setEnd(e.target.value)} />
               </div>
               {!isBlock ? (
-                <label className="flex items-center gap-2 text-xs text-gray-600">
-                  <input type="checkbox" checked={useCourseTime} onChange={(e) => { setUseCourseTime(e.target.checked); if (!e.target.checked) setEnd(computedEnd) }} /> 選択したコースの所要時間を終了時間に反映する
+                <label className="flex items-center gap-2 text-xs text-gray-700">
+                  <input type="checkbox" checked={useCourseTime} onChange={(e) => { setUseCourseTime(e.target.checked); if (!e.target.checked) setEnd(computedEnd) }} /> 終了時間をコース所要時間から設定
                 </label>
               ) : null}
             </div>
           </div>
           <div className={row}>
-            <span className={label}>{calendar.slotSettings.title}</span>
+            <span className={label}>{calendar.slotSettings.title}{calendar.slotSettings.required ? req : null}</span>
             <div className="space-y-1">
               <select className={inputCls} value={slotId} onChange={(e) => setSlotId(e.target.value)}>
-                <option value="">指定なし</option>
+                <option value="">-- 未指定 --</option>
                 {slots.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.visible ? '(非表示)' : ''}</option>)}
               </select>
               {!isBlock && calendar.slotSettings.priceEnabled && slotId ? (
@@ -204,12 +207,13 @@ export function BookingEditor({
           {!isBlock ? (
             <>
               <div className={row}>
-                <span className={label}>友だち</span>
+                <span className={label}>友だちを選択</span>
                 <FriendPicker accountId={accountId} value={friend} onChange={setFriend} />
               </div>
+              <h3 className="mb-1 mt-6 text-sm font-semibold text-gray-900">予約情報取得項目</h3>
               {calendar.screen.fields.map((f) => (
                 <div key={f.id} className={row}>
-                  <span className={label}>{f.label}</span>
+                  <span className={label}>{f.label}{f.required ? req : null}</span>
                   {f.type === 'textarea' ? (
                     <textarea className={inputCls} rows={3} value={answers[f.id] ?? ''} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} />
                   ) : f.type === 'select' ? (
@@ -222,30 +226,33 @@ export function BookingEditor({
                   )}
                 </div>
               ))}
-              {friend ? (
-                <div className={row}>
-                  <span />
-                  <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} /> 登録後、項目内容を友だち情報または本名に上書きする</label>
-                </div>
-              ) : null}
               <div className={row}>
                 <span className={label}>予約メモ</span>
                 <textarea className={inputCls} rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} />
               </div>
+              <h3 className="mb-1 mt-6 text-sm font-semibold text-gray-900">登録時オプション</h3>
+              {friend ? (
+                <div className={row}>
+                  <span />
+                  <label className="flex items-center gap-2 text-xs text-gray-700"><input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} /> 登録後、項目内容を友だち情報または本名に上書きする</label>
+                </div>
+              ) : null}
               <div className={row}>
-                <span />
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={runActions} onChange={(e) => setRunActions(e.target.checked)} /> 予約アクションを実行する</label>
+                <span className={label}>アクションの実行</span>
+                <div className="flex gap-5 pt-1 text-sm">
+                  <label className="flex items-center gap-1.5"><input type="radio" checked={runActions} onChange={() => setRunActions(true)} /> 実行する</label>
+                  <label className="flex items-center gap-1.5"><input type="radio" checked={!runActions} onChange={() => setRunActions(false)} /> 実行しない</label>
+                </div>
               </div>
             </>
           ) : null}
           {error ? <p className="py-2 text-sm text-red-600">{error}</p> : null}
+          <div className="py-6 text-center">
+            <button type="button" className="rounded-full bg-[#e8355d] px-10 py-2.5 text-sm font-medium text-white shadow hover:bg-[#d02850] disabled:opacity-60" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : editing ? '予約を更新' : isBlock ? 'ブロック枠を登録する' : '予約を登録する'}</button>
+          </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
-          <button type="button" className={grayBtn} onClick={onClose}>キャンセル</button>
-          <button type="button" className={pinkBtn} disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : editing ? '予約を更新' : isBlock ? 'ブロック枠を登録する' : '予約を登録する'}</button>
-        </div>
-      </Dialog>
-    </Dialog.Root>
+      </div>
+    </div>
   )
 }
 

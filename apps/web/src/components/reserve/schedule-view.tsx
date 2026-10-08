@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CaretLeftIcon, CaretRightIcon, FunnelIcon, ListIcon, CalendarBlankIcon, RowsIcon } from '@phosphor-icons/react'
+import { CaretLeftIcon, CaretRightIcon, FunnelIcon, ListIcon, CalendarBlankIcon, RowsIcon, SkipBackIcon, RewindIcon, FastForwardIcon, SkipForwardIcon } from '@phosphor-icons/react'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { apiUrl } from '@/lib/api'
 import { errorText } from '@/lib/error-text'
@@ -183,7 +183,7 @@ function DayView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, loading])
 
-  const rows = [...slots.filter((s) => !hiddenSlots.includes(s.id)).map((s) => ({ id: s.id as string | null, name: s.name })), ...(hiddenSlots.includes('none') ? [] : [{ id: null as string | null, name: '未指定' }])]
+  const rows = [...slots.filter((s) => !hiddenSlots.includes(s.id)).map((s) => ({ id: s.id as string | null, name: s.name })), ...(hiddenSlots.includes('none') || (calendar.slotSettings.required && !bookings.some((b) => (b.slotId ?? null) === null)) ? [] : [{ id: null as string | null, name: '未指定' }])]
   const courseColor = new Map(courses.map((c) => [c.id, c.color]))
   const width = 24 * pxPerHour
   const unit = calendar.screen.unitMinutes
@@ -261,10 +261,20 @@ function DayView({
         </div>
       </div>
       {loading ? <div className="mt-2 text-xs text-gray-500"><Loader size="sm" /></div> : null}
-      <div className="mx-auto mt-4 flex max-w-xl items-center gap-3 text-xs text-gray-600">
-        <span>詳細</span>
-        <input type="range" min={40} max={260} value={pxPerHour} onChange={(e) => setPxPerHour(Number(e.target.value))} className="flex-1" aria-label="表示範囲" />
-        <span>広範囲</span>
+      <div className="mt-4 flex items-center gap-3 text-xs text-gray-600">
+        <div className="flex gap-3 text-gray-500">
+          <button type="button" aria-label="最初へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollTo({ left: 0, behavior: 'smooth' })}><SkipBackIcon size={22} weight="fill" /></button>
+          <button type="button" aria-label="前へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollBy({ left: -(scroller.current.clientWidth * 0.8), behavior: 'smooth' })}><RewindIcon size={22} weight="fill" /></button>
+        </div>
+        <div className="mx-auto flex w-full max-w-xl items-center gap-3">
+          <span>詳細</span>
+          <input type="range" min={40} max={260} value={pxPerHour} onChange={(e) => setPxPerHour(Number(e.target.value))} className="flex-1" aria-label="表示範囲" />
+          <span>広範囲</span>
+        </div>
+        <div className="flex gap-3 text-gray-500">
+          <button type="button" aria-label="次へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollBy({ left: scroller.current.clientWidth * 0.8, behavior: 'smooth' })}><FastForwardIcon size={22} weight="fill" /></button>
+          <button type="button" aria-label="最後へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollTo({ left: scroller.current.scrollWidth, behavior: 'smooth' })}><SkipForwardIcon size={22} weight="fill" /></button>
+        </div>
       </div>
       <p className="mt-2 text-center text-xs text-gray-500">空いている時間をクリックすると、その時間の新規予約を登録できます。</p>
     </div>

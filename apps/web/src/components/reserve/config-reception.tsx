@@ -74,59 +74,62 @@ export default function ReceptionConfig({ bundle, reload }: { bundle: CalendarBu
               <button type="button" aria-label="この特定日を削除" className="pt-1.5 text-gray-400 hover:text-red-600" onClick={() => patch({ specialDays: r.specialDays.filter((_, j) => j !== i) })}><TrashIcon size={15} /></button>
             </div>
           ))}
-          <button type="button" className="inline-flex items-center gap-1 text-sm text-[#e8355d]" onClick={() => patch({ specialDays: [...r.specialDays, { date: '', closed: true, allDay: false, ranges: [{ from: '10:00', to: '19:00' }] }] })}>
+          <button type="button" className="mx-auto flex items-center gap-1 text-sm text-[#e8355d]" onClick={() => patch({ specialDays: [...r.specialDays, { date: '', closed: true, allDay: false, ranges: [{ from: '10:00', to: '19:00' }] }] })}>
             <PlusIcon size={14} weight="bold" /> 特定日の設定を追加
           </button>
         </div>
       </Block>
 
       <Block title="受付期間" id="period">
-        <Row label="予約の受付期間">
-          <div className="space-y-3">
-            <div>
-              <div className="mb-1 text-xs font-medium text-gray-600">受付開始</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select className={`${smallInput} w-60`} value={start.mode} onChange={(e) => patch({ start: e.target.value === 'relative' ? { mode: 'relative', amount: 30, unit: 'days' } : e.target.value === 'at' ? { mode: 'at', at: '' } : { mode: 'always' } })}>
-                  <option value="relative">予約日時を起点に一定期間前</option>
-                  <option value="at">特定の日時を指定</option>
-                  <option value="always">常に予約を受けつける</option>
-                </select>
-                {start.mode === 'relative' ? (
-                  <>
-                    <input type="number" min={0} className={`${smallInput} w-20`} value={start.amount} onChange={(e) => patch({ start: { ...start, amount: Number(e.target.value) } })} />
-                    <select className={smallInput} value={start.unit} onChange={(e) => patch({ start: { ...start, unit: e.target.value as RelativeUnit } })}>{(Object.keys(UNIT_LABEL) as RelativeUnit[]).map((u) => <option key={u} value={u}>{UNIT_LABEL[u]}</option>)}</select>
-                    <span className="text-xs text-gray-500">から受付</span>
-                  </>
-                ) : null}
-                {start.mode === 'at' ? <input type="datetime-local" className={smallInput} value={start.at} onChange={(e) => patch({ start: { mode: 'at', at: e.target.value } })} /> : null}
+        <div className="grid grid-cols-1 gap-2 py-3 sm:grid-cols-[210px_1fr] sm:gap-4">
+          <div className="pt-1.5 text-sm font-semibold text-gray-800">予約の受付期間</div>
+          <div className="min-w-0 space-y-4 text-sm">
+            <div className="grid grid-cols-[64px_1fr] gap-2">
+              <div className="pt-0.5 text-xs font-semibold text-gray-700">受付開始</div>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Radio checked={start.mode === 'relative'} onChange={() => patch({ start: { mode: 'relative', amount: 30, unit: 'days' } })} label="予約日時を起点に一定期間前" />
+                  {start.mode === 'relative' ? (
+                    <>
+                      <input type="number" min={0} className={`${smallInput} w-20`} value={start.amount} onChange={(e) => patch({ start: { ...start, amount: Number(e.target.value) } })} />
+                      <select className={smallInput} value={start.unit} onChange={(e) => patch({ start: { ...start, unit: e.target.value as RelativeUnit } })}>{(Object.keys(UNIT_LABEL) as RelativeUnit[]).map((u) => <option key={u} value={u}>{UNIT_LABEL[u]}</option>)}</select>
+                    </>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Radio checked={start.mode === 'at'} onChange={() => patch({ start: { mode: 'at', at: '' } })} label="特定の日時を指定" />
+                  {start.mode === 'at' ? <input type="datetime-local" className={smallInput} value={start.at} onChange={(e) => patch({ start: { mode: 'at', at: e.target.value } })} /> : null}
+                </div>
+                <div><Radio checked={start.mode === 'always'} onChange={() => patch({ start: { mode: 'always' } })} label="常に予約を受けつける" /></div>
               </div>
             </div>
-            <div>
-              <div className="mb-1 text-xs font-medium text-gray-600">受付締切</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select className={`${smallInput} w-60`} value={deadline.mode} onChange={(e) => patch({ deadline: e.target.value === 'relative' ? { mode: 'relative', amount: 1, unit: 'days', time: '18:00' } : e.target.value === 'at' ? { mode: 'at', at: '' } : { mode: 'until_start' } })}>
-                  <option value="relative">予約日時を起点に一定期間前</option>
-                  <option value="at">特定の日時を指定</option>
-                  <option value="until_start">予約開始まで受けつける</option>
-                </select>
-                {deadline.mode === 'relative' ? (
-                  <>
-                    <input type="number" min={0} className={`${smallInput} w-20`} value={deadline.amount} onChange={(e) => patch({ deadline: { ...deadline, amount: Number(e.target.value) } })} />
-                    <select className={smallInput} value={deadline.unit} onChange={(e) => patch({ deadline: { ...deadline, unit: e.target.value as RelativeUnit, time: e.target.value === 'days' ? deadline.time ?? '18:00' : null } })}>{(Object.keys(UNIT_LABEL) as RelativeUnit[]).map((u) => <option key={u} value={u}>{UNIT_LABEL[u]}</option>)}</select>
-                    {deadline.unit === 'days' ? (
-                      <>
-                        <span className="text-xs text-gray-500">の</span>
-                        <input type="time" className={`${smallInput} w-28`} value={deadline.time ?? ''} onChange={(e) => patch({ deadline: { ...deadline, time: e.target.value || null } })} />
-                        <span className="text-xs text-gray-500">まで受付</span>
-                      </>
-                    ) : <span className="text-xs text-gray-500">まで受付</span>}
-                  </>
-                ) : null}
-                {deadline.mode === 'at' ? <input type="datetime-local" className={smallInput} value={deadline.at} onChange={(e) => patch({ deadline: { mode: 'at', at: e.target.value } })} /> : null}
+            <div className="grid grid-cols-[64px_1fr] gap-2">
+              <div className="pt-0.5 text-xs font-semibold text-gray-700">受付締切</div>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Radio checked={deadline.mode === 'relative'} onChange={() => patch({ deadline: { mode: 'relative', amount: 2, unit: 'days', time: '23:59' } })} label="予約日時を起点に一定期間前" />
+                  {deadline.mode === 'relative' ? (
+                    <>
+                      <input type="number" min={0} className={`${smallInput} w-20`} value={deadline.amount} onChange={(e) => patch({ deadline: { ...deadline, amount: Number(e.target.value) } })} />
+                      <select className={smallInput} value={deadline.unit} onChange={(e) => patch({ deadline: { ...deadline, unit: e.target.value as RelativeUnit, time: e.target.value === 'days' ? deadline.time ?? '23:59' : null } })}>{(Object.keys(UNIT_LABEL) as RelativeUnit[]).map((u) => <option key={u} value={u}>{UNIT_LABEL[u]}</option>)}</select>
+                      {deadline.unit === 'days' ? (
+                        <>
+                          <span className="text-xs text-gray-500">の</span>
+                          <input type="time" className={`${smallInput} w-28`} value={deadline.time ?? ''} onChange={(e) => patch({ deadline: { ...deadline, time: e.target.value || null } })} />
+                        </>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Radio checked={deadline.mode === 'at'} onChange={() => patch({ deadline: { mode: 'at', at: '' } })} label="特定の日時を指定" />
+                  {deadline.mode === 'at' ? <input type="datetime-local" className={smallInput} value={deadline.at} onChange={(e) => patch({ deadline: { mode: 'at', at: e.target.value } })} /> : null}
+                </div>
+                <div><Radio checked={deadline.mode === 'until_start'} onChange={() => patch({ deadline: { mode: 'until_start' } })} label="予約開始まで受けつける" /></div>
               </div>
             </div>
           </div>
-        </Row>
+        </div>
         <Row label="予約変更の受付期限">
           <select className={`${smallInput} w-60`} value={r.changeDeadline} onChange={(e) => patch({ changeDeadline: e.target.value as ReceptionSettings['changeDeadline'] })}>{DEADLINE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
         </Row>

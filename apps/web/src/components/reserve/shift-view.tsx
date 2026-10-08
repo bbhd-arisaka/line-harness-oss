@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CaretLeftIcon, CaretRightIcon, FastForwardIcon, RewindIcon, SkipBackIcon, SkipForwardIcon } from '@phosphor-icons/react'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { errorText } from '@/lib/error-text'
@@ -22,6 +22,8 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
   const [shifts, setShifts] = useState<ReserveShift[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [pxPerHour, setPxPerHour] = useState(120)
+  const scroller = useRef<HTMLDivElement>(null)
   const [dialog, setDialog] = useState<{ shift?: ReserveShift; preset?: { slotId?: string; date?: string; start?: string } } | null>(null)
 
   const range = useMemo(() => {
@@ -55,6 +57,11 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (view === 'day' && scroller.current) scroller.current.scrollLeft = Math.max(0, 8 * pxPerHour - 20)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, date])
 
   const visibleSlots = slots.filter((s) => !hidden.includes(s.id))
   const visibleShifts = shifts.filter((s) => !hidden.includes(s.slotId))
@@ -97,34 +104,59 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
       {slots.length === 0 ? <p className="text-sm text-gray-500">先に、予約設定で{calendar.slotSettings.title}を作ってください。</p> : null}
 
       {view === 'day' ? (
-        <div className="overflow-x-auto rounded border border-gray-300 bg-white">
-          <div className="min-w-[760px]">
-            <div className="grid grid-cols-[140px_1fr] border-b border-gray-300 text-xs text-gray-600">
-              <div className="p-2" />
-              <div className="relative h-8">
-                {Array.from({ length: 25 }, (_, h) => <span key={h} className="absolute top-2" style={{ left: `${(h / 24) * 100}%` }}>{h % 3 === 0 ? `${h}:00` : ''}</span>)}
-              </div>
+        <div>
+          <div className="flex overflow-hidden rounded border border-gray-300 bg-white">
+            <div className="w-36 shrink-0 border-r border-gray-300">
+              <div className="h-8 border-b border-gray-300" />
+              {visibleSlots.map((s) => (
+                <div key={s.id} className="flex h-11 items-center gap-2 border-b border-gray-200 px-2 text-sm font-medium text-gray-800">
+                  <span className="h-6 w-6 shrink-0 rounded-full bg-gray-700 text-center text-[11px] leading-6 text-white">{s.name.charAt(0)}</span>
+                  <span className="truncate">{s.name}</span>
+                </div>
+              ))}
             </div>
-            {visibleSlots.map((s) => (
-              <div key={s.id} className="grid grid-cols-[140px_1fr] border-b border-gray-200">
-                <div className="truncate p-2 text-sm font-medium">{s.name}</div>
-                <div
-                  className="relative h-11 cursor-pointer"
-                  style={{ backgroundImage: 'repeating-linear-gradient(to right, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent 4.1666%)' }}
-                  onClick={(e) => {
-                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
-                    const h = Math.floor(((e.clientX - rect.left) / rect.width) * 24)
-                    setDialog({ preset: { slotId: s.id, date, start: `${String(h).padStart(2, '0')}:00` } })
-                  }}
-                >
-                  {visibleShifts.filter((x) => x.slotId === s.id).map((x) => (
-                    <button key={x.id} type="button" onClick={(e) => { e.stopPropagation(); setDialog({ shift: x }) }} className="absolute inset-y-1 rounded bg-green-500 px-1 text-left text-[11px] text-white" style={{ left: `${(hhmmToMin(x.startTime) / 1440) * 100}%`, width: `${((hhmmToMin(x.endTime) - hhmmToMin(x.startTime)) / 1440) * 100}%` }}>
-                      {x.startTime}〜{x.endTime}{x.seriesId ? ' ↻' : ''}
-                    </button>
+            <div ref={scroller} className="min-w-0 flex-1 overflow-x-auto">
+              <div style={{ width: 24 * pxPerHour }} className="relative">
+                <div className="flex h-8 border-b border-gray-300 text-xs text-gray-600">
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <div key={h} className="border-l border-gray-200 pl-1 pt-1.5" style={{ width: pxPerHour }}>{`${String(h).padStart(2, '0')}:00`}</div>
                   ))}
                 </div>
+                {visibleSlots.map((s) => (
+                  <div
+                    key={s.id}
+                    className="relative h-11 cursor-pointer border-b border-gray-200"
+                    style={{ backgroundImage: `repeating-linear-gradient(to right, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent ${pxPerHour}px)` }}
+                    onClick={(e) => {
+                      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
+                      const h = Math.min(23, Math.floor((e.clientX - rect.left) / pxPerHour))
+                      setDialog({ preset: { slotId: s.id, date, start: `${String(h).padStart(2, '0')}:00` } })
+                    }}
+                  >
+                    {visibleShifts.filter((x) => x.slotId === s.id).map((x) => (
+                      <button key={x.id} type="button" onClick={(e) => { e.stopPropagation(); setDialog({ shift: x }) }} className="absolute inset-y-1 overflow-hidden rounded bg-green-500 px-1 text-left text-[11px] text-white" style={{ left: (hhmmToMin(x.startTime) / 60) * pxPerHour, width: ((hhmmToMin(x.endTime) - hhmmToMin(x.startTime)) / 60) * pxPerHour }}>
+                        {x.startTime}〜{x.endTime}{x.seriesId ? ' ↻' : ''}
+                      </button>
+                    ))}
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-3 text-xs text-gray-600">
+            <div className="flex gap-3 text-gray-500">
+              <button type="button" aria-label="最初へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollTo({ left: 0, behavior: 'smooth' })}><SkipBackIcon size={22} weight="fill" /></button>
+              <button type="button" aria-label="前へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollBy({ left: -(scroller.current.clientWidth * 0.8), behavior: 'smooth' })}><RewindIcon size={22} weight="fill" /></button>
+            </div>
+            <div className="mx-auto flex w-full max-w-xl items-center gap-3">
+              <span>詳細</span>
+              <input type="range" min={40} max={260} value={pxPerHour} onChange={(e) => setPxPerHour(Number(e.target.value))} className="flex-1" aria-label="表示範囲" />
+              <span>広範囲</span>
+            </div>
+            <div className="flex gap-3 text-gray-500">
+              <button type="button" aria-label="次へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollBy({ left: scroller.current.clientWidth * 0.8, behavior: 'smooth' })}><FastForwardIcon size={22} weight="fill" /></button>
+              <button type="button" aria-label="最後へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollTo({ left: scroller.current.scrollWidth, behavior: 'smooth' })}><SkipForwardIcon size={22} weight="fill" /></button>
+            </div>
           </div>
         </div>
       ) : null}
