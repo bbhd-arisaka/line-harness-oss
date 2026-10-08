@@ -15,6 +15,7 @@ import { Switch } from '@cloudflare/kumo/components/switch'
 import { Table } from '@cloudflare/kumo/components/table'
 import Header from '@/components/layout/header'
 import { useAccount } from '@/contexts/account-context'
+import { errorText } from '@/lib/error-text'
 import { ApiError, api } from '@/lib/api'
 import type { NotificationDestinationList, NotificationSettingItem, NotificationTimingCategory } from '@/lib/api'
 import { describeSchedule, summarizeTimings } from './notification-format'
@@ -74,7 +75,7 @@ export default function NotificationSettingsPage() {
       if (!res.success) throw new Error(res.error)
       setItems((prev) => prev.map((x) => (x.id === item.id ? res.data : x)))
     } catch (err) {
-      setError(err instanceof ApiError && err.message ? err.message : '切り替えられませんでした')
+      setError(errorText(err, '切り替えられませんでした'))
     } finally {
       setBusyId(null)
     }
@@ -250,7 +251,7 @@ function AddDestinationDialog({ open, onClose, adminUrl, onAdded }: { open: bool
       setName('')
       onAdded()
     } catch (err) {
-      setMessage({ ok: false, text: err instanceof ApiError && err.message ? err.message : '登録できませんでした' })
+      setMessage({ ok: false, text: errorText(err, '登録できませんでした') })
     } finally {
       setBusy(false)
     }

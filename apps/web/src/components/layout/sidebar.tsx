@@ -40,7 +40,7 @@ const menuSections: MenuSection[] = [
       { href: '/auto-replies', label: '自動応答' },
       { href: '/templates', label: 'テンプレート' },
       { href: '/events', label: 'イベント予約' },
-      { href: '/booking/bookings', label: 'カレンダー予約' },
+      { href: '/reserve', label: 'カレンダー予約' },
       { href: '/form-submissions', label: '回答フォーム' },
       { href: '/reminders', label: 'リマインダ配信' },
       { href: '/friend-add-settings', label: '友だち追加時設定' },

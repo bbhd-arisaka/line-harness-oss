@@ -23,6 +23,8 @@ const TEXT_LIMIT = 4500
 export interface ModalLookups extends ActionLookups {
   forms: Array<{ id: string; name: string }>
   scenarios: Array<{ id: string; name: string }>
+  /** カレンダー予約のアクションのとき: テキスト送信に、予約情報(予約者名・予約日時など)を差し込める。change=変更前の情報も選べる */
+  reserve?: { change: boolean }
 }
 
 /** Lステップの「アクション設定」。上から順に実行する。決定すると、onSave に並びを返す。 */
@@ -444,6 +446,28 @@ function MessageEditor({ value, onChange, lookups }: { value: string; onChange: 
         <button type="button" className={mini} onClick={() => step(-1)} aria-label="元に戻す">↶</button>
         <button type="button" className={mini} onClick={() => step(1)} aria-label="やり直す">↷</button>
         <button type="button" className={mini} onClick={() => insert('{{name}}')}>名前</button>
+        {lookups.reserve ? (
+          <InsertMenu
+            label="予約"
+            items={[
+              { label: '予約者名', text: '{{reserve.name}}' },
+              { label: '料金', text: '{{reserve.price}}' },
+              { label: '予約日時', text: '{{reserve.datetime}}' },
+              { label: 'コース名', text: '{{reserve.course}}' },
+              { label: '予約枠', text: '{{reserve.slot}}' },
+              { label: '予約確認URL', text: '{{reserve.url}}' },
+              ...(lookups.reserve.change
+                ? [
+                    { label: '変更前の予約日時', text: '{{reserve.before.datetime}}' },
+                    { label: '変更前のコース名', text: '{{reserve.before.course}}' },
+                    { label: '変更前の予約枠', text: '{{reserve.before.slot}}' },
+                    { label: '変更前の料金', text: '{{reserve.before.price}}' },
+                  ]
+                : []),
+            ]}
+            onPick={insert}
+          />
+        ) : null}
         <InsertMenu label="友だち情報" items={lookups.fields.map((f) => ({ label: f.label, text: `{{metadata.${f.fieldKey}}}` }))} onPick={insert} />
         <InsertMenu label="共通情報" items={[]} onPick={insert} disabledNote="準備中" />
         <InsertMenu label="回答フォーム" items={lookups.forms.map((f) => ({ label: f.name, text: `{{form_url:${f.id}}}` }))} onPick={insert} />

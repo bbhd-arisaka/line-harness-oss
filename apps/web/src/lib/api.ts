@@ -119,7 +119,7 @@ export type BroadcastInsight = {
 // undefined) and again in the browser; a module-scope `const` would freeze
 // whatever `getApiBase()` returned during that first (Node) pass — the
 // unresolved placeholder for a shared build — for the lifetime of the page.
-function apiUrl(): string {
+export function apiUrl(): string {
   const url = getApiBase()
   if (!url) {
     throw new Error(

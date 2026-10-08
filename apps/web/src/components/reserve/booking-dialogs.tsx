@@ -1,0 +1,480 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { Dialog } from '@cloudflare/kumo/components/dialog'
+import { Loader } from '@cloudflare/kumo/components/loader'
+import { api } from '@/lib/api'
+import { errorText } from '@/lib/error-text'
+import { STATUS_LABEL, formatDateJa, hhmmToMin, minToHhmm, reserveApi } from '@/lib/reserve'
+import type { BookingStatus, CalendarBundle, ReserveBooking } from '@/lib/reserve'
+
+const pinkBtn = 'rounded bg-[#e8355d] px-4 py-2 text-sm font-medium text-white hover:bg-[#d02850] disabled:opacity-60'
+const grayBtn = 'rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60'
+const inputCls = 'w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
+
+export function displayName(b: Pick<ReserveBooking, 'name' | 'guestName' | 'friend'>): string {
+  return b.name || b.guestName || b.friend?.realName || b.friend?.systemDisplayName || b.friend?.displayName || '(名前なし)'
+}
+
+/** 友だちを探して選ぶ */
+function FriendPicker({ accountId, value, onChange }: { accountId: string; value: { id: string; name: string } | null; onChange: (v: { id: string; name: string } | null) => void }) {
+  const [q, setQ] = useState('')
+  const [items, setItems] = useState<Array<{ id: string; name: string; picture: string | null }>>([])
+  const [open, setOpen] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await api.friends.list({ accountId, search: q.trim() || undefined, limit: 10, includeTags: false })
+        if (res.success) {
+          setItems(res.data.items.filter((f) => f.isFollowing !== false).map((f) => ({ id: f.id, name: f.realName || f.systemDisplayName || f.displayName || '(名前なし)', picture: f.pictureUrl ?? null })))
+        }
+      } catch {
+        setItems([])
+      }
+    }, 250)
+    return () => {
+      if (timer.current) clearTimeout(timer.current)
+    }
+  }, [q, open, accountId])
+
+  return (
+    <div className="relative">
+      {value ? (
+        <div className="flex items-center justify-between rounded border border-gray-300 bg-gray-50 px-2 py-1.5 text-sm">
+          <span>{value.name}</span>
+          <button type="button" className="text-xs text-red-600" onClick={() => onChange(null)}>選び直す</button>
+        </div>
+      ) : (
+        <>
+          <input className={inputCls} placeholder="友だちを検索して選ぶ" value={q} onFocus={() => setOpen(true)} onChange={(e) => { setQ(e.target.value); setOpen(true) }} />
+          {open ? (
+            <ul className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded border border-gray-300 bg-white py-1 text-sm shadow">
+              {items.length === 0 ? <li className="px-3 py-2 text-gray-400">該当する友だちがいません</li> : null}
+              {items.map((f) => (
+                <li key={f.id}>
+                  <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-100" onClick={() => { onChange({ id: f.id, name: f.name }); setOpen(false) }}>
+                    {f.picture ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={f.picture} alt="" className="h-6 w-6 rounded-full" /> : <span className="h-6 w-6 rounded-full bg-gray-200" />}
+                    {f.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      )}
+    </div>
+  )
+}
+
+export interface EditorPreset {
+  date?: string
+  time?: string
+  slotId?: string | null
+}
+
+/** 管理者の新規予約・予約の編集(ブロック枠も) */
+export function BookingEditor({
+  bundle,
+  accountId,
+  booking,
+  preset,
+  onClose,
+  onSaved,
+}: {
+  bundle: CalendarBundle
+  accountId: string
+  booking?: ReserveBooking | null
+  preset?: EditorPreset
+  onClose: () => void
+  onSaved: (b: ReserveBooking) => void
+}) {
+  const { calendar, slots, courses } = bundle
+  const editing = !!booking
+  const [isBlock, setIsBlock] = useState(booking?.isBlock ?? false)
+  const [courseId, setCourseId] = useState(booking?.courseId ?? '')
+  const [date, setDate] = useState(booking?.startsAt.slice(0, 10) ?? preset?.date ?? '')
+  const [start, setStart] = useState(booking?.startsAt.slice(11, 16) ?? preset?.time ?? '10:00')
+  const [end, setEnd] = useState(booking?.endsAt.slice(11, 16) ?? '')
+  const [useCourseTime, setUseCourseTime] = useState(!booking)
+  const [slotId, setSlotId] = useState(booking ? (booking.slotId ?? '') : (preset?.slotId ?? ''))
+  const [slotPrice, setSlotPrice] = useState(booking?.slotPriceApplied ?? true)
+  const [friend, setFriend] = useState<{ id: string; name: string } | null>(booking?.friendId ? { id: booking.friendId, name: displayName(booking) } : null)
+  const [answers, setAnswers] = useState<Record<string, string>>(booking?.answers ?? {})
+  const [overwrite, setOverwrite] = useState(false)
+  const [runActions, setRunActions] = useState(true)
+  const [memo, setMemo] = useState(booking?.memo ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const course = courses.find((c) => c.id === courseId) ?? null
+  const minutes = course ? course.durationMinutes : calendar.courseSettings.unspecifiedMinutes
+  const computedEnd = useMemo(() => (start ? minToHhmm(Math.min(1439, hhmmToMin(start) + minutes)) : ''), [start, minutes])
+  const effectiveEnd = useCourseTime ? computedEnd : end || computedEnd
+
+  const save = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      if (!date || !start) throw new Error('日付と開始時間を入力してください')
+      const body: Record<string, unknown> = {
+        friendId: isBlock ? null : friend?.id ?? null,
+        slotId: slotId || null,
+        courseId: isBlock ? null : courseId || null,
+        startsAt: `${date}T${start}`,
+        endsAt: `${date}T${effectiveEnd}`,
+        isBlock,
+        answers: isBlock ? {} : answers,
+        runActions,
+        slotPriceApplied: slotPrice,
+        overwriteFriend: overwrite,
+        memo,
+      }
+      const res = editing ? await reserveApi.updateBooking(booking!.id, { ...body, endsAt: `${date}T${effectiveEnd}` }) : await reserveApi.createBooking(calendar.id, body)
+      if (!res.success) throw new Error(res.error)
+      onSaved(res.data)
+    } catch (err) {
+      setError(errorText(err, '登録できませんでした'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const row = 'grid grid-cols-[130px_1fr] items-start gap-3 py-1.5'
+  const label = 'pt-1.5 text-right text-sm font-semibold text-gray-800'
+
+  return (
+    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose() }}>
+      <Dialog size="lg" className="p-0 !w-[min(760px,95vw)] !max-w-none">
+        <div className="border-b border-gray-200 px-5 py-3 text-base font-semibold">{editing ? '予約の編集' : '新規予約'}</div>
+        <div className="max-h-[70vh] overflow-y-auto px-5 py-3">
+          <div className={row}>
+            <span />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={isBlock} onChange={(e) => setIsBlock(e.target.checked)} /> この時間の予約をブロックする
+            </label>
+          </div>
+          {!isBlock ? (
+            <div className={row}>
+              <span className={label}>{calendar.courseSettings.title}</span>
+              <select className={inputCls} value={courseId} onChange={(e) => setCourseId(e.target.value)}>
+                <option value="">未指定</option>
+                {courses.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.visible ? '(非表示)' : ''} / {c.durationMinutes}分</option>)}
+              </select>
+            </div>
+          ) : null}
+          <div className={row}>
+            <span className={label}>日付</span>
+            <input type="date" className={inputCls} value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className={row}>
+            <span className={label}>時間</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input type="time" step={calendar.screen.unitMinutes * 60} className={`${inputCls} w-36`} value={start} onChange={(e) => setStart(e.target.value)} />
+                <span>〜</span>
+                <input type="time" className={`${inputCls} w-36`} value={effectiveEnd} disabled={useCourseTime} onChange={(e) => setEnd(e.target.value)} />
+              </div>
+              {!isBlock ? (
+                <label className="flex items-center gap-2 text-xs text-gray-600">
+                  <input type="checkbox" checked={useCourseTime} onChange={(e) => { setUseCourseTime(e.target.checked); if (!e.target.checked) setEnd(computedEnd) }} /> 選択したコースの所要時間を終了時間に反映する
+                </label>
+              ) : null}
+            </div>
+          </div>
+          <div className={row}>
+            <span className={label}>{calendar.slotSettings.title}</span>
+            <div className="space-y-1">
+              <select className={inputCls} value={slotId} onChange={(e) => setSlotId(e.target.value)}>
+                <option value="">指定なし</option>
+                {slots.map((s) => <option key={s.id} value={s.id}>{s.name}{!s.visible ? '(非表示)' : ''}</option>)}
+              </select>
+              {!isBlock && calendar.slotSettings.priceEnabled && slotId ? (
+                <div className="flex gap-4 text-xs">
+                  <label className="flex items-center gap-1"><input type="radio" checked={slotPrice} onChange={() => setSlotPrice(true)} /> 予約枠の料金を加算する</label>
+                  <label className="flex items-center gap-1"><input type="radio" checked={!slotPrice} onChange={() => setSlotPrice(false)} /> 加算しない</label>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          {!isBlock ? (
+            <>
+              <div className={row}>
+                <span className={label}>友だち</span>
+                <FriendPicker accountId={accountId} value={friend} onChange={setFriend} />
+              </div>
+              {calendar.screen.fields.map((f) => (
+                <div key={f.id} className={row}>
+                  <span className={label}>{f.label}</span>
+                  {f.type === 'textarea' ? (
+                    <textarea className={inputCls} rows={3} value={answers[f.id] ?? ''} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} />
+                  ) : f.type === 'select' ? (
+                    <select className={inputCls} value={answers[f.id] ?? ''} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })}>
+                      <option value="">選択してください</option>
+                      {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input className={inputCls} value={answers[f.id] ?? ''} onChange={(e) => setAnswers({ ...answers, [f.id]: e.target.value })} />
+                  )}
+                </div>
+              ))}
+              {friend ? (
+                <div className={row}>
+                  <span />
+                  <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} /> 登録後、項目内容を友だち情報または本名に上書きする</label>
+                </div>
+              ) : null}
+              <div className={row}>
+                <span className={label}>予約メモ</span>
+                <textarea className={inputCls} rows={2} value={memo} onChange={(e) => setMemo(e.target.value)} />
+              </div>
+              <div className={row}>
+                <span />
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={runActions} onChange={(e) => setRunActions(e.target.checked)} /> 予約アクションを実行する</label>
+              </div>
+            </>
+          ) : null}
+          {error ? <p className="py-2 text-sm text-red-600">{error}</p> : null}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
+          <button type="button" className={grayBtn} onClick={onClose}>キャンセル</button>
+          <button type="button" className={pinkBtn} disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : editing ? '予約を更新' : isBlock ? 'ブロック枠を登録する' : '予約を登録する'}</button>
+        </div>
+      </Dialog>
+    </Dialog.Root>
+  )
+}
+
+const KIND_LABEL: Record<string, string> = { new: '新規予約', change: '変更', cancel: 'キャンセル' }
+
+/** 予約の詳細(ステータス・来店済み・承認・履歴・メモ) */
+export function BookingDetail({
+  bundle,
+  bookingId,
+  onClose,
+  onChanged,
+  onEdit,
+}: {
+  bundle: CalendarBundle
+  bookingId: string
+  onClose: () => void
+  onChanged: () => void
+  onEdit: (b: ReserveBooking) => void
+}) {
+  const { calendar } = bundle
+  const [data, setData] = useState<Awaited<ReturnType<typeof reserveApi.booking>> | null>(null)
+  const [error, setError] = useState('')
+  const [memo, setMemo] = useState('')
+  const [runActions, setRunActions] = useState(calendar.actions.runActionsByDefault)
+  const [makeDefault, setMakeDefault] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [confirm, setConfirm] = useState<null | 'cancel' | 'delete' | 'visited'>(null)
+  const [cancelActions, setCancelActions] = useState(true)
+  const [runFollow, setRunFollow] = useState(true)
+
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      const res = await reserveApi.booking(bookingId)
+      setData(res)
+      if (res.success) setMemo(res.data.booking.memo)
+      else setError(res.error)
+    } catch {
+      setError('読み込めませんでした')
+    }
+  }, [bookingId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const act = async (fn: () => Promise<{ success: boolean; error?: string }>, after?: () => void) => {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fn()
+      if (!res.success) throw new Error(res.error)
+      setConfirm(null)
+      await load()
+      onChanged()
+      after?.()
+    } catch (err) {
+      setError(errorText(err, '操作できませんでした'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const d = data && data.success ? data.data : null
+  const b = d?.booking ?? null
+
+  const decide = (decision: 'approve' | 'reject') =>
+    act(async () => {
+      if (makeDefault) await reserveApi.saveSection(calendar.id, 'actions', { ...calendar.actions, runActionsByDefault: runActions })
+      return reserveApi.decide(bookingId, decision, runActions)
+    })
+
+  const kind = b ? (b.status === 'pending' ? 'new' : b.pendingKind) : null
+  const payload = b?.pendingPayload as { startsAt?: string; endsAt?: string } | null
+
+  return (
+    <Dialog.Root open onOpenChange={(o) => { if (!o) onClose() }}>
+      <Dialog size="lg" className="p-0 !w-[min(820px,95vw)] !max-w-none">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+          <span className="text-base font-semibold">{b?.isBlock ? 'ブロック枠' : '予約の詳細'}</span>
+          {b ? <button type="button" className="text-sm text-blue-700 hover:underline" onClick={() => onEdit(b)}>編集</button> : null}
+        </div>
+        <div className="max-h-[72vh] overflow-y-auto px-5 py-3">
+          {!d ? <div className="py-8 text-center">{error ? <span className="text-sm text-red-600">{error}</span> : <Loader size="sm" />}</div> : null}
+          {d && b ? (
+            <div className="space-y-4 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">{b.createdBy === 'admin' ? '管理者予約' : '友だち予約'}</span>
+                {!b.isBlock ? (
+                  <>
+                    <span className="text-xs text-gray-500">予約ステータス</span>
+                    <select
+                      className="rounded border border-gray-300 px-2 py-1 text-sm"
+                      value={b.status}
+                      disabled={busy || b.status === 'pending'}
+                      onChange={(e) => {
+                        if (e.target.value === 'cancelled') setConfirm('cancel')
+                      }}
+                    >
+                      {(['confirmed', 'pending', 'cancelled', 'rejected'] as BookingStatus[]).map((s) => <option key={s} value={s} disabled={s !== b.status && s !== 'cancelled'}>{STATUS_LABEL[s]}</option>)}
+                    </select>
+                    <span className="text-xs text-gray-500">完了後のステータス</span>
+                    <select className="rounded border border-gray-300 px-2 py-1 text-sm" value={b.followupStatus ?? ''} disabled={busy} onChange={(e) => void act(() => reserveApi.updateBooking(bookingId, { followupStatus: e.target.value }))}>
+                      <option value="">未設定</option>
+                      <option value="対応済み">対応済み</option>
+                    </select>
+                  </>
+                ) : null}
+              </div>
+
+              {kind ? (
+                <div className="rounded border border-amber-300 bg-amber-50 p-3">
+                  <p className="mb-2 font-medium text-amber-900">承認待ち: {KIND_LABEL[kind]}のリクエスト</p>
+                  {kind === 'change' && payload?.startsAt ? <p className="mb-2 text-xs text-amber-900">変更後の予約日時: {formatDateJa(payload.startsAt.slice(0, 10))} {payload.startsAt.slice(11, 16)}</p> : null}
+                  <label className="mb-1 flex items-center gap-2 text-xs"><input type="checkbox" checked={runActions} onChange={(e) => setRunActions(e.target.checked)} /> アクションを実行する</label>
+                  <label className="mb-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} /> 「アクション実行」をデフォルト値にする(カレンダーごと)</label>
+                  <div className="flex gap-2">
+                    <button type="button" className={pinkBtn} disabled={busy} onClick={() => void decide('approve')}>承認する</button>
+                    <button type="button" className={grayBtn} disabled={busy} onClick={() => void decide('reject')}>否認する</button>
+                  </div>
+                </div>
+              ) : null}
+
+              <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2">
+                <dt className="text-gray-500">日時</dt>
+                <dd>{formatDateJa(b.startsAt.slice(0, 10))} {b.startsAt.slice(11, 16)}〜{(b.displayEndsAt ?? b.endsAt).slice(11, 16)}</dd>
+                {!b.isBlock ? (
+                  <>
+                    <dt className="text-gray-500">{calendar.slotSettings.title}</dt>
+                    <dd>{d.names.slotName}</dd>
+                    <dt className="text-gray-500">{calendar.courseSettings.title}</dt>
+                    <dd>{d.names.courseName}</dd>
+                    <dt className="text-gray-500">料金</dt>
+                    <dd>{b.price.toLocaleString('ja-JP')}円</dd>
+                    <dt className="text-gray-500">友だち</dt>
+                    <dd className="flex flex-wrap items-center gap-3">
+                      {b.friend || d.friend ? <span>{displayName(b)}</span> : <span className="text-gray-400">{b.guestName || '(友だち未選択)'}</span>}
+                      {b.friendId ? (
+                        <>
+                          <Link href={`/friends/detail?id=${b.friendId}`} target="_blank" className="text-xs text-blue-700 hover:underline">友だち詳細</Link>
+                          <Link href={`/chats?friend=${b.friendId}`} target="_blank" className="text-xs text-blue-700 hover:underline">個別トーク</Link>
+                        </>
+                      ) : null}
+                    </dd>
+                    {calendar.screen.fields.filter((f) => b.answers[f.id]).map((f) => (
+                      <div key={f.id} className="contents">
+                        <dt className="text-gray-500">{f.label}</dt>
+                        <dd className="whitespace-pre-wrap">{b.answers[f.id]}</dd>
+                      </div>
+                    ))}
+                  </>
+                ) : null}
+              </dl>
+
+              {!b.isBlock && b.status === 'confirmed' ? (
+                <div className="flex flex-wrap items-center gap-3 rounded border border-gray-200 p-3">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={b.visited} disabled={busy} onChange={(e) => (e.target.checked ? setConfirm('visited') : void act(() => reserveApi.visited(calendar.id, [b.id], false, false)))} /> 来店/来場済み</label>
+                  {b.followState === 'running' ? <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">フォロー中</span> : null}
+                  {b.followState === 'done' ? <span className="rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-700">フォロー終了</span> : null}
+                </div>
+              ) : null}
+
+              {d.recent.length > 0 ? (
+                <div>
+                  <p className="mb-1 font-medium">この友だちの、直近の予約</p>
+                  <ul className="space-y-0.5 text-xs text-gray-700">
+                    {d.recent.map((r) => <li key={r.id}>{formatDateJa(r.startsAt.slice(0, 10))} {r.startsAt.slice(11, 16)} ({STATUS_LABEL[r.status]})</li>)}
+                  </ul>
+                </div>
+              ) : null}
+
+              <div>
+                <p className="mb-1 font-medium">操作履歴</p>
+                <ul className="space-y-0.5 text-xs text-gray-600">
+                  {d.logs.map((l, i) => <li key={i}>{l.createdAt.slice(0, 16).replace('T', ' ')} {l.text}{l.actor && l.actor !== 'friend' ? `(${l.actor})` : ''}</li>)}
+                </ul>
+              </div>
+
+              <div>
+                <p className="mb-1 font-medium">予約メモ</p>
+                <textarea className={inputCls} rows={3} value={memo} onChange={(e) => setMemo(e.target.value)} />
+                <div className="mt-1 text-right">
+                  <button type="button" className={grayBtn} disabled={busy || memo === b.memo} onClick={() => void act(() => reserveApi.updateBooking(bookingId, { memo }))}>保存</button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {error && d ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+        </div>
+        <div className="flex justify-between border-t border-gray-200 px-5 py-3">
+          <button type="button" className="rounded border border-red-300 px-3 py-2 text-sm text-red-600 hover:bg-red-50" onClick={() => setConfirm('delete')}>削除する</button>
+          <button type="button" className={grayBtn} onClick={onClose}>閉じる</button>
+        </div>
+
+        {confirm ? (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30">
+            <div className="w-[min(420px,92%)] rounded bg-white p-5 shadow-lg">
+              {confirm === 'cancel' ? (
+                <>
+                  <p className="mb-3 text-sm font-medium">この予約をキャンセル済みにしますか?</p>
+                  <label className="mb-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={cancelActions} onChange={(e) => setCancelActions(e.target.checked)} /> 予約キャンセル時のアクションを実行する</label>
+                </>
+              ) : null}
+              {confirm === 'delete' ? <p className="mb-4 text-sm">この予約を削除します。元に戻せません。よろしいですか?</p> : null}
+              {confirm === 'visited' ? (
+                <>
+                  <p className="mb-3 text-sm font-medium">来店/来場済みにします。</p>
+                  {calendar.follow.enabled ? <label className="mb-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={runFollow} onChange={(e) => setRunFollow(e.target.checked)} /> フォローを実行する</label> : <p className="mb-4 text-xs text-gray-500">フォロー設定がオフのため、フォローは実行されません。</p>}
+                </>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <button type="button" className={grayBtn} onClick={() => setConfirm(null)}>戻る</button>
+                <button
+                  type="button"
+                  className={pinkBtn}
+                  disabled={busy}
+                  onClick={() => {
+                    if (confirm === 'cancel') void act(() => reserveApi.cancelBooking(bookingId, cancelActions))
+                    else if (confirm === 'delete') void act(() => reserveApi.deleteBooking(bookingId), onClose)
+                    else void act(() => reserveApi.visited(calendar.id, [bookingId], true, runFollow))
+                  }}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Dialog>
+    </Dialog.Root>
+  )
+}

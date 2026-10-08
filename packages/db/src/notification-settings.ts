@@ -111,11 +111,11 @@ export const NOTIFICATION_CATALOG: TimingCategory[] = [
     timings: [
       { key: 'calendar_booked', label: '予約時', available: true },
       { key: 'calendar_cancelled', label: '予約キャンセル時', available: true },
-      { key: 'calendar_changed', label: '予約変更時', available: false, note: '準備中' },
-      { key: 'calendar_request', label: '予約リクエスト時', available: false, note: '準備中' },
-      { key: 'calendar_request_approved', label: '予約リクエスト承認時', available: false, note: '準備中' },
-      { key: 'calendar_request_rejected', label: '予約リクエスト否認時', available: false, note: '準備中' },
-      { key: 'calendar_deleted', label: '予約削除時', available: false, note: '準備中' },
+      { key: 'calendar_changed', label: '予約変更時', available: true },
+      { key: 'calendar_request', label: '予約リクエスト時', available: true },
+      { key: 'calendar_request_approved', label: '予約リクエスト承認時', available: true },
+      { key: 'calendar_request_rejected', label: '予約リクエスト否認時', available: true },
+      { key: 'calendar_deleted', label: '予約削除時', available: true },
     ],
   },
   {

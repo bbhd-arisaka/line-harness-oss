@@ -12,6 +12,7 @@ import { LayerCard } from '@cloudflare/kumo/components/layer-card'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import Header from '@/components/layout/header'
 import { useAccount } from '@/contexts/account-context'
+import { errorText } from '@/lib/error-text'
 import { ApiError, api, fetchApi } from '@/lib/api'
 import type {
   NotificationDeliveryItem,
@@ -158,7 +159,7 @@ function Editor() {
       if (!res.success) throw new Error(res.error)
       router.push('/notification-settings')
     } catch (err) {
-      setError(err instanceof ApiError && err.message ? err.message : '保存できませんでした')
+      setError(errorText(err, '保存できませんでした'))
     } finally {
       setSaving(false)
     }
@@ -175,7 +176,7 @@ function Editor() {
       const failed = res.data.filter((r) => !r.ok)
       setNotice(failed.length === 0 ? `${res.data.length}件の通知先に、テスト通知を送りました` : `${failed.length}件の通知先に送れませんでした(${failed.map((f) => f.name || f.kind).join('、')})`)
     } catch (err) {
-      setError(err instanceof ApiError && err.message ? err.message : 'テスト通知を送れませんでした')
+      setError(errorText(err, 'テスト通知を送れませんでした'))
     } finally {
       setTesting(false)
     }

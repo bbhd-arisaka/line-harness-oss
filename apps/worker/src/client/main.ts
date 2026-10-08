@@ -13,6 +13,7 @@
  *   ?redirect=x       — redirect after linking (for wrapped URLs)
  *   ?page=book        — booking page (calendar slot picker, Google Calendar)
  *   ?page=salon-book  — salon booking flow (React, dynamic-imported)
+ *   ?page=reserve     — カレンダー予約(Lステップ準拠。&calendar=ID &view=history|detail &id=予約ID &link=発行URLのID)
  *   ?page=affiliate   — affiliate self-serve page (React, dynamic-imported)
  *   ?page=webinar     — auto-webinar pseudo-live viewer (React, dynamic-imported; &slug=)
  */
@@ -432,6 +433,95 @@ async function initSalonBooking(): Promise<void> {
   });
 }
 
+// ─── カレンダー予約(Lステップ準拠の予約サイト。React, dynamic-imported) ─────────────
+
+async function initReserve(): Promise<void> {
+  // 既存 linkAndAddFlow と同じ初期化シーケンスを踏む:
+  //   ① profile + idToken + friendFlag を並列取得
+  //   ② /api/liff/link で UUID 確定 (ref/ig 含む) — booking エンドポイントが
+  //      id_token verify で friend を引くために friends 行が必要
+  //   ③ ref があれば /api/affiliates/click で流入計測
+  //   ④ 未友達なら showFriendAdd (friend-add gate)。友達追加後に同じ URL に
+  //      戻ってくれば再度ここを通って React mount に進む
+  //   ⑤ 友達なら React チャンクを動的 import して mount
+  const [profile, idToken, friendship] = await Promise.all([
+    liff.getProfile(),
+    Promise.resolve(liff.getIDToken()),
+    liff.getFriendship(),
+  ]);
+  if (!idToken) {
+    showError('LINE 認証情報の取得に失敗しました。LINE アプリ内で再度開いてください。');
+    return;
+  }
+
+  const existingUuid = getSavedUuid();
+  const ref = getRef();
+  const bookingParams = new URLSearchParams(window.location.search);
+  const ig = bookingParams.get('ig');
+  const iga = bookingParams.get('iga');
+  const igan = bookingParams.get('igan');
+
+  // ② Silent UUID linking (fire-and-forget; booking API は id_token verify で
+  //    認証するので待つ必要はない)。
+  apiCall('/api/liff/link', {
+    method: 'POST',
+    body: JSON.stringify({
+      idToken,
+      displayName: profile.displayName,
+      existingUuid,
+      ref: ref || undefined,
+      ig: ig || undefined,
+      iga: iga || undefined,
+      igan: igan || undefined,
+    }),
+  })
+    .then(async (res) => {
+      if (res.ok) {
+        const data = (await res.json()) as { success: boolean; data?: { userId?: string } };
+        if (data?.data?.userId) saveUuid(data.data.userId);
+      }
+    })
+    .catch(() => {
+      /* silent */
+    });
+
+  // ③ Affiliate click 計測 (linkAndAddFlow と同等)。
+  if (ref) {
+    apiCall('/api/affiliates/click', {
+      method: 'POST',
+      body: JSON.stringify({ code: ref, url: window.location.href }),
+    }).catch(() => {
+      /* silent */
+    });
+  }
+
+  // ④ 未友達なら friend-add UI に流す。booking API は friends.is_following = 1
+  //    を要求するので、ここを skip すると最終的に cannot_book / friend_not_found
+  //    で詰む。
+  if (!friendship.friendFlag) {
+    showFriendAdd(profile);
+    return;
+  }
+
+  // ⑤ React + Tailwind チャンクを動的 import → 既存 LIFF 利用者には load されない。
+  const container = document.getElementById('app');
+  if (!container) {
+    showError('mount target #app が見つかりません');
+    return;
+  }
+  const { mountReserve } = await import('./reserve/main.js');
+  const q = new URLSearchParams(window.location.search);
+  mountReserve(container, {
+    liffId: LIFF_ID,
+    lineUserId: profile.userId,
+    idToken,
+    calendarId: q.get('calendar') ?? '',
+    view: q.get('view') ?? '',
+    bookingId: q.get('id') ?? '',
+    linkId: q.get('link') ?? '',
+  });
+}
+
 // ─── Event Booking (React, dynamic-imported) ─────────────
 
 async function initEventBooking(initialKind: 'detail' | 'history'): Promise<void> {
@@ -701,6 +791,8 @@ async function main() {
       await initBooking();
     } else if (page === 'salon-book') {
       await initSalonBooking();
+    } else if (page === 'reserve') {
+      await initReserve();
     } else if (page === 'event') {
       await initEventBooking('detail');
     } else if (page === 'event-me') {

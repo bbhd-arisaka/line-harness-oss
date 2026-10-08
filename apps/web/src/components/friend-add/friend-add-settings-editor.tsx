@@ -5,6 +5,7 @@ import { LightningIcon } from '@phosphor-icons/react'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { Select } from '@cloudflare/kumo/components/select'
+import { errorText } from '@/lib/error-text'
 import { ApiError, api, fetchApi } from '@/lib/api'
 import { describeAction, describeTiming } from '@/lib/friend-add-actions'
 import type { FriendAddActionItem, FriendAddKindItem, FriendAddSettingItem } from '@/lib/friend-add-actions'
@@ -88,7 +89,7 @@ export default function FriendAddSettingsEditor({ accountId }: { accountId: stri
       }
       setMessage({ ok: true, text: '保存しました' })
     } catch (err) {
-      setMessage({ ok: false, text: err instanceof ApiError && err.message ? err.message : '保存できませんでした' })
+      setMessage({ ok: false, text: errorText(err, '保存できませんでした') })
     } finally {
       setSaving(false)
     }
