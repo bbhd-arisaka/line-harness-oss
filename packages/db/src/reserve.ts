@@ -932,6 +932,10 @@ export interface BookingFilter {
   friendId?: string;
   visited?: boolean;
   q?: string; // 名前(LINE名・本名・システム表示名・予約の名前)
+  friendQ?: string; // 友だち(LINE名・本名・システム表示名)
+  guestQ?: string; // お客さま(予約の名前)
+  timeFrom?: string; // HH:MM(開始時刻がこれ以降)
+  timeTo?: string; // HH:MM(開始時刻がこれ以前)
   limit?: number;
   offset?: number;
   order?: 'asc' | 'desc';
@@ -980,6 +984,23 @@ export async function listReserveBookings(db: D1Database, calendarId: string, f:
     const like = `%${f.q.trim().replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
     where.push("(f.display_name LIKE ? ESCAPE '\\' OR f.real_name LIKE ? ESCAPE '\\' OR f.system_display_name LIKE ? ESCAPE '\\' OR b.guest_name LIKE ? ESCAPE '\\')");
     binds.push(like, like, like, like);
+  }
+  const like = (v: string) => `%${v.trim().replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+  if (f.friendQ && f.friendQ.trim()) {
+    where.push("(f.display_name LIKE ? ESCAPE '\\' OR f.real_name LIKE ? ESCAPE '\\' OR f.system_display_name LIKE ? ESCAPE '\\')");
+    binds.push(like(f.friendQ), like(f.friendQ), like(f.friendQ));
+  }
+  if (f.guestQ && f.guestQ.trim()) {
+    where.push("b.guest_name LIKE ? ESCAPE '\\'");
+    binds.push(like(f.guestQ));
+  }
+  if (f.timeFrom) {
+    where.push('substr(b.starts_at, 12, 5) >= ?');
+    binds.push(f.timeFrom);
+  }
+  if (f.timeTo) {
+    where.push('substr(b.starts_at, 12, 5) <= ?');
+    binds.push(f.timeTo);
   }
   const whereSql = where.join(' AND ');
   const total = await db

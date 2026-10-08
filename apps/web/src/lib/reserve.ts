@@ -255,7 +255,12 @@ export interface BookingQuery {
   courseIds?: string[]
   statuses?: BookingStatus[]
   includeBlocks?: boolean
+  onlyBlocks?: boolean
   q?: string
+  friendQ?: string
+  guestQ?: string
+  timeFrom?: string
+  timeTo?: string
   visited?: boolean
   limit?: number
   offset?: number
@@ -270,7 +275,12 @@ function bookingQs(q: BookingQuery): string {
   if (q.courseIds?.length) p.set('courseIds', q.courseIds.join(','))
   if (q.statuses?.length) p.set('statuses', q.statuses.join(','))
   if (q.includeBlocks) p.set('includeBlocks', '1')
+  if (q.onlyBlocks) p.set('onlyBlocks', '1')
   if (q.q) p.set('q', q.q)
+  if (q.friendQ) p.set('friendQ', q.friendQ)
+  if (q.guestQ) p.set('guestQ', q.guestQ)
+  if (q.timeFrom) p.set('timeFrom', q.timeFrom)
+  if (q.timeTo) p.set('timeTo', q.timeTo)
   if (q.visited !== undefined) p.set('visited', q.visited ? '1' : '0')
   if (q.limit) p.set('limit', String(q.limit))
   if (q.offset) p.set('offset', String(q.offset))

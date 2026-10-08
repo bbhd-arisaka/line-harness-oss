@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CaretLeftIcon, CaretRightIcon, FunnelIcon, ListIcon, CalendarBlankIcon, RowsIcon, SkipBackIcon, RewindIcon, FastForwardIcon, SkipForwardIcon } from '@phosphor-icons/react'
+import { CaretLeftIcon, CaretRightIcon, FunnelIcon, ListIcon, CalendarBlankIcon, RowsIcon, SkipBackIcon, RewindIcon, FastForwardIcon, SkipForwardIcon, DownloadSimpleIcon } from '@phosphor-icons/react'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { apiUrl } from '@/lib/api'
 import { errorText } from '@/lib/error-text'
@@ -349,8 +349,11 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
   const [courseId, setCourseId] = useState('')
   const [status, setStatus] = useState('')
   const [visited, setVisited] = useState('')
-  const [q, setQ] = useState('')
-  const [blocks, setBlocks] = useState(false)
+  const [friendQ, setFriendQ] = useState('')
+  const [guestQ, setGuestQ] = useState('')
+  const [timeFrom, setTimeFrom] = useState('')
+  const [timeTo, setTimeTo] = useState('')
+  const [blockMode, setBlockMode] = useState<'' | 'only' | 'none'>('')
   const [items, setItems] = useState<ReserveBooking[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
@@ -369,10 +372,14 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
       courseIds: courseId ? [courseId] : undefined,
       statuses: status ? ([status] as BookingStatus[]) : undefined,
       visited: visited === '' ? undefined : visited === '1',
-      q: q.trim() || undefined,
-      includeBlocks: blocks,
+      friendQ: friendQ.trim() || undefined,
+      guestQ: guestQ.trim() || undefined,
+      timeFrom: timeFrom || undefined,
+      timeTo: timeTo || undefined,
+      includeBlocks: blockMode !== 'none',
+      onlyBlocks: blockMode === 'only',
     }),
-    [from, to, slotId, courseId, status, visited, q, blocks],
+    [from, to, slotId, courseId, status, visited, friendQ, guestQ, timeFrom, timeTo, blockMode],
   )
 
   const load = useCallback(async () => {
@@ -422,59 +429,82 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
     }
   }
 
-  const sel = 'rounded border border-gray-300 bg-white px-2 py-1 text-sm'
+  const sel = 'w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
+  const fl = 'pt-1.5 text-xs font-semibold text-gray-700'
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-end gap-3 rounded border border-gray-200 bg-white p-3 text-xs text-gray-600">
-        <label>期間<div className="flex items-center gap-1"><input type="date" className={sel} value={from} onChange={(e) => setFrom(e.target.value)} />〜<input type="date" className={sel} value={to} onChange={(e) => setTo(e.target.value)} /></div></label>
-        <label>{calendar.slotSettings.title}<select className={`${sel} block`} value={slotId} onChange={(e) => setSlotId(e.target.value)}><option value="">すべて</option><option value="none">未指定</option>{slots.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-        <label>{calendar.courseSettings.title}<select className={`${sel} block`} value={courseId} onChange={(e) => setCourseId(e.target.value)}><option value="">すべて</option>{courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-        <label>ステータス<select className={`${sel} block`} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">すべて</option>{(Object.keys(STATUS_LABEL) as BookingStatus[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select></label>
-        <label>来店/来場<select className={`${sel} block`} value={visited} onChange={(e) => setVisited(e.target.value)}><option value="">すべて</option><option value="1">済み</option><option value="0">未</option></select></label>
-        <label>名前<input className={`${sel} block w-40`} value={q} placeholder="LINE名・本名・予約の名前" onChange={(e) => setQ(e.target.value)} /></label>
-        <label className="flex items-center gap-1 pb-1"><input type="checkbox" checked={blocks} onChange={(e) => setBlocks(e.target.checked)} /> ブロック予定込み</label>
-        <button type="button" className="ml-auto rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" onClick={() => void download()}>↓CSV</button>
-      </div>
       {error ? <p className="mb-2 text-sm text-red-600">{error}</p> : null}
-      <div className="mb-2 flex items-center gap-3 text-sm">
-        <span className="text-gray-600">{total}件</span>
-        <button type="button" disabled={selected.length === 0} onClick={() => setBulk(true)} className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">一括操作: 来店/来場済みに変更する ({selected.length})</button>
-      </div>
-      <div className="overflow-x-auto rounded border border-gray-300 bg-white">
-        <table className="w-full min-w-[820px] text-sm">
-          <thead className="bg-gray-100 text-left text-xs text-gray-600">
-            <tr>
-              <th className="w-8 px-2 py-2"><input type="checkbox" aria-label="すべて選択" checked={items.length > 0 && selected.length === items.length} onChange={(e) => setSelected(e.target.checked ? items.filter((i) => !i.isBlock).map((i) => i.id) : [])} /></th>
-              <th className="px-2 py-2 font-medium">日時</th>
-              <th className="px-2 py-2 font-medium">名前</th>
-              <th className="px-2 py-2 font-medium">{calendar.slotSettings.title}</th>
-              <th className="px-2 py-2 font-medium">{calendar.courseSettings.title}</th>
-              <th className="px-2 py-2 font-medium">ステータス</th>
-              <th className="px-2 py-2 font-medium">来店/来場</th>
-              <th className="px-2 py-2 font-medium">申し込み日時</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? <tr><td colSpan={8} className="py-8 text-center"><Loader size="sm" /></td></tr> : null}
-            {!loading && items.length === 0 ? <tr><td colSpan={8} className="py-8 text-center text-gray-500">該当する予約がありません</td></tr> : null}
-            {!loading
-              ? items.map((b) => (
-                  <tr key={b.id} className="cursor-pointer border-t border-gray-200 hover:bg-gray-50" onClick={() => onOpen(b.id)}>
-                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                      {!b.isBlock ? <input type="checkbox" aria-label="選択" checked={selected.includes(b.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, b.id] : selected.filter((x) => x !== b.id))} /> : null}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2">{formatDateJa(b.startsAt.slice(0, 10))} {b.startsAt.slice(11, 16)}〜{b.endsAt.slice(11, 16)}</td>
-                    <td className="px-2 py-2">{b.isBlock ? <span className="text-gray-500">ブロック枠</span> : displayName(b)}</td>
-                    <td className="px-2 py-2">{b.slotId ? slots.find((s) => s.id === b.slotId)?.name ?? '' : '指定なし'}</td>
-                    <td className="px-2 py-2">{b.courseId ? courses.find((c) => c.id === b.courseId)?.name ?? '' : ''}</td>
-                    <td className="px-2 py-2">{b.isBlock ? '' : STATUS_LABEL[b.status]}{b.pendingKind && b.status !== 'pending' ? `(${b.pendingKind === 'change' ? '変更' : 'キャンセル'}リクエスト)` : ''}</td>
-                    <td className="px-2 py-2">{b.visited ? '済' : ''}{b.followState === 'running' ? ' フォロー中' : b.followState === 'done' ? ' フォロー終了' : ''}</td>
-                    <td className="whitespace-nowrap px-2 py-2 text-xs text-gray-500">{b.requestedAt.slice(0, 16).replace('T', ' ')}</td>
-                  </tr>
-                ))
-              : null}
-          </tbody>
-        </table>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex items-center gap-3 text-sm">
+            <span className="text-gray-600">{total}件</span>
+            <button type="button" disabled={selected.length === 0} onClick={() => setBulk(true)} className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">一括操作: 来店/来場済みに変更する ({selected.length})</button>
+            <button type="button" className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#4a9d2f] px-5 py-2 text-sm font-medium text-white hover:bg-[#3f8727]" onClick={() => void download()}><DownloadSimpleIcon size={14} weight="bold" /> CSV</button>
+          </div>
+          <div className="overflow-x-auto bg-white">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead className="text-center text-xs text-gray-700">
+                <tr className="border-b border-gray-300">
+                  <th className="w-8 px-2 py-2"><input type="checkbox" aria-label="すべて選択" checked={items.length > 0 && selected.length === items.length} onChange={(e) => setSelected(e.target.checked ? items.filter((i) => !i.isBlock).map((i) => i.id) : [])} /></th>
+                  <th className="px-2 py-2 font-semibold">{calendar.slotSettings.title}</th>
+                  <th className="px-2 py-2 font-semibold">予約日時</th>
+                  <th className="px-2 py-2 font-semibold">{calendar.courseSettings.title}</th>
+                  <th className="px-2 py-2 font-semibold">ステータス</th>
+                  <th className="px-2 py-2 font-semibold">来店/来場</th>
+                  <th className="px-2 py-2 font-semibold">友だち</th>
+                  <th className="px-2 py-2 font-semibold">お客さま</th>
+                  <th className="px-2 py-2 font-semibold">ブロック</th>
+                  <th className="px-2 py-2 font-semibold">承認</th>
+                </tr>
+              </thead>
+              <tbody className="text-center">
+                {loading ? <tr><td colSpan={10} className="py-8"><Loader size="sm" /></td></tr> : null}
+                {!loading && items.length === 0 ? <tr><td colSpan={10} className="py-8 text-xs text-gray-500">条件に一致する予約がありません</td></tr> : null}
+                {!loading
+                  ? items.map((b) => (
+                      <tr key={b.id} className="cursor-pointer border-b border-gray-200 hover:bg-gray-50" onClick={() => onOpen(b.id)}>
+                        <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                          {!b.isBlock ? <input type="checkbox" aria-label="選択" checked={selected.includes(b.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, b.id] : selected.filter((x) => x !== b.id))} /> : null}
+                        </td>
+                        <td className="px-2 py-2">{b.slotId ? slots.find((s) => s.id === b.slotId)?.name ?? '' : '指定なし'}</td>
+                        <td className="whitespace-nowrap px-2 py-2">{formatDateJa(b.startsAt.slice(0, 10))} {b.startsAt.slice(11, 16)}〜{b.endsAt.slice(11, 16)}</td>
+                        <td className="px-2 py-2">{b.courseId ? courses.find((c) => c.id === b.courseId)?.name ?? '' : ''}</td>
+                        <td className="px-2 py-2">{b.isBlock ? '' : STATUS_LABEL[b.status]}{b.pendingKind && b.status !== 'pending' ? `(${b.pendingKind === 'change' ? '変更' : 'キャンセル'}リクエスト)` : ''}</td>
+                        <td className="px-2 py-2">{b.visited ? '済' : ''}{b.followState === 'running' ? ' フォロー中' : b.followState === 'done' ? ' フォロー終了' : ''}</td>
+                        <td className="px-2 py-2">{b.friend ? b.friend.realName || b.friend.systemDisplayName || b.friend.displayName || '' : ''}</td>
+                        <td className="px-2 py-2">{b.isBlock ? '' : b.guestName || ''}</td>
+                        <td className="px-2 py-2">{b.isBlock ? '○' : ''}</td>
+                        <td className="px-2 py-2 text-xs">{b.status === 'pending' || b.pendingKind ? '承認待ち' : ''}</td>
+                      </tr>
+                    ))
+                  : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <aside className="w-full shrink-0 rounded border border-gray-300 bg-white p-4 lg:w-72">
+          <h3 className="mb-3 border-b-2 border-[#9fc77e] pb-1 text-base font-semibold text-gray-900">絞り込みメニュー</h3>
+          <div className="grid grid-cols-[74px_1fr] items-start gap-x-2 gap-y-2.5">
+            <span className={fl}>{calendar.slotSettings.title}</span>
+            <select className={sel} value={slotId} onChange={(e) => setSlotId(e.target.value)}><option value="">-- 全て --</option><option value="none">未指定</option>{slots.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+            <span className={fl}>日付</span>
+            <div className="flex items-center gap-1"><input type="date" className={sel} value={from} onChange={(e) => setFrom(e.target.value)} />~<input type="date" className={sel} value={to} onChange={(e) => setTo(e.target.value)} /></div>
+            <span className={fl}>時間</span>
+            <div className="flex items-center gap-1"><input type="time" className={sel} value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} />~<input type="time" className={sel} value={timeTo} onChange={(e) => setTimeTo(e.target.value)} /></div>
+            <span className={fl}>{calendar.courseSettings.title}</span>
+            <select className={sel} value={courseId} onChange={(e) => setCourseId(e.target.value)}><option value="">-- 全て --</option>{courses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <span className={fl}>ステータス</span>
+            <select className={sel} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">-- 全て --</option>{(Object.keys(STATUS_LABEL) as BookingStatus[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</select>
+            <span className={fl}>来店/来場</span>
+            <select className={sel} value={visited} onChange={(e) => setVisited(e.target.value)}><option value="">-- 全て --</option><option value="1">済み</option><option value="0">未</option></select>
+            <span className={fl}>友だち</span>
+            <input className={sel} value={friendQ} placeholder="友だち名を入力" onChange={(e) => setFriendQ(e.target.value)} />
+            <span className={fl}>お客さま</span>
+            <input className={sel} value={guestQ} onChange={(e) => setGuestQ(e.target.value)} />
+            <span className={fl}>ブロック</span>
+            <select className={sel} value={blockMode} onChange={(e) => setBlockMode(e.target.value as '' | 'only' | 'none')}><option value="">-- 全て --</option><option value="only">ブロックのみ</option><option value="none">ブロックを除く</option></select>
+          </div>
+        </aside>
       </div>
       {total > PAGE ? (
         <div className="mt-2 flex items-center justify-center gap-3 text-sm">
