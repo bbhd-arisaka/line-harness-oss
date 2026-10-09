@@ -24,6 +24,7 @@ import { fireEvent } from '../services/event-bus.js';
 import { buildMessage } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
 import { buildFriendFilterPieces, FilterError, parseFriendFilter } from '../services/friend-filter.js';
+import { isDemoLineUserId } from '../services/demo-friend.js';
 
 const friends = new Hono<Env>();
 
@@ -763,7 +764,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
     }
 
     const message = buildMessage(tracked.messageType, tracked.content, body.altText);
-    await lineClient.pushMessage(friend.line_user_id, [message]);
+    if (!isDemoLineUserId(friend.line_user_id)) await lineClient.pushMessage(friend.line_user_id, [message]);
 
     // Log outgoing message
     const logId = crypto.randomUUID();

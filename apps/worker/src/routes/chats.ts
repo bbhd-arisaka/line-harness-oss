@@ -22,6 +22,7 @@ import {
 } from '@line-crm/db';
 import { invalidateUnansweredCache } from '../services/unanswered-inbox.js';
 import type { Env } from '../index.js';
+import { isDemoLineUserId } from '../services/demo-friend.js';
 
 const chats = new Hono<Env>();
 
@@ -630,7 +631,8 @@ chats.post('/api/chats/:id/send', async (c) => {
       };
       message = { type: 'image', originalContentUrl: parsed.originalContentUrl, previewImageUrl: parsed.previewImageUrl };
     }
-    await lineClient.pushMessage(friend.line_user_id, [message]);
+    // App Store 審査用のデモの友だち(LINE ユーザーIDが Udemo…)には、LINE へ送らず、記録だけ残す
+    if (!isDemoLineUserId(friend.line_user_id)) await lineClient.pushMessage(friend.line_user_id, [message]);
 
     // Store exactly the payload delivered to LINE, including tracking changes.
     const log = messageToLogPayload(message);

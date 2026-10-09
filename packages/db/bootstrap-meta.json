@@ -105,7 +105,8 @@
     "097_backfill_chats_for_new_friends.sql",
     "098_reserve_calendars.sql",
     "099_reserve_slot_icon.sql",
-    "100_app_push_muted_accounts.sql"
+    "100_app_push_muted_accounts.sql",
+    "101_demo_review_data.sql"
   ],
-  "migrationCount": 106
+  "migrationCount": 107
 }
