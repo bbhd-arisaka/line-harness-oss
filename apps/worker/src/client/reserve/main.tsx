@@ -399,8 +399,8 @@ function OptionSheet({ title, options, selectedId, optional, showMinutes, showPr
           {options.map((o) => (
             <li key={o.id}>
               <button type="button" className={`w-full rounded-lg border p-3 text-left ${selectedId === o.id ? 'border-2' : ''}`} style={selectedId === o.id ? { borderColor: GREEN } : undefined} onClick={() => onPick(o.id)}>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-medium">{o.name}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 font-medium">{o.iconUrl ? <img src={o.iconUrl} alt="" className="h-8 w-8 rounded-full object-cover" /> : null}{o.name}</span>
                   <span className="text-xs text-gray-600">{showMinutes && o.minutes ? `${o.minutes}分` : ''}{showMinutes && o.minutes && showPrice ? ' / ' : ''}{showPrice ? formatPrice(o.price) : ''}</span>
                 </div>
                 <Description opt={o} />
