@@ -174,17 +174,33 @@ function NotificationTaps({ ready }: { ready: boolean }) {
     [router],
   );
 
+  // 同じチャットの通知は、iOS では同じ識別子(apns-collapse-id)になる。識別子だけで見ると、2通目のタップを「処理済み」と誤って捨てるので、通知が届いた時刻も含めて見分ける
+  const handle = useCallback(
+    (response: Notifications.NotificationResponse) => {
+      const key = `${response.notification.request.identifier}:${response.notification.date}:${response.actionIdentifier}`;
+      if (handled.current === key) return;
+      handled.current = key;
+      try {
+        open(response);
+      } catch (e) {
+        logFailure('open from notification', e);
+      }
+    },
+    [open],
+  );
+
+  // 終了中・起動直後のタップ(アカウントの準備ができてから開く)
   useEffect(() => {
     if (!ready || !lastResponse) return;
-    const key = `${lastResponse.notification.request.identifier}:${lastResponse.actionIdentifier}`;
-    if (handled.current === key) return;
-    handled.current = key;
-    try {
-      open(lastResponse);
-    } catch (e) {
-      logFailure('open from notification', e);
-    }
-  }, [ready, lastResponse, open]);
+    handle(lastResponse);
+  }, [ready, lastResponse, handle]);
+
+  // 起動中のタップは、そのつど直接受け取る(「最後のタップ」の更新に頼らない)
+  useEffect(() => {
+    if (!ready) return;
+    const sub = Notifications.addNotificationResponseReceivedListener(handle);
+    return () => sub.remove();
+  }, [ready, handle]);
 
   return null;
 }
