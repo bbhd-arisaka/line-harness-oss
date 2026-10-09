@@ -16,3 +16,7 @@ web-build/
 *.mobileprovision
 *.jks
 expo-env.d.ts
+credentials.json
+.ios-credentials/
+asc-key.p8
+*.p8
