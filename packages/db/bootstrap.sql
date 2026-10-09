@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS app_sessions (
   last_used_at TEXT,
   expires_at   TEXT NOT NULL,
   revoked_at   TEXT
-);
+, muted_account_ids TEXT);
 
 CREATE TABLE IF NOT EXISTS auto_replies (
   id               TEXT PRIMARY KEY,

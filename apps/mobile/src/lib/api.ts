@@ -116,6 +116,9 @@ export function createApiClient(options: ApiClientOptions) {
     requestAccountDeletion: () => request<null>('POST', '/api/app/account-deletion'),
     /** プッシュ通知の送り先(APNs デバイストークン)を登録。null で解除。 */
     setApnsToken: (apnsToken: string | null) => request<null>('PUT', '/api/app/device', { body: { apnsToken } }),
+    /** この端末で、通知を止めている公式アカウントのID */
+    getPushSettings: () => request<{ mutedAccountIds: string[] }>('GET', '/api/app/push-settings'),
+    setPushSettings: (mutedAccountIds: string[]) => request<{ mutedAccountIds: string[] }>('PUT', '/api/app/push-settings', { body: { mutedAccountIds } }),
 
     // ── 公式アカウント ──
     listLineAccounts: () => request<LineAccount[]>('GET', '/api/line-accounts'),

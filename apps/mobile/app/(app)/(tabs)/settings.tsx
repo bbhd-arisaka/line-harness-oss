@@ -1,5 +1,5 @@
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useState } from 'react';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { authStore, useAccounts, useAuth } from '../../../src/state/session';
@@ -31,6 +31,39 @@ export default function SettingsScreen() {
   const staff = auth.staff;
   const push = usePushStatus();
   const version = Constants.expoConfig?.version ?? '-';
+
+  // 公式アカウントごとの通知(この端末だけの設定)
+  const [muted, setMuted] = useState<string[] | null>(null);
+  const [mutedError, setMutedError] = useState<string | null>(null);
+  useEffect(() => {
+    if (push.state === 'unsupported') return;
+    let cancelled = false;
+    api
+      .getPushSettings()
+      .then((r) => {
+        if (!cancelled) setMuted(r.mutedAccountIds);
+      })
+      .catch((e) => {
+        if (!cancelled) setMutedError(describeError(e, '通知の設定を読み込めませんでした'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [push.state]);
+
+  async function toggleAccount(accountId: string, enabled: boolean) {
+    const before = muted ?? [];
+    const next = enabled ? before.filter((x) => x !== accountId) : [...before, accountId];
+    setMuted(next);
+    setMutedError(null);
+    try {
+      const r = await api.setPushSettings(next);
+      setMuted(r.mutedAccountIds);
+    } catch (e) {
+      setMuted(before);
+      setMutedError(describeError(e, '通知の設定を保存できませんでした'));
+    }
+  }
 
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -104,6 +137,31 @@ export default function SettingsScreen() {
               <Button title="通知を受け取る" variant="secondary" loading={push.busy} onPress={() => void push.enable()} style={{ marginTop: 8 }} />
             ) : null}
           </Card>
+
+          <SectionTitle>公式アカウントごとの通知</SectionTitle>
+          <Card>
+            <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginBottom: 6 }}>
+              このスマートフォンで、通知を受け取る公式アカウントを選べます(オフにしたアカウントの新着は、通知されません)。
+            </Text>
+            {acc.accounts.map((a) => (
+              <View key={a.id} style={styles.accountRow}>
+                <Text style={{ color: c.text, fontSize: 15, flex: 1, marginRight: 12 }} numberOfLines={1}>
+                  {accountLabel(a)}
+                </Text>
+                <Switch
+                  accessibilityLabel={`${accountLabel(a)}の通知`}
+                  value={muted !== null && !muted.includes(a.id)}
+                  disabled={muted === null}
+                  onValueChange={(v) => void toggleAccount(a.id, v)}
+                />
+              </View>
+            ))}
+            {mutedError ? (
+              <Text style={{ color: c.danger, fontSize: 13, marginTop: 6 }} accessibilityRole="alert">
+                {mutedError}
+              </Text>
+            ) : null}
+          </Card>
         </>
       ) : null}
 
@@ -148,6 +206,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 48 },
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 8 },
+  accountRow: { minHeight: MIN_TAP, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pageLink: { minHeight: MIN_TAP, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   link: {
     minHeight: MIN_TAP + 12,

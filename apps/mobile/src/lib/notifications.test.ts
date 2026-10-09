@@ -32,6 +32,14 @@ describe('planPermission', () => {
   });
 });
 
+describe('parseNotificationTarget(body の中に入っている形)', () => {
+  it('body がオブジェクトでも、JSON文字列でも、開き先を取り出せる', () => {
+    expect(parseNotificationTarget({ body: { friendId: 'f1', accountId: 'a1' } })).toEqual({ chatId: 'f1', accountId: 'a1' });
+    expect(parseNotificationTarget({ body: JSON.stringify({ chatId: 'c1', accountId: null }) })).toEqual({ chatId: 'c1', accountId: null });
+    expect(parseNotificationTarget({ body: 'こんにちは' })).toBeNull();
+  });
+});
+
 describe('parseNotificationTarget', () => {
   it('chatId と accountId を取り出す', () => {
     expect(parseNotificationTarget({ chatId: 'f1', accountId: 'a1' })).toEqual({ chatId: 'f1', accountId: 'a1' });

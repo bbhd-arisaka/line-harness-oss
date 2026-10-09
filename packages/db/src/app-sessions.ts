@@ -93,6 +93,27 @@ export async function setAppSessionApnsToken(db: D1Database, sessionId: string, 
   await db.prepare('UPDATE app_sessions SET apns_token = ? WHERE id = ?').bind(apnsToken, sessionId).run();
 }
 
+/** この端末が、通知を止めている公式アカウントのID */
+export async function getAppSessionMutedAccounts(db: D1Database, sessionId: string): Promise<string[]> {
+  const r = await db.prepare('SELECT muted_account_ids FROM app_sessions WHERE id = ?').bind(sessionId).first<{ muted_account_ids: string | null }>();
+  return parseMutedAccountIds(r?.muted_account_ids ?? null);
+}
+
+export async function setAppSessionMutedAccounts(db: D1Database, sessionId: string, accountIds: string[]): Promise<void> {
+  const clean = [...new Set(accountIds.filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 64))].slice(0, 200);
+  await db.prepare('UPDATE app_sessions SET muted_account_ids = ? WHERE id = ?').bind(clean.length ? JSON.stringify(clean) : null, sessionId).run();
+}
+
+export function parseMutedAccountIds(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function listAppSessionsForStaff(db: D1Database, staffId: string): Promise<AppSessionRow[]> {
   const r = await db
     .prepare('SELECT id, staff_id, device_name, apns_token, created_at, last_used_at, expires_at, revoked_at FROM app_sessions WHERE staff_id = ? AND revoked_at IS NULL ORDER BY created_at DESC')

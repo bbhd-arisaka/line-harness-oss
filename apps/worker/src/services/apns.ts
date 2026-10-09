@@ -102,6 +102,8 @@ async function getJwt(config: ApnsConfig, nowMs: number): Promise<string> {
 
 export interface ApnsAlert {
   title: string;
+  /** タイトルの下に出る小さい行(どの公式アカウントの通知か) */
+  subtitle?: string;
   body: string;
   /** 通知のスレッド(同じ友だちの通知をまとめて表示)。友だちID */
   threadId: string;
@@ -133,11 +135,13 @@ export function buildApnsPayload(alert: ApnsAlert): string {
   const build = (b: string) =>
     JSON.stringify({
       aps: {
-        alert: { title: alert.title.slice(0, 100), body: b },
+        alert: { title: alert.title.slice(0, 100), ...(alert.subtitle ? { subtitle: alert.subtitle.slice(0, 100) } : {}), body: b },
         sound: 'default',
         'thread-id': alert.threadId,
       },
       ...(alert.data ?? {}),
+      // expo-notifications は、バージョン・状況によって、カスタムキーを body の中から読む。どちらでも開き先が分かるように、同じ内容を body にも入れる
+      ...(alert.data ? { body: alert.data } : {}),
     });
   let json = build(body);
   while (utf8Length(json) > MAX_PAYLOAD_BYTES && body.length > 0) {

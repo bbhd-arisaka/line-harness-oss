@@ -1,4 +1,4 @@
-import { getStaffAllowedAccountIds } from '@line-crm/db';
+import { getStaffAllowedAccountIds, parseMutedAccountIds } from '@line-crm/db';
 import { clearInvalidApnsToken, getApnsConfig, sendApnsAlert } from './apns.js';
 import type { ApnsEnv, ApnsSendOptions } from './apns.js';
 
@@ -42,6 +42,7 @@ export function describeMessageForPush(messageType: string, content: string): st
 
 interface SessionRow {
   apns_token: string;
+  muted_account_ids: string | null;
   expires_at: string;
   staff_id: string;
   role: string | null;
@@ -55,7 +56,7 @@ export async function resolvePushRecipients(
 ): Promise<string[]> {
   const rows = await db
     .prepare(
-      `SELECT s.apns_token, s.expires_at, s.staff_id, m.role
+      `SELECT s.apns_token, s.muted_account_ids, s.expires_at, s.staff_id, m.role
          FROM app_sessions s INNER JOIN staff_members m ON m.id = s.staff_id
         WHERE s.revoked_at IS NULL AND s.apns_token IS NOT NULL AND s.apns_token != ''
           AND m.is_active = 1
@@ -84,6 +85,8 @@ export async function resolvePushRecipients(
   for (const row of rows.results ?? []) {
     if (tokens.length >= MAX_DEVICES_PER_NOTIFICATION) break;
     if (Date.parse(row.expires_at) <= now) continue;
+    // この端末が、この公式アカウントの通知を止めている
+    if (accountId !== null && parseMutedAccountIds(row.muted_account_ids).includes(accountId)) continue;
     if (seen.has(row.apns_token)) continue;
     if (!(await canSee(row.staff_id, row.role))) continue;
     seen.add(row.apns_token);
@@ -117,6 +120,9 @@ export async function notifyIncomingMessage(
         .first<{ real_name: string | null; system_display_name: string | null; display_name: string | null }>();
       title = pickName(friend);
     }
+    const account = notice.accountId
+      ? await db.prepare('SELECT name FROM line_accounts WHERE id = ?').bind(notice.accountId).first<{ name: string | null }>()
+      : null;
     const chat = await db
       .prepare('SELECT id FROM chats WHERE friend_id = ? ORDER BY created_at DESC LIMIT 1')
       .bind(notice.friendId)
@@ -125,6 +131,7 @@ export async function notifyIncomingMessage(
 
     const alert = {
       title,
+      ...(account?.name?.trim() ? { subtitle: account.name.trim() } : {}),
       body: describeMessageForPush(notice.messageType, notice.content),
       threadId: notice.friendId,
       collapseId: chatId ?? notice.friendId,

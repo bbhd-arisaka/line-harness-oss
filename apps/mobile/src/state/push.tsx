@@ -157,7 +157,10 @@ function NotificationTaps({ ready }: { ready: boolean }) {
 
   const open = useCallback(
     (response: Notifications.NotificationResponse) => {
-      const target = parseNotificationTarget(response.notification.request.content.data);
+      // 通知の中身は、content.data にあるはずだが、環境によっては trigger.payload の側にだけ入っている。両方を見る
+      const req = response.notification.request;
+      const trigger = req.trigger as { payload?: unknown } | null;
+      const target = parseNotificationTarget(req.content.data) ?? parseNotificationTarget(trigger?.payload) ?? parseNotificationTarget((trigger?.payload as { body?: unknown } | undefined)?.body);
       const cur = accRef.current;
       const plan = planNavigation(
         target,

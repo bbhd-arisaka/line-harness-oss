@@ -84,6 +84,7 @@ describe('sendApnsAlert', () => {
       aps: { alert: { title: '山田', body: 'こんにちは' }, sound: 'default', 'thread-id': 'friend-1' },
       chatId: 'chat-1',
       accountId: 'acc-1',
+      body: expect.anything(),
     });
   });
   it('sandbox は sandbox のホストへ送る', async () => {

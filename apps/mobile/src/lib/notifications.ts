@@ -54,7 +54,19 @@ export function parseNotificationTarget(data: unknown): NotificationTarget | nul
   if (!data || typeof data !== 'object') return null;
   const obj = data as Record<string, unknown>;
   const chatId = nonEmptyString(obj.friendId) ?? nonEmptyString(obj.chatId);
-  if (!chatId) return null;
+  if (!chatId) {
+    // 開き先が body の中に入っている形(サーバーは両方に入れている)
+    const inner = obj.body;
+    if (inner && typeof inner === 'object' && inner !== data) return parseNotificationTarget(inner);
+    if (typeof inner === 'string') {
+      try {
+        return parseNotificationTarget(JSON.parse(inner));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
   return { chatId, accountId: nonEmptyString(obj.accountId) };
 }
 

@@ -64,6 +64,17 @@ describe('resolvePushRecipients(宛先の絞り込み)', () => {
     const tokens = await resolvePushRecipients(db, 'A');
     expect([...tokens].sort()).toEqual(['T-allowedA', 'T-free', 'T-owner']);
   });
+  it('端末ごとに、止めている公式アカウントの通知は送らない', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner');
+    session('o', 'DEV-all');
+    session('o', 'DEV-mutedA');
+    session('o', 'DEV-mutedB');
+    sqlite.prepare("UPDATE app_sessions SET muted_account_ids = '[\"A\"]' WHERE apns_token = 'DEV-mutedA'").run();
+    sqlite.prepare("UPDATE app_sessions SET muted_account_ids = '[\"B\"]' WHERE apns_token = 'DEV-mutedB'").run();
+    expect([...(await resolvePushRecipients(db, 'A'))].sort()).toEqual(['DEV-all', 'DEV-mutedB']);
+    expect([...(await resolvePushRecipients(db, 'B'))].sort()).toEqual(['DEV-all', 'DEV-mutedA']);
+  });
   it('同じ端末は1回だけ(複数セッション・複数スタッフでも)', async () => {
     const { db, staff, session } = setup();
     staff('o1', 'owner'); staff('o2', 'owner');
@@ -97,7 +108,7 @@ describe('notifyIncomingMessage', () => {
     expect(url).toBe('https://api.push.apple.com/3/device/DEV1');
     expect(init.headers['apns-collapse-id']).toBe('chat1');
     expect(JSON.parse(init.body as string)).toMatchObject({
-      aps: { alert: { title: '山田太郎', body: '[画像]' }, 'thread-id': 'fr1' },
+      aps: { alert: { title: '山田太郎', subtitle: 'A', body: '[画像]' }, 'thread-id': 'fr1' },
       chatId: 'chat1',
       accountId: 'A',
     });
