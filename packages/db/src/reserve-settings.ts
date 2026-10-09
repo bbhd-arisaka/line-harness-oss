@@ -479,9 +479,11 @@ export interface ExternalSettings {
     connectionId: string | null;
     /** all=予約の反映もシフトへの反映も / bookings=予約をGoogleの予定に反映だけ / shift=Googleの予定をシフトに反映だけ */
     target: 'all' | 'bookings' | 'shift';
+    /** Googleカレンダーの「iCal形式の非公開URL」。予約を受け付けない時間を読むだけ(Googleの認可設定がいらない) */
+    icalUrl: string;
   };
 }
-export const defaultExternal = (): ExternalSettings => ({ google: { enabled: false, connectionId: null, target: 'all' } });
+export const defaultExternal = (): ExternalSettings => ({ google: { enabled: false, connectionId: null, target: 'all', icalUrl: '' } });
 export function parseExternal(raw: unknown): ExternalSettings {
   const g = obj(obj(raw).google);
   return {
@@ -489,6 +491,7 @@ export function parseExternal(raw: unknown): ExternalSettings {
       enabled: g.enabled === true,
       connectionId: typeof g.connectionId === 'string' && g.connectionId ? g.connectionId : null,
       target: g.target === 'bookings' || g.target === 'shift' ? g.target : 'all',
+      icalUrl: typeof g.icalUrl === 'string' && /^https:\/\/\S{1,1500}$/.test(g.icalUrl.trim()) ? g.icalUrl.trim() : '',
     },
   };
 }

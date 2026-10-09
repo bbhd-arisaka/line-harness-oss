@@ -264,7 +264,10 @@ export function ExternalConfig({ bundle, reload }: { bundle: CalendarBundle; rel
         </Row>
         {g.enabled ? (
           <>
-            <Row label="連携するGoogleカレンダー" note={conns && conns.length === 0 ? 'Googleカレンダーの接続がありません。「予約スタッフ」の画面で、スタッフにGoogleカレンダーを接続すると、ここで選べます。' : undefined}>
+            <Row label="iCal形式の非公開URL" note="Googleカレンダーの予定の時間を「予約を受け付けない時間」にするだけなら、これだけで使えます(Googleの接続設定はいりません)。Googleカレンダーの「設定 → 対象のカレンダーの設定 → カレンダーの統合」にある「iCal形式の非公開URL」を貼り付けてください。このURLを知っている人は予定を読めるので、他の人には見せないでください。">
+              <input className={`${smallInput} w-full max-w-xl`} placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" value={g.icalUrl} onChange={(e) => setG({ ...g, icalUrl: e.target.value })} />
+            </Row>
+            <Row label="連携するGoogleカレンダー(予約を予定として書き込む)" note={conns && conns.length === 0 ? '書き込みには、Googleアカウントの接続が必要です。接続がまだないため、今は選べません(Googleの予定を読むだけなら、上のiCal形式のURLで使えます)。' : undefined}>
               <select className={`${smallInput} w-80`} value={g.connectionId ?? ''} onChange={(e) => setG({ ...g, connectionId: e.target.value || null })}>
                 <option value="">-- 選んでください --</option>
                 {(conns ?? []).map((x) => <option key={x.id} value={x.id}>{x.calendarId}{x.authType === 'oauth' ? '(Googleアカウント)' : ''}</option>)}

@@ -102,4 +102,18 @@ describe('カレンダー予約 × Googleカレンダー', () => {
     const only = await setup('bookings');
     expect(await googleBusyBlocks(only.db, {}, only.cal, [], { from: '2026-10-13', to: '2026-10-13' })).toEqual([]);
   });
+  test('iCalのURLだけでも、Googleの予定の時間を受け付けない時間にできる(接続の設定はいらない)', async () => {
+    const { db, cal, slot } = await setup();
+    await saveReserveCalendarSection(db, cal, 'external', { google: { enabled: true, connectionId: null, target: 'shift', icalUrl: 'https://calendar.google.com/calendar/ical/x/private-abc/basic.ics' } });
+    const c2 = (await getReserveCalendar(db, cal.id))!;
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      return new Response(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'DTSTART;TZID=Asia/Tokyo:20261013T100000', 'DTEND;TZID=Asia/Tokyo:20261013T110000', 'END:VEVENT', 'END:VCALENDAR', ''].join('\n'), { status: 200 });
+    });
+    const blocks = await googleBusyBlocks(db, {}, c2, [slot], { from: '2026-10-13', to: '2026-10-13' });
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toMatchObject({ startsAt: '2026-10-13T10:00', endsAt: '2026-10-13T11:00' });
+    expect(urls[0]).toContain('private-abc');
+  });
 });

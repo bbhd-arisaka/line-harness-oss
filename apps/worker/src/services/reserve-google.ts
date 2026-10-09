@@ -6,6 +6,8 @@ import { getCalendarConnectionById, updateReserveBooking } from '@line-crm/db';
 import type { ReserveBooking, ReserveCalendar, ReserveSlot } from '@line-crm/db';
 import { GoogleCalendarClient } from './google-calendar.js';
 import { clientForConnection } from './booking-calendar-sync.js';
+import { fetchIcalBusy } from './ical-busy.js';
+import type { BusyInterval } from './ical-busy.js';
 import type { GoogleCalendarCredentials } from './google-oauth.js';
 
 export interface ReserveGoogleEnv {
@@ -101,13 +103,26 @@ export async function googleBusyBlocks(
   range: { from: string; to: string },
 ): Promise<ReserveBooking[]> {
   const g = calendar.external.google;
-  if (!g.enabled || !g.connectionId || g.target === 'bookings') return [];
+  if (!g.enabled || g.target === 'bookings' || (!g.connectionId && !g.icalUrl)) return [];
   try {
-    const client = await clientFor(db, env, g.connectionId);
-    if (!client) return [];
     const timeMin = new Date(`${range.from}T00:00:00+09:00`).toISOString();
     const timeMax = new Date(new Date(`${range.to}T00:00:00+09:00`).getTime() + 24 * 3600 * 1000).toISOString();
-    const busy = await client.listBusyIntervals(timeMin, timeMax, RESERVE_EVENT_PREFIX);
+    const busy: BusyInterval[] = [];
+    if (g.connectionId) {
+      try {
+        const client = await clientFor(db, env, g.connectionId);
+        if (client) busy.push(...(await client.listBusyIntervals(timeMin, timeMax, RESERVE_EVENT_PREFIX)));
+      } catch (err) {
+        console.error('[reserve] google busy (api) failed', err instanceof Error ? err.message : err);
+      }
+    }
+    if (g.icalUrl) {
+      try {
+        busy.push(...(await fetchIcalBusy(g.icalUrl, new Date(timeMin).getTime(), new Date(timeMax).getTime())));
+      } catch (err) {
+        console.error('[reserve] google busy (ical) failed', err instanceof Error ? err.message : err);
+      }
+    }
     const targets: Array<string | null> = [null, ...slots.map((s) => s.id)];
     const blocks: ReserveBooking[] = [];
     let n = 0;

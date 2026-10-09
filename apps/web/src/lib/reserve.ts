@@ -138,7 +138,7 @@ export interface FollowSettings {
   items: FollowItem[]
 }
 export interface ExternalSettings {
-  google: { enabled: boolean; connectionId: string | null; target: 'all' | 'bookings' | 'shift' }
+  google: { enabled: boolean; connectionId: string | null; target: 'all' | 'bookings' | 'shift'; icalUrl: string }
 }
 
 export interface ReserveCalendar {
