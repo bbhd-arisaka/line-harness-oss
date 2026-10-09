@@ -13,6 +13,7 @@ import { UNANSWERED_REFRESH_EVENT } from '@/lib/events'
 import { useAccount } from '@/contexts/account-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 import FlexPreviewComponent from '@/components/flex-preview'
+import FormAnswerCard from '@/components/chats/form-answer-card'
 import FriendInfoSidebar from '@/components/chats/friend-info-sidebar'
 import ImageUploader, { type ImageUploaderValue } from '@/components/shared/image-uploader'
 import { Button } from '@cloudflare/kumo/components/button'
@@ -225,6 +226,7 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
     if (msg.messageType === 'sticker') {
       return <StickerMessageImage content={msg.content} />
     }
+    if (msg.messageType === 'form_answer') return <FormAnswerCard content={msg.content} />
     return `[${msg.messageType}]`
   }
 
@@ -1234,9 +1236,12 @@ export default function ChatsPage() {
                     // 二重になる上、狭い max-w に押し込まれて崩れる。
                     // sticker はバブルに残す — 画像 404 時のテキストフォールバックが
                     // 裸だと青背景に無彩色文字で浮いてしまう (Codex Review 指摘)。
-                    const isBareContent = msg.messageType === 'flex'
+                    const isBareContent = msg.messageType === 'flex' || msg.messageType === 'form_answer'
                     let bubbleContent: React.ReactNode
-                    if (msg.messageType === 'flex') {
+                    if (msg.messageType === 'form_answer') {
+                      // フォームの回答カード(「回答結果を見る」ボタン付き)。吹き出しに包まず、カードそのものを置く
+                      bubbleContent = <FormAnswerCard content={msg.content} />
+                    } else if (msg.messageType === 'flex') {
                       bubbleContent = <FlexPreviewComponent content={msg.content} />
                     } else if (msg.messageType === 'image') {
                       try {

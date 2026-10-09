@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../state/services';
 import { useInterval } from '../state/hooks';
-import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow } from '../lib/format';
+import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow, type FormAnswerCard } from '../lib/format';
 import { STATUS_LABEL } from '../lib/format';
 import type { ChatDetail, ChatStatus } from '../lib/types';
 import { ImageViewer } from '../components/image-viewer';
@@ -58,19 +58,53 @@ const EventView = memo(function EventView({ event }: { event: EventRow }) {
   );
 });
 
+/** お客様から届いた、フォームの回答カード。ボタンで、回答結果の画面を開く */
+function FormAnswerCardView({ card, time, avatar, onOpen }: { card: FormAnswerCard; time: string; avatar: { uri: string | null; name: string; onPress: () => void }; onOpen: (card: FormAnswerCard) => void }) {
+  const c = useColors();
+  return (
+    <View style={[styles.bubbleRow, { justifyContent: 'flex-start' }]}>
+      <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} />
+      <View style={[styles.answerCard, { backgroundColor: c.card, borderColor: c.border }]}>
+        <Text selectable style={{ color: c.text, fontSize: 15, fontWeight: '700', lineHeight: 21 }}>
+          {card.title}
+        </Text>
+        {card.body ? (
+          <Text selectable style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginTop: 4 }}>
+            {card.body}
+          </Text>
+        ) : null}
+        <Pressable
+          onPress={() => onOpen(card)}
+          accessibilityRole="button"
+          accessibilityLabel={card.buttonLabel}
+          style={({ pressed }) => [styles.answerButton, { backgroundColor: c.primaryButton, opacity: pressed ? 0.8 : 1 }]}
+        >
+          <Text style={{ color: '#ffffff', fontSize: 15, fontWeight: '700' }}>{card.buttonLabel}</Text>
+        </Pressable>
+      </View>
+      <Text style={[styles.time, { color: c.textMuted }]}>{time}</Text>
+    </View>
+  );
+}
+
 const BubbleView = memo(function BubbleView({
   bubble,
   onImagePress,
+  onOpenAnswer,
   avatar,
 }: {
   bubble: Bubble;
   onImagePress: (url: string) => void;
+  onOpenAnswer: (card: FormAnswerCard) => void;
   /** 相手のアイコンの表示に使う情報(受信の吹き出しだけに付ける) */
   avatar: { uri: string | null; name: string; onPress: () => void };
 }) {
   const c = useColors();
   const out = bubble.side === 'outgoing';
   const alt = bubble.kind !== 'text';
+  if (bubble.kind === 'formAnswer' && bubble.formAnswer) {
+    return <FormAnswerCardView card={bubble.formAnswer} time={bubble.time} avatar={avatar} onOpen={onOpenAnswer} />;
+  }
   return (
     <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
       {!out ? <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} /> : null}
@@ -130,6 +164,10 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
       },
     }),
     [chat?.friendPictureUrl, chat?.friendName, chat?.friendId, router], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const openAnswer = useCallback(
+    (card: FormAnswerCard) => router.push({ pathname: '/form-answer/[submissionId]', params: { submissionId: card.submissionId, chat: id } }),
+    [router, id],
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -332,7 +370,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
               ) : item.type === 'event' ? (
                 <EventView event={item.event} />
               ) : (
-                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} avatar={avatar} />
+                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} avatar={avatar} />
               )
             }
             // inverted の末尾 = 画面の一番上
@@ -386,6 +424,8 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
 }
 
 const styles = StyleSheet.create({
+  answerCard: { width: 260, maxWidth: '78%', borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginHorizontal: 6 },
+  answerButton: { minHeight: MIN_TAP, marginTop: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   paneHeader: { minHeight: MIN_TAP + 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 16, paddingRight: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   paneTitle: { flex: 1, fontSize: 17, fontWeight: '700' },
   headerButton: { width: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },

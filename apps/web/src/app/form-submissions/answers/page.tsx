@@ -60,12 +60,15 @@ export default function FormAnswersPage() {
           setFields(typeof raw === 'string' ? (JSON.parse(raw) as FormField[]) : raw)
         }
         if (subRes.success) {
-          setSubmissions(
-            subRes.data.map((s) => ({
-              ...s,
-              data: typeof s.data === 'string' ? JSON.parse(s.data) : s.data,
-            })),
-          )
+          const list = subRes.data.map((s) => ({
+            ...s,
+            data: typeof s.data === 'string' ? JSON.parse(s.data) : s.data,
+          }))
+          setSubmissions(list)
+          // トークの「回答結果を見る」から来たときは、その回答の詳細を最初から開く
+          const target = new URLSearchParams(window.location.search).get('submission')
+          const hit = target ? list.find((x) => x.id === target) : null
+          if (hit) setDetail(hit)
         }
       } catch {
         setError('読み込みに失敗しました')

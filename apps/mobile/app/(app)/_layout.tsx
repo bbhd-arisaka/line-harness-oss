@@ -55,6 +55,7 @@ function Gate() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="chat/[id]" options={{ title: 'トーク' }} />
         <Stack.Screen name="friend/[id]" options={{ title: '友だち詳細' }} />
+        <Stack.Screen name="form-answer/[submissionId]" options={{ title: '回答結果' }} />
       </Stack.Protected>
       <Stack.Protected guard={acc.choosing}>
         <Stack.Screen name="select-account" options={{ title: 'アカウントを選ぶ', headerBackVisible: false }} />

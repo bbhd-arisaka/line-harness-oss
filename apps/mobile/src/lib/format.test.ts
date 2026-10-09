@@ -9,6 +9,8 @@ import {
   formatListTime,
   formatTime,
   messagePreview,
+  messageTypeLabel,
+  parseFormAnswerCard,
   nameInitial,
   parseApiDate,
   resolveFriendName,
@@ -221,5 +223,22 @@ describe('友だち情報・リッチメニュー', () => {
       details: ['グループ: G', 'ページ: P1', 'メニューバー: メニュー'],
     });
     expect(describeRichMenu({ id: 'r1', name: null, isDefault: true, chatBarText: null, groupName: null, pageName: null, accountId: null })).toMatchObject({ title: '(名前なし)', badge: 'デフォルト', details: [] });
+  });
+});
+
+describe('フォーム回答カード(form_answer)', () => {
+  const card = { formId: 'F1', formName: 'アンケート', submissionId: 'S1', title: 'アンケートに回答しました', body: '', buttonLabel: '回答結果を見る' };
+  const m = (content: string) => ({ id: 'm1', direction: 'incoming' as const, messageType: 'form_answer', content, createdAt: '2026-08-12T10:00:00.000+09:00' });
+  it('お客様側のカードとして、文言・ボタンを持った吹き出しになる', () => {
+    expect(toBubble(m(JSON.stringify(card)))).toMatchObject({ side: 'incoming', kind: 'formAnswer', text: 'アンケートに回答しました', formAnswer: card });
+  });
+  it('ボタンの文言が空なら既定の文言。壊れた中身は「フォーム回答」の表示になる', () => {
+    expect(parseFormAnswerCard(JSON.stringify({ ...card, buttonLabel: '' }))?.buttonLabel).toBe('回答結果を見る');
+    expect(parseFormAnswerCard('not json')).toBeNull();
+    expect(parseFormAnswerCard(JSON.stringify({ title: 'x' }))).toBeNull();
+    expect(toBubble(m('not json'))).toMatchObject({ kind: 'other', text: '[フォーム回答]' });
+  });
+  it('種類の表示名', () => {
+    expect(messageTypeLabel('form_answer')).toBe('[フォーム回答]');
   });
 });

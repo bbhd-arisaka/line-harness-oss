@@ -116,6 +116,7 @@ const TYPE_LABEL: Record<string, string> = {
   image: '[画像]',
   sticker: '[スタンプ]',
   flex: '[カード]',
+  form_answer: '[フォーム回答]',
   audio: '[音声]',
   video: '[動画]',
   file: '[ファイル]',
@@ -165,7 +166,34 @@ export function extractFlexText(content: string, maxLength = 120): string {
   return joined.length > maxLength ? `${joined.slice(0, maxLength)}…` : joined;
 }
 
-export type BubbleKind = 'text' | 'image' | 'sticker' | 'flex' | 'other';
+export type BubbleKind = 'text' | 'image' | 'sticker' | 'flex' | 'formAnswer' | 'other';
+
+/** トークに残る「回答結果を見る」カード(サーバーが決めた文言) */
+export interface FormAnswerCard {
+  formId: string;
+  formName: string;
+  submissionId: string;
+  title: string;
+  body: string;
+  buttonLabel: string;
+}
+
+export function parseFormAnswerCard(content: string): FormAnswerCard | null {
+  try {
+    const v = JSON.parse(content) as Partial<FormAnswerCard> | null;
+    if (!v || typeof v.formId !== 'string' || typeof v.submissionId !== 'string') return null;
+    return {
+      formId: v.formId,
+      formName: typeof v.formName === 'string' ? v.formName : '',
+      submissionId: v.submissionId,
+      title: typeof v.title === 'string' ? v.title : '',
+      body: typeof v.body === 'string' ? v.body : '',
+      buttonLabel: typeof v.buttonLabel === 'string' && v.buttonLabel ? v.buttonLabel : '回答結果を見る',
+    };
+  } catch {
+    return null;
+  }
+}
 
 export interface Bubble {
   id: string;
@@ -177,6 +205,8 @@ export interface Bubble {
   imageUrl: string | null;
   /** 拡大表示用の元画像の URL(取れなければ imageUrl と同じ) */
   fullImageUrl?: string | null;
+  /** kind が formAnswer のとき、カードの内容 */
+  formAnswer?: FormAnswerCard;
   time: string;
   createdAt: string;
 }
@@ -213,6 +243,11 @@ export function toBubble(m: ChatMessage): Bubble {
     case 'flex': {
       const summary = extractFlexText(m.content);
       return { ...base, kind: 'flex', text: summary ? `[カード] ${summary}` : '[カード]', imageUrl: null };
+    }
+    case 'form_answer': {
+      const card = parseFormAnswerCard(m.content);
+      if (!card) return { ...base, kind: 'other', text: '[フォーム回答]', imageUrl: null };
+      return { ...base, kind: 'formAnswer', text: card.title || '[フォーム回答]', imageUrl: null, formAnswer: card };
     }
     default:
       return { ...base, kind: 'other', text: messageTypeLabel(m.messageType) || '[メッセージ]', imageUrl: null };

@@ -35,6 +35,17 @@ export interface LineAccount {
   stats?: { friendCount: number; activeScenarios: number; messagesThisMonth: number };
 }
 
+/** GET /api/chats/:id/form-answers/:submissionId: フォームの回答結果 */
+export interface FormAnswerDetail {
+  submissionId: string;
+  formId: string;
+  formName: string;
+  friendId: string;
+  friendName: string;
+  answeredAt: string;
+  items: { label: string; value: string; isFile?: boolean }[];
+}
+
 /** GET /api/app/push-settings: この端末の通知設定。通知の種類の一覧(kinds)はサーバーが返す */
 export interface PushSettings {
   mutedAccountIds: string[];

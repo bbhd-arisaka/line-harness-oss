@@ -78,6 +78,55 @@ export interface FormLstepOptions {
    * - custom  : 自分で書いた文章を送る(forms.on_submit_message_* を使用)
    */
   answerMessage?: { mode: 'none' | 'summary' | 'custom'; title?: string };
+  /**
+   * 回答があったとき、トークに「お客様から届いたカード」(回答結果を見るボタン付き)を出す設定。
+   * お客様には何も送らない(トークの履歴に、お客様側のメッセージとして残るだけ)。スタッフはWeb版・アプリで回答結果を開ける。
+   * title / body には {{name}}(お客様の名前)・{{form}}(フォーム名)が使える。
+   */
+  answerCard?: AnswerCardSettings;
+}
+
+export interface AnswerCardSettings {
+  enabled?: boolean;
+  title?: string;
+  body?: string;
+  buttonLabel?: string;
+}
+
+/** 回答カードの、文言を決めたあとの形(トークの履歴に保存する内容) */
+export interface AnswerCardContent {
+  formId: string;
+  formName: string;
+  submissionId: string;
+  title: string;
+  body: string;
+  buttonLabel: string;
+}
+
+export const DEFAULT_ANSWER_CARD_TITLE = '{{form}}に回答しました';
+export const DEFAULT_ANSWER_CARD_BUTTON = '回答結果を見る';
+
+/** {{name}} と {{form}} を置き換える(知らない {{...}} はそのまま) */
+export function expandAnswerCardText(text: string, vars: { name: string; form: string }): string {
+  return text.replace(/\{\{\s*(name|form)\s*\}\}/g, (_m, key: 'name' | 'form') => vars[key]);
+}
+
+/**
+ * フォームの設定から、トークに出すカードの内容を作る。オフ(または未設定)なら null。
+ * 文言が空のときは既定の文言にする。長すぎる文言は切る。
+ */
+export function buildAnswerCardContent(
+  lstepOptionsRaw: string | null | undefined,
+  ctx: { formId: string; formName: string; submissionId: string; friendName: string },
+): AnswerCardContent | null {
+  const card = parseFormLstepOptions(lstepOptionsRaw).answerCard;
+  if (!card || card.enabled !== true) return null;
+  const vars = { name: ctx.friendName, form: ctx.formName };
+  const clip = (t: string, n: number) => Array.from(t.trim()).slice(0, n).join('');
+  const title = clip(expandAnswerCardText(card.title?.trim() ? card.title : DEFAULT_ANSWER_CARD_TITLE, vars), 100);
+  const body = clip(expandAnswerCardText(card.body ?? '', vars), 300);
+  const buttonLabel = clip(card.buttonLabel?.trim() ? card.buttonLabel : DEFAULT_ANSWER_CARD_BUTTON, 20);
+  return { formId: ctx.formId, formName: ctx.formName, submissionId: ctx.submissionId, title, body, buttonLabel };
 }
 
 export function parseFormLstepOptions(raw: string | null | undefined): FormLstepOptions {

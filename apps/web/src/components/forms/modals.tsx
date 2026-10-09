@@ -210,6 +210,57 @@ export function OptionModal({
             )
           })()}
         </Sub>
+        <Sub label="トークの回答結果カード">
+          <label className={check}>
+            <input
+              type="checkbox"
+              checked={l.answerCard?.enabled === true}
+              onChange={(e) => setL({ answerCard: { ...l.answerCard, enabled: e.target.checked } })}
+            />
+            回答があったら、トークに「回答結果を見る」カードを出す
+          </label>
+          <p className="text-[11px] text-[#757578]">
+            お客様から届いたメッセージとして、トークに残ります(お客様には何も送りません)。ボタンから、Web版・アプリで回答結果を開けます。
+          </p>
+          {l.answerCard?.enabled === true && (
+            <div className="space-y-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
+              <div>
+                <p className="mb-1 text-xs text-[#757578]">見出し</p>
+                <input
+                  className={input}
+                  maxLength={100}
+                  placeholder="{{form}}に回答しました"
+                  value={l.answerCard?.title ?? ''}
+                  onChange={(e) => setL({ answerCard: { ...l.answerCard, title: e.target.value } })}
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-[#757578]">説明(空でも構いません)</p>
+                <textarea
+                  rows={3}
+                  maxLength={300}
+                  className="w-full rounded border border-[#cacace] px-3 py-2 text-sm outline-none focus:border-[#069e04]"
+                  placeholder={'{{name}}さんからフォームの回答が届きました'}
+                  value={l.answerCard?.body ?? ''}
+                  onChange={(e) => setL({ answerCard: { ...l.answerCard, body: e.target.value } })}
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-[#757578]">ボタンの文言</p>
+                <input
+                  className={`${input} max-w-[14rem]`}
+                  maxLength={20}
+                  placeholder="回答結果を見る"
+                  value={l.answerCard?.buttonLabel ?? ''}
+                  onChange={(e) => setL({ answerCard: { ...l.answerCard, buttonLabel: e.target.value } })}
+                />
+              </div>
+              <p className="text-[11px] text-[#757578]">
+                {'{{name}} はお客様の名前、{{form}} はフォーム名に置き換わります。空欄のところは、上の例の文言になります。'}
+              </p>
+            </div>
+          )}
+        </Sub>
         <Sub label="2回目以降の回答">
           <label className={check}>
             <input type="checkbox" checked={d.restorePreviousAnswer} onChange={(e) => set({ restorePreviousAnswer: e.target.checked })} />

@@ -67,3 +67,18 @@ describe('GET /api/chats: フォーム回答の表示', () => {
     expect(rows[2]).toMatchObject({ lastMessageContent: '返信', lastMessageDirection: 'outgoing' });
   });
 });
+
+describe('GET /api/chats: 回答結果を見るカードの表示', () => {
+  test('カードは一覧では、見出しの文(通常の受信メッセージ)として出る', async () => {
+    const { db, sqlite } = sqliteD1();
+    sqlite.exec(schema);
+    sqlite.exec(`INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret) VALUES('A','ca','A','t','s')`);
+    sqlite.exec(`INSERT INTO friends(id,line_user_id,line_account_id,display_name) VALUES('f1','u1','A','one')`);
+    sqlite.exec(`INSERT INTO messages_log(id,friend_id,direction,message_type,content,source,created_at) VALUES('m1','f1','incoming','form_answer','{"title":"アンケートに回答しました","body":"","buttonLabel":"回答結果を見る"}','form','2026-08-12T10:00:00.000+09:00')`);
+    const app = new Hono();
+    app.route('/', chats);
+    const res = await app.request(new Request('http://worker.test/api/chats?lineAccountId=A'), {}, { DB: db } as never);
+    const rows = ((await res.json()) as { data: Row[] }).data;
+    expect(rows[0]).toMatchObject({ lastMessageContent: 'アンケートに回答しました', lastMessageType: 'text', lastMessageDirection: 'incoming' });
+  });
+});

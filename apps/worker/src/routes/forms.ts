@@ -941,7 +941,15 @@ forms.post('/api/forms/:id/submit', async (c) => {
     await notifyEvent(c.env.DB, { accountId: null, timing: 'form_answered', friendId, formId, detail: `フォーム「${form.name}」に回答がありました` });
 
     // トークを上に持ってきて未読にし、アプリの端末にも通知する(お客様から連絡が来たときと同じ扱い)
-    await handleFormAnswered(c.env, c.env.DB, optionalExecutionCtx(c), { friendId, accountId: friend.line_account_id ?? null, formName: form.name });
+    await handleFormAnswered(c.env, c.env.DB, optionalExecutionCtx(c), {
+      friendId,
+      accountId: friend.line_account_id ?? null,
+      formName: form.name,
+      formId,
+      submissionId: submission.id,
+      lstepOptions: form.lstep_options,
+      friendName: friend.real_name?.trim() || friend.display_name,
+    });
 
     // Side effects (best-effort, don't fail the request)
     {

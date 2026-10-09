@@ -44,3 +44,36 @@ describe('handleFormAnswered(フォーム回答 = お客様からの連絡と同
     expect(waitUntil).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('回答結果を見るカード(フォームの設定でオンのとき)', () => {
+  const base = { friendId: 'fr1', accountId: 'A', formName: 'ご予約アンケート', formId: 'F1', submissionId: 'S1', friendName: '山田' };
+  const cards = (sqlite: ReturnType<typeof setup>['sqlite']) =>
+    sqlite.prepare("SELECT direction, message_type, content, source, line_account_id FROM messages_log WHERE friend_id = 'fr1'").all() as {
+      direction: string; message_type: string; content: string; source: string; line_account_id: string;
+    }[];
+
+  it('オンなら、お客様から届いたメッセージとして、文言を決めたカードが残る(お客様には何も送らない)', async () => {
+    const { db, sqlite } = setup();
+    const lstepOptions = JSON.stringify({ answerCard: { enabled: true, title: '{{name}}さんが回答', body: '{{form}}', buttonLabel: '開く' } });
+    await handleFormAnswered({}, db, undefined, { ...base, lstepOptions });
+    const rows = cards(sqlite);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ direction: 'incoming', message_type: 'form_answer', source: 'form', line_account_id: 'A' });
+    expect(JSON.parse(rows[0].content)).toEqual({ formId: 'F1', formName: 'ご予約アンケート', submissionId: 'S1', title: '山田さんが回答', body: 'ご予約アンケート', buttonLabel: '開く' });
+  });
+  it('オフ・未設定なら、カードは残さない(トークは上に来る)', async () => {
+    const { db, sqlite } = setup();
+    await handleFormAnswered({}, db, undefined, { ...base, lstepOptions: JSON.stringify({ answerCard: { enabled: false } }) });
+    await handleFormAnswered({}, db, undefined, { ...base, lstepOptions: null });
+    expect(cards(sqlite)).toHaveLength(0);
+    expect(sqlite.prepare("SELECT status FROM chats WHERE friend_id = 'fr1'").get()).toBeDefined();
+  });
+  it('カードの保存に失敗しても、トークの更新は行う', async () => {
+    const { db, sqlite } = setup();
+    sqlite.exec('DROP TABLE messages_log');
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await handleFormAnswered({}, db, undefined, { ...base, lstepOptions: JSON.stringify({ answerCard: { enabled: true } }) });
+    err.mockRestore();
+    expect(sqlite.prepare("SELECT status FROM chats WHERE friend_id = 'fr1'").get()).toBeDefined();
+  });
+});

@@ -364,6 +364,8 @@ export interface LstepOptions {
   backgroundImageOpacity?: number
   thanksText?: string
   answerMessage?: { mode: 'none' | 'summary' | 'custom'; title?: string }
+  /** 回答があったとき、トークに出す「回答結果を見る」カード(お客様には送らない)の設定 */
+  answerCard?: { enabled?: boolean; title?: string; body?: string; buttonLabel?: string }
 }
 
 export interface FormDraft {

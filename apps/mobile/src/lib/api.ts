@@ -3,6 +3,7 @@ import type {
   ChatDetail,
   ChatStatus,
   ChatSummary,
+  FormAnswerDetail,
   FriendDetail,
   FriendFieldDefinition,
   FriendPage,
@@ -143,6 +144,9 @@ export function createApiClient(options: ApiClientOptions) {
         },
       }),
     getChat: (id: string) => request<ChatDetail>('GET', `/api/chats/${encodeURIComponent(id)}`),
+    /** トークの「回答結果を見る」カードから開く、フォームの回答結果 */
+    getFormAnswer: (chatId: string, submissionId: string) =>
+      request<FormAnswerDetail>('GET', `/api/chats/${encodeURIComponent(chatId)}/form-answers/${encodeURIComponent(submissionId)}`),
     sendChatText: (id: string, content: string) =>
       request<{ sent: boolean; messageId: string }>('POST', `/api/chats/${encodeURIComponent(id)}/send`, {
         body: { messageType: 'text', content },

@@ -23,6 +23,7 @@ import {
 import { invalidateUnansweredCache } from '../services/unanswered-inbox.js';
 import type { Env } from '../index.js';
 import { isDemoLineUserId } from '../services/demo-friend.js';
+import { buildAnswerItems } from '../services/form-answer-items.js';
 
 const chats = new Hono<Env>();
 
@@ -312,8 +313,12 @@ chats.get('/api/chats', async (c) => {
       ),
       any_agg AS (
         SELECT friend_id,
-          CASE WHEN message_type = 'text' THEN SUBSTR(content, 1, 200) ELSE NULL END AS content,
-          direction, message_type,
+          CASE WHEN message_type = 'text' THEN SUBSTR(content, 1, 200)
+               WHEN message_type = 'form_answer' THEN SUBSTR(json_extract(content, '$.title'), 1, 200)
+               ELSE NULL END AS content,
+          direction,
+          -- 「回答結果を見る」カードは、一覧では普通の文(カードの見出し)として出す
+          CASE WHEN message_type = 'form_answer' THEN 'text' ELSE message_type END AS message_type,
           MAX(created_at) AS created_at
         FROM messages_log
         WHERE (delivery_type IS NULL OR delivery_type != 'test')
@@ -500,6 +505,45 @@ chats.get('/api/chats/:id', async (c) => {
     });
   } catch (err) {
     console.error('GET /api/chats/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// トークの「回答結果を見る」カードから開く、フォームの回答結果(Web版・アプリ共通)。
+// :id は、チャットID または 友だちID。その友だちの回答だけを返す(他の友だちの回答は見せない)。
+// アカウント権限は、/api/chats/:id/* として accountAccessGuard が確認する。
+chats.get('/api/chats/:id/form-answers/:submissionId', async (c) => {
+  try {
+    const rawId = c.req.param('id');
+    const submissionId = c.req.param('submissionId');
+    const chatRow = await c.env.DB.prepare('SELECT friend_id FROM chats WHERE id = ?').bind(rawId).first<{ friend_id: string }>();
+    const friendId = chatRow?.friend_id ?? rawId;
+    const sub = await c.env.DB
+      .prepare(
+        `SELECT s.id, s.form_id, s.friend_id, s.data, s.created_at, f.name AS form_name, f.fields AS form_fields,
+                fr.display_name, fr.real_name, fr.system_display_name
+           FROM form_submissions s
+           INNER JOIN forms f ON f.id = s.form_id
+           LEFT JOIN friends fr ON fr.id = s.friend_id
+          WHERE s.id = ? AND s.friend_id = ?`,
+      )
+      .bind(submissionId, friendId)
+      .first<{ id: string; form_id: string; friend_id: string; data: string; created_at: string; form_name: string; form_fields: string | null; display_name: string | null; real_name: string | null; system_display_name: string | null }>();
+    if (!sub) return c.json({ success: false, error: '回答が見つかりません' }, 404);
+    return c.json({
+      success: true,
+      data: {
+        submissionId: sub.id,
+        formId: sub.form_id,
+        formName: sub.form_name,
+        friendId: sub.friend_id,
+        friendName: sub.real_name?.trim() || sub.system_display_name?.trim() || sub.display_name || '名前なし',
+        answeredAt: sub.created_at,
+        items: buildAnswerItems(sub.form_fields, sub.data),
+      },
+    });
+  } catch (err) {
+    console.error('GET /api/chats/:id/form-answers/:submissionId error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });
