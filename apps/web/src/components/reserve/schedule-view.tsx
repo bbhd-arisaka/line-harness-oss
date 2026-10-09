@@ -56,9 +56,8 @@ export default function ScheduleView({ bundle, reload, initialView, initialDate 
   const accountId = calendar.lineAccountId
 
   return (
-    <div className="px-5 py-5">
+    <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h2 className="text-2xl font-bold tracking-tight text-gray-900">予約</h2>
         <div className="inline-flex overflow-hidden rounded-lg border border-gray-300 shadow-sm">
           {([['day', '日', RowsIcon], ['month', '月', CalendarBlankIcon], ['list', 'リスト', ListIcon]] as const).map(([v, label, Icon]) => (
             <button key={v} type="button" onClick={() => setView(v)} className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm ${view === v ? 'bg-emerald-600 font-semibold text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>

@@ -69,20 +69,19 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
   const move = (dir: -1 | 1) => setDate((d) => (view === 'month' ? addMonthsStr(d, dir) : addDaysStr(d, view === 'week' ? dir * 7 : dir)))
 
   return (
-    <div className="px-4 py-4">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h2 className="text-xl font-semibold text-gray-900">シフト</h2>
-        <div className="inline-flex overflow-hidden rounded border border-gray-300">
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="inline-flex overflow-hidden rounded-lg border border-gray-300 shadow-sm">
           {([['day', '日'], ['week', '週'], ['month', '月'], ['list', 'リスト']] as const).map(([v, label]) => (
-            <button key={v} type="button" onClick={() => setView(v)} className={`px-3 py-1.5 text-sm ${view === v ? 'bg-gray-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>{label}</button>
+            <button key={v} type="button" onClick={() => setView(v)} className={`px-3 py-1.5 text-sm ${view === v ? 'bg-emerald-600 font-semibold text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>{label}</button>
           ))}
         </div>
         {view !== 'list' ? (
-          <div className="inline-flex">
-            <button type="button" className={`${toolBtn} rounded-l`} onClick={() => move(-1)} aria-label="前へ"><CaretLeftIcon size={14} /></button>
+          <div className="inline-flex shadow-sm">
+            <button type="button" className={`${toolBtn} rounded-l-lg`} onClick={() => move(-1)} aria-label="前へ"><CaretLeftIcon size={14} /></button>
             <button type="button" className={`${toolBtn} border-l-0`} onClick={() => setDate(todayJst())}>今日</button>
             <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className={`${toolBtn} w-40 border-l-0`} aria-label="日付" />
-            <button type="button" className={`${toolBtn} rounded-r border-l-0`} onClick={() => move(1)} aria-label="次へ"><CaretRightIcon size={14} /></button>
+            <button type="button" className={`${toolBtn} rounded-r-lg border-l-0`} onClick={() => move(1)} aria-label="次へ"><CaretRightIcon size={14} /></button>
           </div>
         ) : null}
         <button type="button" className={`${pinkBtn} ml-auto`} onClick={() => setDialog({ preset: { date } })}>＋ 新規シフト</button>
