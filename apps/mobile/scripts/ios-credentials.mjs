@@ -9,8 +9,7 @@
 //   BUNDLE_ID        ... 例: jp.cms-manager.beyondline
 //   OUT_DIR          ... 書き出し先(既定 ./.ios-credentials)
 //
-// 古い配布用証明書: チームの配布用証明書は最大3つまで。多いときは、いちばん古いものを失効させて枠を空ける
-// (すでに App Store に出ているアプリには影響しない)。
+// 配布用証明書: チームに1つだけ持てるので、毎回、古いものを失効させてから作り直す。
 import { createPrivateKey, createSign, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -65,12 +64,12 @@ const csrFile = join(outDir, 'dist.csr');
 sh('openssl', ['req', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyFile, '-out', csrFile, '-subj', '/CN=beyond line distribution/O=BEYOND BEAUTY HOLDING K.K./C=JP']);
 
 // 2) 配布用証明書の枠を確保して、作る
+// Apple は、チームに有効な「iOS配布用証明書」を1つしか持たせない。毎回の署名の材料は、このスクリプトが作り直すので、
+// 既存のものは失効させる(すでに App Store に出ているアプリには影響しない。新しい証明書とプロファイルで署名し直すだけ)。
 const certs = await api('GET', '/v1/certificates?filter[certificateType]=IOS_DISTRIBUTION&limit=50');
-const existing = certs.data ?? [];
-if (existing.length >= 3) {
-  const oldest = [...existing].sort((a, b) => String(a.attributes.expirationDate).localeCompare(String(b.attributes.expirationDate)))[0];
-  console.log(`配布用証明書が ${existing.length} 個あるため、いちばん古い1つを失効させます(${oldest.id})`);
-  await api('DELETE', `/v1/certificates/${oldest.id}`);
+for (const old of certs.data ?? []) {
+  console.log(`既存の配布用証明書を失効させます(${old.id})`);
+  await api('DELETE', `/v1/certificates/${old.id}`);
 }
 const created = await api('POST', '/v1/certificates', {
   data: { type: 'certificates', attributes: { certificateType: 'IOS_DISTRIBUTION', csrContent: readFileSync(csrFile, 'utf8') } },
