@@ -1,9 +1,10 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme, View } from 'react-native';
+import { useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth, useRestoreSession } from '../src/state/session';
 import { LoadingView } from '../src/components/ui';
+import { contentMaxWidth } from '../src/lib/layout';
 import { useColors } from '../src/theme/theme';
 
 function Navigator() {
@@ -31,12 +32,27 @@ function Navigator() {
   );
 }
 
+/** iPad など広い画面では、中身を読みやすい幅にして中央に置く(iPhone はそのまま) */
+function Frame({ children }: { children: React.ReactNode }) {
+  const { width } = useWindowDimensions();
+  const c = useColors();
+  const max = contentMaxWidth(width);
+  if (max === null) return <>{children}</>;
+  return (
+    <View style={{ flex: 1, alignItems: 'center', backgroundColor: c.chatBackground }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: max, backgroundColor: c.background, borderLeftWidth: 1, borderRightWidth: 1, borderColor: c.border }}>{children}</View>
+    </View>
+  );
+}
+
 export default function RootLayout() {
   const scheme = useColorScheme();
   return (
     <SafeAreaProvider>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Navigator />
+      <Frame>
+        <Navigator />
+      </Frame>
     </SafeAreaProvider>
   );
 }
