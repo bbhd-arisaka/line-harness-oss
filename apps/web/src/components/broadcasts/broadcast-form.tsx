@@ -1,6 +1,7 @@
 'use client'
 
 import { MessageBodyField } from '@/components/ui/message-body-field'
+import { TaggedText } from '@/components/forms/tagged-text'
 import { useEffect, useRef, useState } from 'react'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Button } from '@cloudflare/kumo/components/button'
@@ -191,7 +192,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
                 items={linkableEvents.map((event) => ({ value: event.id, label: `${event.name} (${event.target_type === 'multi-account-dedup' ? 'multi' : 'single'})` }))}
               />
               <p className="mt-1 text-xs text-kumo-subtle">
-                選ぶと本文末尾にテンプレ URL を挿入。{'{{liff_id}}'} は配信時に各友だちのアカに対応した値に自動置換されます。
+                選ぶと本文末尾にテンプレ URL を挿入。<TaggedText text="{{liff_id}}" /> は配信時に各友だちのアカに対応した値に自動置換されます。
               </p>
             </div>
           )}

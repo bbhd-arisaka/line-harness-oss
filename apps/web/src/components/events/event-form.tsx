@@ -17,6 +17,7 @@ import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
 import { Table } from '@cloudflare/kumo/components/table'
+import { TaggedText } from '@/components/forms/tagged-text'
 
 type Tab = 'overview' | 'slots' | 'publish'
 
@@ -288,7 +289,7 @@ export default function EventForm({ accountId, eventId }: EventFormProps) {
                 </div>
                 <p className="text-xs text-blue-700 mt-2">
                   broadcast 編集で「リンクするイベント」から選ぶと自動挿入。
-                  {'{{liff_id}}'} は配信時に各友だちのアカに対応した値に置換されます。
+                  <TaggedText text="{{liff_id}}" /> は配信時に各友だちのアカに対応した値に置換されます。
                 </p>
               </div>
               <div>

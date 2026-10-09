@@ -301,7 +301,7 @@ export default function FormListPage() {
                       <button
                         type="button"
                         title={`${formTagCode(f.id)}(クリックでコピー)`}
-                        className="max-w-full truncate rounded border border-[#2b7bb9] bg-[#eef6ff] px-1.5 py-0.5 text-left font-mono text-[11px] text-[#1d5f92]"
+                        className="max-w-full truncate rounded border border-[#2b7bb9] bg-[#eef6ff] px-1.5 py-0.5 text-left text-[11px] text-[#1d5f92]"
                         onClick={() => {
                           void navigator.clipboard.writeText(formTagCode(f.id)).then(() => {
                             setCopiedTagId(f.id)
@@ -309,7 +309,7 @@ export default function FormListPage() {
                           })
                         }}
                       >
-                        {copiedTagId === f.id ? 'コピーしました' : `{{form_url:${f.id.slice(0, 6)}…}}`}
+                        {copiedTagId === f.id ? 'コピーしました' : 'フォームのタグをコピー'}
                       </button>
                     </span>
                     <span className="text-xs">{f.googleSheetsEnabled ? '連携中' : '-'}</span>

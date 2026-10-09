@@ -8,6 +8,7 @@ import { Input } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
 import { AdvancedSearchDialog } from '@/components/friends/advanced-search-dialog'
 import { EmojiPicker } from '@/components/rich-menus/emoji-picker'
+import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
 import { describeFilter, emptyFilter, isFilterEmpty } from '@/lib/friend-filter'
 import type { DescribeContext } from '@/lib/friend-filter'
 import {
@@ -412,7 +413,7 @@ function TimingEditor({ value, onChange }: { value: FriendAddTimingItem | undefi
 
 /** メッセージ入力。名前・友だち情報などの差し込みと絵文字を、カーソルの位置に入れられる。 */
 function MessageEditor({ value, onChange, lookups }: { value: string; onChange: (v: string) => void; lookups: ModalLookups }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
+  const ref = useRef<TagTextEditorHandle>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [history, setHistory] = useState<{ stack: string[]; at: number }>({ stack: [value], at: 0 })
 
@@ -426,18 +427,18 @@ function MessageEditor({ value, onChange, lookups }: { value: string; onChange: 
     setHistory({ ...history, at })
     onChange(history.stack[at])
   }
+  /**
+   * 【タグコードは枠にして入れる】
+   * {{name}} などを文字のまま入れると、1文字でも消すと効かなくなる。
+   * 入力欄に枠として入れる（入れたあとの文字列は commit へ流れる）。
+   */
   const insert = (text: string) => {
-    const el = ref.current
-    const start = el?.selectionStart ?? value.length
-    const end = el?.selectionEnd ?? value.length
-    commit(value.slice(0, start) + text + value.slice(end))
-    const pos = start + text.length
-    requestAnimationFrame(() => {
-      el?.focus()
-      el?.setSelectionRange(pos, pos)
-    })
+    if (text.startsWith('{{') && text.endsWith('}}')) ref.current?.insertTag(text)
+    else ref.current?.insertText(text)
   }
   const length = [...value].length
+  /** 「友だち情報：本名」のように、枠に友だち情報欄の名前を出す */
+  const fieldLabels = useMemo(() => new Map(lookups.fields.map((f) => [f.fieldKey, f.label])), [lookups.fields])
 
   const mini = 'inline-flex h-7 items-center rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 hover:bg-gray-50'
   return (
@@ -485,13 +486,15 @@ function MessageEditor({ value, onChange, lookups }: { value: string; onChange: 
         </button>
       </div>
       {emojiOpen ? <EmojiPicker onPick={(e) => insert(e)} /> : null}
-      <textarea
+      <TagTextEditor
         ref={ref}
         value={value}
-        onChange={(e) => commit(e.target.value)}
+        onChange={commit}
         rows={8}
+        maxHeight={360}
+        fieldLabels={fieldLabels}
         aria-label="メッセージ"
-        className="w-full rounded border border-gray-300 p-2 text-sm"
+        className="w-full rounded border border-gray-300 p-2 text-sm leading-7"
       />
       <p className={`text-right text-xs ${length > TEXT_LIMIT ? 'text-red-600' : 'text-gray-500'}`}>
         {length}/{TEXT_LIMIT}

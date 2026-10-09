@@ -1,17 +1,28 @@
 'use client'
 
-import { splitFormTags } from '@/lib/form-tags'
+import { splitTags, variableLabel, variableChipClass } from '@/lib/form-tags'
 import { displayFormName } from '@/app/form-submissions/form-list'
 import { useForms } from './use-form-names'
 
-/** 文章の中のフォームのタグコードを、青い枠の「フォーム：○○」にして表示する(読み取り専用)。 */
-export function TaggedText({ text }: { text: string }) {
+/**
+ * 文章の中のタグコードを、枠にして表示する(読み取り専用)。
+ *   - フォームのタグコード → 青い枠の「フォーム：○○」
+ *   - 差し込み語({{name}}など) → 色付きの枠の日本語名
+ */
+export function TaggedText({ text, fieldLabels }: { text: string; fieldLabels?: ReadonlyMap<string, string> }) {
   const { forms, loaded } = useForms()
-  if (!text.includes('{{form_url:')) return <>{text}</>
+  if (!text.includes('{{')) return <>{text}</>
   return (
     <>
-      {splitFormTags(text).map((part, i) => {
+      {splitTags(text).map((part, i) => {
         if ('text' in part) return <span key={i}>{part.text}</span>
+        if ('variable' in part) {
+          return (
+            <span key={i} className={variableChipClass(part.variable)}>
+              {variableLabel(part.variable, fieldLabels)}
+            </span>
+          )
+        }
         const name = forms.find((f) => f.id === part.formId)?.name
         return (
           <span

@@ -3,6 +3,9 @@
 import { useRef, useState } from 'react'
 import type { Area } from './canvas-editor'
 import { EmojiPicker } from './emoji-picker'
+import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
+import { TagInsertBar } from '@/components/ui/tag-insert-bar'
+import { TaggedText } from '@/components/forms/tagged-text'
 
 type PageOption = { id: string; name: string }
 
@@ -83,6 +86,7 @@ function TextAreaWithEmoji({
   rows,
   placeholder,
   overLimitNote,
+  tags,
 }: {
   id: string
   label: string
@@ -92,13 +96,20 @@ function TextAreaWithEmoji({
   rows: number
   placeholder: string
   overLimitNote: string
+  /** 差し込み語({{name}}など)を入れられる欄にする。入れた語は枠で表示する */
+  tags?: { code: string; label: string }[]
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const tagRef = useRef<TagTextEditorHandle>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const length = [...value].length
 
   // 絵文字は、カーソルの位置(選択している文字があれば置き換え)に入れる
   const insertEmoji = (emoji: string) => {
+    if (tags) {
+      tagRef.current?.insertText(emoji)
+      return
+    }
     const el = ref.current
     const start = el?.selectionStart ?? value.length
     const end = el?.selectionEnd ?? value.length
@@ -123,15 +134,31 @@ function TextAreaWithEmoji({
           <span aria-hidden>😊</span> 絵文字
         </button>
       </div>
-      <textarea
-        id={id}
-        ref={ref}
-        rows={rows}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="mt-0.5 block w-full resize-y border border-gray-300 rounded px-2 py-1 text-sm leading-relaxed"
-      />
+      {tags ? (
+        <>
+          <TagTextEditor
+            ref={tagRef}
+            rows={rows}
+            maxHeight={rows * 28}
+            aria-label={label}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className="mt-0.5 block w-full border border-gray-300 rounded px-2 py-1 text-sm leading-7"
+          />
+          <TagInsertBar editorRef={tagRef} tags={tags} />
+        </>
+      ) : (
+        <textarea
+          id={id}
+          ref={ref}
+          rows={rows}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="mt-0.5 block w-full resize-y border border-gray-300 rounded px-2 py-1 text-sm leading-relaxed"
+        />
+      )}
       {emojiOpen && <EmojiPicker onPick={insertEmoji} />}
       <p className={`mt-1 text-[11px] ${length > limit ? 'text-red-600' : 'text-gray-500'}`}>
         {length.toLocaleString()}/{limit.toLocaleString()}文字{length > limit ? `(${overLimitNote})` : ''}
@@ -220,9 +247,10 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
             rows={8}
             placeholder={'ボタンを押したお客様に、店舗から送られる文章(Enterで改行できます)'}
             overLimitNote="上限を超えています。公開できません"
+            tags={[{ code: '{{name}}', label: '名前' }]}
           />
           <p className="text-[11px] text-gray-500">
-            ボタンを押すと、お客様の発言としては表示されず、店舗からこの文章が届きます。{'{{name}}'} でお客様の名前を入れられます。
+            ボタンを押すと、お客様の発言としては表示されず、店舗からこの文章が届きます。<TaggedText text="{{name}}" /> でお客様の名前を入れられます。
           </p>
         </div>
       )}

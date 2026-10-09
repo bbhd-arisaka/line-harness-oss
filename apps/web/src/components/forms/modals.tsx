@@ -1,6 +1,10 @@
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
+import { useRef } from 'react'
+import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
+import { TagInsertBar } from '@/components/ui/tag-insert-bar'
+import { TaggedText } from './tagged-text'
 import { Modal as SharedModal } from '@/components/ui/modal'
 import type { FormDraft, LstepOptions } from './editor-types'
 
@@ -83,6 +87,10 @@ export function OptionModal({
   const set = (patch: Partial<FormDraft>) => setD((prev) => ({ ...prev, ...patch }))
   const setL = (patch: Partial<LstepOptions>) => setD((prev) => ({ ...prev, lstep: { ...prev.lstep, ...patch } }))
   const l = d.lstep
+  /** 差し込みボタンが、いま選んでいる入力欄へ入れられるようにする */
+  const answerMessageRef = useRef<TagTextEditorHandle>(null)
+  const cardTitleRef = useRef<TagTextEditorHandle>(null)
+  const cardBodyRef = useRef<TagTextEditorHandle>(null)
 
   return (
     <ModalFrame
@@ -196,14 +204,19 @@ export function OptionModal({
                   </p>
                 ) : (
                   <div>
-                    <textarea
+                    <TagTextEditor
+                      ref={answerMessageRef}
                       rows={4}
-                      className="w-full rounded border border-[#cacace] px-3 py-2 text-sm outline-none focus:border-[#069e04]"
-                      placeholder={'{{name}}さん、ご回答ありがとうございました!'}
+                      aria-label="回答後メッセージ"
+                      className="w-full rounded border border-[#cacace] px-3 py-2 text-sm leading-7 outline-none focus:border-[#069e04]"
+                      placeholder="例: ご回答ありがとうございました!"
                       value={d.onSubmitMessageContent}
-                      onChange={(e) => set({ onSubmitMessageContent: e.target.value })}
+                      onChange={(v) => set({ onSubmitMessageContent: v })}
                     />
-                    <p className="mt-1 text-[11px] text-[#757578]">{'{{name}} と入力すると、お客様の名前に置き換わります。'}</p>
+                    <TagInsertBar editorRef={answerMessageRef} tags={[{ code: '{{name}}', label: '名前' }]} />
+                    <p className="mt-1 text-[11px] text-[#757578]">
+                      <TaggedText text="{{name}} を入れると、お客様の名前に置き換わります。" />
+                    </p>
                   </div>
                 ))}
               </div>
@@ -226,23 +239,38 @@ export function OptionModal({
             <div className="space-y-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
               <div>
                 <p className="mb-1 text-xs text-[#757578]">見出し</p>
-                <input
-                  className={input}
+                <TagTextEditor
+                  ref={cardTitleRef}
+                  singleLine
+                  rows={1}
+                  maxHeight={80}
                   maxLength={100}
-                  placeholder="{{form}}に回答しました"
+                  aria-label="見出し"
+                  className={`${input} leading-8`}
+                  placeholder="空欄なら「フォーム名に回答しました」"
                   value={l.answerCard?.title ?? ''}
-                  onChange={(e) => setL({ answerCard: { ...l.answerCard, title: e.target.value } })}
+                  onChange={(v) => setL({ answerCard: { ...l.answerCard, title: v } })}
+                />
+                <TagInsertBar
+                  editorRef={cardTitleRef}
+                  tags={[{ code: '{{name}}', label: '名前' }, { code: '{{form}}', label: 'フォーム名' }]}
                 />
               </div>
               <div>
                 <p className="mb-1 text-xs text-[#757578]">説明(空でも構いません)</p>
-                <textarea
+                <TagTextEditor
+                  ref={cardBodyRef}
                   rows={3}
                   maxLength={300}
-                  className="w-full rounded border border-[#cacace] px-3 py-2 text-sm outline-none focus:border-[#069e04]"
-                  placeholder={'{{name}}さんからフォームの回答が届きました'}
+                  aria-label="説明"
+                  className="w-full rounded border border-[#cacace] px-3 py-2 text-sm leading-7 outline-none focus:border-[#069e04]"
+                  placeholder="空欄なら「○○さんからフォームの回答が届きました」"
                   value={l.answerCard?.body ?? ''}
-                  onChange={(e) => setL({ answerCard: { ...l.answerCard, body: e.target.value } })}
+                  onChange={(v) => setL({ answerCard: { ...l.answerCard, body: v } })}
+                />
+                <TagInsertBar
+                  editorRef={cardBodyRef}
+                  tags={[{ code: '{{name}}', label: '名前' }, { code: '{{form}}', label: 'フォーム名' }]}
                 />
               </div>
               <div>
@@ -256,7 +284,7 @@ export function OptionModal({
                 />
               </div>
               <p className="text-[11px] text-[#757578]">
-                {'{{name}} はお客様の名前、{{form}} はフォーム名に置き換わります。空欄のところは、上の例の文言になります。'}
+                <TaggedText text="{{name}} はお客様の名前、{{form}} はフォーム名に置き換わります。空欄のところは、上の例の文言になります。" />
               </p>
             </div>
           )}
