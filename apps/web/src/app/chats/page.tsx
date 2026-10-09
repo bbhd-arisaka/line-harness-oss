@@ -418,11 +418,15 @@ export default function ChatsPage() {
     return params
   }, [statusFilter, selectedAccountId, unansweredOnly])
 
+  // 公式アカウントを切り替えた直後など、古い読み込みの結果(特に失敗)が、新しい結果のあとで届いて画面を上書きしないようにする
+  const loadChatsSeq = useRef(0)
   const loadChats = useCallback(async () => {
+    const mine = ++loadChatsSeq.current
     setLoading(true)
     setError('')
     try {
       const chatRes = await api.chats.list(buildListParams(null))
+      if (mine !== loadChatsSeq.current) return
       if (chatRes.success) {
         const rows = chatRes.data as unknown as Chat[]
         setChats(rows)
@@ -432,9 +436,9 @@ export default function ChatsPage() {
         setHasMoreChats(!unansweredOnly && rows.length === CHAT_PAGE_SIZE)
       }
     } catch {
-      setError('チャットの読み込みに失敗しました。もう一度お試しください。')
+      if (mine === loadChatsSeq.current) setError('チャットの読み込みに失敗しました。もう一度お試しください。')
     } finally {
-      setLoading(false)
+      if (mine === loadChatsSeq.current) setLoading(false)
     }
   }, [buildListParams, unansweredOnly])
 
