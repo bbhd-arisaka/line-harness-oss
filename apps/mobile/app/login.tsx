@@ -14,8 +14,9 @@ import { authStore } from '../src/state/session';
 import { Button } from '../src/components/ui';
 import { MIN_TAP, useColors } from '../src/theme/theme';
 import { describeError } from '../src/lib/errors';
+import { withReadableWidth } from '../src/components/readable-width';
 
-export default function LoginScreen() {
+function LoginScreen() {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
@@ -132,3 +133,5 @@ const styles = StyleSheet.create({
   toggle: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 68, alignItems: 'center', justifyContent: 'center' },
   error: { marginTop: 16, padding: 12, borderRadius: 10 },
 });
+
+export default withReadableWidth(LoginScreen);

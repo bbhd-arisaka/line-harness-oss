@@ -4,7 +4,7 @@ import { useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth, useRestoreSession } from '../src/state/session';
 import { LoadingView } from '../src/components/ui';
-import { contentMaxWidth } from '../src/lib/layout';
+import { contentMaxWidth, isSplitLayout } from '../src/lib/layout';
 import { useColors } from '../src/theme/theme';
 
 function Navigator() {
@@ -32,12 +32,13 @@ function Navigator() {
   );
 }
 
-/** iPad など広い画面では、中身を読みやすい幅にして中央に置く(iPhone はそのまま) */
+/** iPad の縦など中くらいの幅では、中身を読みやすい幅にして中央に置く(iPhone はそのまま) */
 function Frame({ children }: { children: React.ReactNode }) {
   const { width } = useWindowDimensions();
   const c = useColors();
   const max = contentMaxWidth(width);
-  if (max === null) return <>{children}</>;
+  // 幅が十分ある iPad の横などは、画面全体を使う(トークの2列表示のため)。他の画面は、各画面が読みやすい幅にする
+  if (max === null || isSplitLayout(width)) return <>{children}</>;
   return (
     <View style={{ flex: 1, alignItems: 'center', backgroundColor: c.chatBackground }}>
       <View style={{ flex: 1, width: '100%', maxWidth: max, backgroundColor: c.background, borderLeftWidth: 1, borderRightWidth: 1, borderColor: c.border }}>{children}</View>

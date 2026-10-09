@@ -10,6 +10,7 @@ import { resolveFriendName } from '../../../src/lib/format';
 import type { Friend } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 import { describeError } from '../../../src/lib/errors';
+import { withReadableWidth } from '../../../src/components/readable-width';
 
 const PAGE_SIZE = 30;
 
@@ -45,7 +46,7 @@ const FriendRow = memo(function FriendRow({ friend, onPress }: { friend: Friend;
   );
 });
 
-export default function FriendsScreen() {
+function FriendsScreen() {
   const c = useColors();
   const router = useRouter();
   const { selected } = useAccounts();
@@ -193,3 +194,5 @@ const styles = StyleSheet.create({
   search: { minHeight: MIN_TAP, borderRadius: 12, paddingHorizontal: 14, fontSize: 16 },
   row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
 });
+
+export default withReadableWidth(FriendsScreen);

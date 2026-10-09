@@ -4,9 +4,10 @@ import { useAccounts } from '../../src/state/session';
 import { Avatar, Button } from '../../src/components/ui';
 import { accountLabel } from '../../src/lib/accounts';
 import { MIN_TAP, useColors } from '../../src/theme/theme';
+import { withReadableWidth } from '../../src/components/readable-width';
 
 /** 公式アカウントの切り替え。選択は端末に保存される(session.tsx の choose) */
-export default function SelectAccountScreen() {
+function SelectAccountScreen() {
   const c = useColors();
   const acc = useAccounts();
 
@@ -61,3 +62,5 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: '700' },
   closeButton: { minHeight: MIN_TAP, paddingHorizontal: 12 },
 });
+
+export default withReadableWidth(SelectAccountScreen);

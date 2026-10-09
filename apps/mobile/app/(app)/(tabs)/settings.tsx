@@ -9,6 +9,7 @@ import { usePushStatus } from '../../../src/state/push';
 import { api } from '../../../src/state/services';
 import { describeError } from '../../../src/lib/errors';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
+import { withReadableWidth } from '../../../src/components/readable-width';
 
 const ROLE_LABEL: Record<string, string> = { owner: 'オーナー', admin: '管理者', staff: 'スタッフ' };
 
@@ -24,7 +25,7 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function SettingsScreen() {
+function SettingsScreen() {
   const c = useColors();
   const auth = useAuth();
   const acc = useAccounts();
@@ -218,3 +219,5 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
 });
+
+export default withReadableWidth(SettingsScreen);

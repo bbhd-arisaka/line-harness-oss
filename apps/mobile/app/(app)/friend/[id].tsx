@@ -9,6 +9,7 @@ import { describeError } from '../../../src/lib/errors';
 import { charLength, draftFromFriend, NAME_MAX_LENGTH, planProfileUpdate, type ProfileDraft } from '../../../src/lib/profile';
 import type { Tag } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
+import { withReadableWidth } from '../../../src/components/readable-width';
 
 function tagColor(color: string | undefined, fallback: string): string {
   return color && /^#[0-9a-f]{3,8}$/i.test(color) ? color : fallback;
@@ -78,7 +79,7 @@ function TagChip({ tag }: { tag: Tag }) {
   );
 }
 
-export default function FriendDetailScreen() {
+function FriendDetailScreen() {
   const c = useColors();
   const router = useRouter();
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
@@ -343,3 +344,5 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
   menuImage: { width: '100%', height: 160, marginTop: 12, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
 });
+
+export default withReadableWidth(FriendDetailScreen);

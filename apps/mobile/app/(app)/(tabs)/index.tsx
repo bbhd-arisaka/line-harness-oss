@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { AccountBar } from '../../../src/components/account-bar';
 import { Avatar, EmptyView, ErrorView, LoadingView, StatusBadge } from '../../../src/components/ui';
@@ -9,6 +9,9 @@ import { formatListTime, messagePreview } from '../../../src/lib/format';
 import type { ChatStatus, ChatSummary } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 import { describeError } from '../../../src/lib/errors';
+import { isSplitLayout, LIST_PANE_WIDTH } from '../../../src/lib/layout';
+import { ChatView } from '../../../src/components/chat-view';
+import { useInterval } from '../../../src/state/hooks';
 
 const PAGE_SIZE = 50;
 
@@ -20,7 +23,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'resolved', label: '対応済み' },
 ];
 
-const ChatRow = memo(function ChatRow({ chat, onPress }: { chat: ChatSummary; onPress: (id: string) => void }) {
+const ChatRow = memo(function ChatRow({ chat, onPress, selected }: { chat: ChatSummary; onPress: (id: string) => void; selected?: boolean }) {
   const c = useColors();
   const unread = chat.status === 'unread';
   return (
@@ -28,7 +31,7 @@ const ChatRow = memo(function ChatRow({ chat, onPress }: { chat: ChatSummary; on
       onPress={() => onPress(chat.friendId)}
       accessibilityRole="button"
       accessibilityLabel={`${chat.friendName}。${unread ? '未対応。' : ''}${messagePreview(chat)}`}
-      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.inputBackground : c.card, borderBottomColor: c.border }]}
+      style={({ pressed }) => [styles.row, { backgroundColor: pressed || selected ? c.inputBackground : c.card, borderBottomColor: c.border }]}
     >
       <View>
         <Avatar uri={chat.friendPictureUrl} name={chat.friendName} size={48} />
@@ -52,7 +55,12 @@ const ChatRow = memo(function ChatRow({ chat, onPress }: { chat: ChatSummary; on
   );
 });
 
-export default function ChatListScreen() {
+/**
+ * トークの一覧。
+ * - 通常: 行をタップすると、トーク画面を開く
+ * - 2列表示の左側(onOpen を渡す): 行をタップすると、右側のチャットを切り替える。選択中の行は色が付く
+ */
+function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: string) => void; selectedId?: string | null; reloadSignal?: number }) {
   const c = useColors();
   const router = useRouter();
   const { selected } = useAccounts();
@@ -143,7 +151,21 @@ export default function ChatListScreen() {
     }
   }
 
-  const openChat = useCallback((id: string) => router.push({ pathname: '/chat/[id]', params: { id } }), [router]);
+  const openChat = useCallback(
+    (id: string) => (onOpen ? onOpen(id) : router.push({ pathname: '/chat/[id]', params: { id } })),
+    [router, onOpen],
+  );
+
+  // 2列表示では、右側で状態を変えたり送信したときに、一覧も最新にする。開いている間は定期的にも更新する
+  const firstSignal = useRef(true);
+  useEffect(() => {
+    if (firstSignal.current) {
+      firstSignal.current = false;
+      return;
+    }
+    void fetchFirst('silent');
+  }, [reloadSignal, fetchFirst]);
+  useInterval(() => void fetchFirst('silent'), 15_000, !!onOpen && !loading);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -173,7 +195,8 @@ export default function ChatListScreen() {
         <FlatList
           data={items}
           keyExtractor={(it) => it.id}
-          renderItem={({ item }) => <ChatRow chat={item} onPress={openChat} />}
+          renderItem={({ item }) => <ChatRow chat={item} onPress={openChat} selected={item.friendId === selectedId} />}
+          extraData={selectedId}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void fetchFirst('refresh')} tintColor={c.primary} />}
           onEndReached={loadMore}
           onEndReachedThreshold={0.4}
@@ -194,6 +217,30 @@ export default function ChatListScreen() {
           contentContainerStyle={items.length === 0 ? { flexGrow: 1 } : undefined}
         />
       )}
+    </View>
+  );
+}
+
+/** トークの入口。幅が広い(iPad の横など)ときは「左に一覧・右にチャット」の2列 */
+export default function ChatListScreen() {
+  const { width } = useWindowDimensions();
+  const c = useColors();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [reloadSignal, setReloadSignal] = useState(0);
+  const onChanged = useCallback(() => setReloadSignal((n) => n + 1), []);
+  if (!isSplitLayout(width)) return <ChatList />;
+  return (
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: c.background }}>
+      <View style={{ width: LIST_PANE_WIDTH, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: c.border }}>
+        <ChatList onOpen={setSelectedId} selectedId={selectedId} reloadSignal={reloadSignal} />
+      </View>
+      <View style={{ flex: 1, backgroundColor: c.chatBackground }}>
+        {selectedId ? (
+          <ChatView key={selectedId} id={selectedId} embedded onChanged={onChanged} />
+        ) : (
+          <EmptyView title="トークを選んでください" message="左の一覧から選ぶと、ここに表示されます" />
+        )}
+      </View>
     </View>
   );
 }
