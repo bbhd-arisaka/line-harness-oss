@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { LineClient } from '@line-crm/line-sdk';
 import { getFriendById, getLineAccountById, resolveDefaultAccessToken } from '@line-crm/db';
+import { isDemoLineUserId } from '../services/demo-friend.js';
 import type { Env } from '../index.js';
 
 const richMenus = new Hono<Env>();
@@ -147,6 +148,10 @@ richMenus.get('/api/friends/:friendId/rich-menu', async (c) => {
     if (friendAccId) {
       const account = await getLineAccountById(db, friendAccId);
       if (account) accessToken = account.channel_access_token;
+    }
+    // App Store 審査用のデモの友だち: LINE には存在しないので、問い合わせずに「リッチメニューなし」を返す
+    if (isDemoLineUserId(friend.line_user_id)) {
+      return c.json({ success: true, data: { id: null, name: null, isDefault: false, chatBarText: null, groupName: null, pageName: null, accountId: friendAccId ?? null } });
     }
     const lineClient = new LineClient(accessToken);
 

@@ -63,7 +63,7 @@ export async function refreshStaleProfiles(
       `SELECT f.id, f.line_user_id, a.channel_access_token AS token
          FROM friends f
          LEFT JOIN line_accounts a ON a.id = f.line_account_id
-        WHERE f.is_following = 1 AND f.line_user_id IS NOT NULL
+        WHERE f.is_following = 1 AND f.line_user_id IS NOT NULL AND f.line_user_id NOT LIKE 'Udemo%'
           AND (f.profile_checked_at IS NULL OR f.profile_checked_at < ?)
         ORDER BY f.profile_checked_at ASC
         LIMIT ?`,
