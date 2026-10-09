@@ -85,6 +85,14 @@ describe('スタッフのアカウント権限(accountAccessGuard)', () => {
     expect((await asRestricted('PUT', '/api/chats/chat-b')).status).toBe(403);
   });
 
+  test('チャットは、友だちIDで開いても(一覧・アプリ・通知はこちら)、友だちのアカウントで判定する', async () => {
+    expect((await asRestricted('GET', '/api/chats/friend-a')).status).toBe(200);
+    expect((await asRestricted('POST', '/api/chats/friend-a/send')).status).toBe(200);
+    expect((await asRestricted('GET', '/api/chats/friend-b')).status).toBe(403);
+    expect((await asRestricted('PUT', '/api/chats/friend-b')).status).toBe(403);
+    expect((await asRestricted('GET', '/api/chats/no-such')).status).toBe(403);
+  });
+
   test('公式アカウントは許可分だけ参照でき、作成・変更・削除は拒否', async () => {
     expect((await asRestricted('GET', '/api/line-accounts')).status).toBe(200);
     expect((await asRestricted('GET', '/api/line-accounts/acc-a')).status).toBe(200);

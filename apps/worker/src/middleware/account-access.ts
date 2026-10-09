@@ -27,12 +27,17 @@ async function friendAccountId(db: D1Database, friendId: string): Promise<string
   return row?.line_account_id ?? null;
 }
 
+/**
+ * /api/chats/:id の :id は、チャットID または 友だちID(チャット一覧の「ID」は友だちID。アプリ・通知からはこちらで開く)。
+ * どちらでも、その友だちの公式アカウントで判断する。
+ */
 async function chatAccountId(db: D1Database, chatId: string): Promise<string | null> {
   const row = await db
     .prepare('SELECT f.line_account_id FROM chats c INNER JOIN friends f ON f.id = c.friend_id WHERE c.id = ?')
     .bind(chatId)
     .first<{ line_account_id: string | null }>();
-  return row?.line_account_id ?? null;
+  if (row?.line_account_id) return row.line_account_id;
+  return friendAccountId(db, chatId);
 }
 
 /** 友だち一覧などのクエリ: アカウントの指定が必須で、許可したアカウントだけ通す。 */
