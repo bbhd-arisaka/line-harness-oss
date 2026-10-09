@@ -9,9 +9,9 @@ import { WEEK_JA, addDaysStr, addMonthsStr, formatDateJa, hhmmToMin, monthStart,
 import type { CalendarBundle, ReserveShift } from '@/lib/reserve'
 
 type View = 'day' | 'week' | 'month' | 'list'
-const pinkBtn = 'rounded-full bg-[#e8355d] px-5 py-2 text-sm font-medium text-white hover:bg-[#d02850] disabled:opacity-60'
-const toolBtn = 'inline-flex items-center justify-center border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50'
-const inputCls = 'w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
+const pinkBtn = 'rounded-full bg-[#e8355d] px-5 py-2 text-sm font-semibold text-white shadow-md shadow-rose-200 transition hover:bg-[#d02850] disabled:opacity-60'
+const toolBtn = 'inline-flex items-center justify-center border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50'
+const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20'
 
 /** シフト(予約枠ごとの、受け付けられる時間)。日・週・月・リストの表示と、繰り返しの登録・変更・削除 */
 export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
@@ -105,9 +105,9 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
 
       {view === 'day' ? (
         <div>
-          <div className="flex overflow-hidden rounded border border-gray-300 bg-white">
-            <div className="w-36 shrink-0 border-r border-gray-300">
-              <div className="h-8 border-b border-gray-300" />
+          <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="w-40 shrink-0 border-r border-gray-200 bg-gray-50/60">
+              <div className="h-9 border-b border-gray-200" />
               {visibleSlots.map((s) => (
                 <div key={s.id} className="flex h-11 items-center gap-2 border-b border-gray-200 px-2 text-sm font-medium text-gray-800">
                   {s.iconUrl ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={s.iconUrl} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="h-6 w-6 shrink-0 rounded-full bg-gray-700 text-center text-[11px] leading-6 text-white">{s.name.charAt(0)}</span>}
@@ -117,7 +117,7 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
             </div>
             <div ref={scroller} className="min-w-0 flex-1 overflow-x-auto">
               <div style={{ width: 24 * pxPerHour }} className="relative">
-                <div className="flex h-8 border-b border-gray-300 text-xs text-gray-600">
+                <div className="flex h-9 border-b border-gray-200 bg-gray-50/60 text-xs font-medium text-gray-500">
                   {Array.from({ length: 24 }, (_, h) => (
                     <div key={h} className="border-l border-gray-200 pl-1 pt-1.5" style={{ width: pxPerHour }}>{`${String(h).padStart(2, '0')}:00`}</div>
                   ))}
@@ -134,7 +134,7 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
                     }}
                   >
                     {visibleShifts.filter((x) => x.slotId === s.id).map((x) => (
-                      <button key={x.id} type="button" onClick={(e) => { e.stopPropagation(); setDialog({ shift: x }) }} className="absolute inset-y-1 overflow-hidden rounded bg-green-500 px-1 text-left text-[11px] text-white" style={{ left: (hhmmToMin(x.startTime) / 60) * pxPerHour, width: ((hhmmToMin(x.endTime) - hhmmToMin(x.startTime)) / 60) * pxPerHour }}>
+                      <button key={x.id} type="button" onClick={(e) => { e.stopPropagation(); setDialog({ shift: x }) }} className="absolute inset-y-1 overflow-hidden rounded-lg bg-emerald-500 px-2 text-left text-[11px] font-medium text-white shadow-md ring-1 ring-black/5 transition hover:bg-emerald-600" style={{ left: (hhmmToMin(x.startTime) / 60) * pxPerHour, width: ((hhmmToMin(x.endTime) - hhmmToMin(x.startTime)) / 60) * pxPerHour }}>
                         {x.startTime}〜{x.endTime}{x.seriesId ? ' ↻' : ''}
                       </button>
                     ))}
@@ -162,9 +162,9 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
       ) : null}
 
       {view === 'week' ? (
-        <div className="overflow-x-auto rounded border border-gray-300 bg-white">
+        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
           <table className="w-full min-w-[820px] text-sm">
-            <thead className="bg-gray-100 text-xs text-gray-600">
+            <thead className="bg-gray-50 text-xs text-gray-600">
               <tr>
                 <th className="w-32 px-2 py-2 text-left font-medium" />
                 {Array.from({ length: 7 }, (_, i) => addDaysStr(range.from, i)).map((d) => <th key={d} className="px-2 py-2 font-medium">{Number(d.slice(5, 7))}/{Number(d.slice(8))}({WEEK_JA[weekdayOf(d)]})</th>)}
@@ -203,9 +203,9 @@ export default function ShiftView({ bundle }: { bundle: CalendarBundle }) {
       ) : null}
 
       {view === 'list' ? (
-        <div className="overflow-x-auto rounded border border-gray-300 bg-white">
+        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
           <table className="w-full min-w-[560px] text-sm">
-            <thead className="bg-gray-100 text-left text-xs text-gray-600"><tr><th className="px-3 py-2 font-medium">日付</th><th className="px-3 py-2 font-medium">時間</th><th className="px-3 py-2 font-medium">{calendar.slotSettings.title}</th><th className="px-3 py-2 font-medium">メモ</th></tr></thead>
+            <thead className="bg-gray-50 text-left text-xs text-gray-600"><tr><th className="px-3 py-2 font-medium">日付</th><th className="px-3 py-2 font-medium">時間</th><th className="px-3 py-2 font-medium">{calendar.slotSettings.title}</th><th className="px-3 py-2 font-medium">メモ</th></tr></thead>
             <tbody>
               {visibleShifts.length === 0 && !loading ? <tr><td colSpan={4} className="py-8 text-center text-gray-500">今日から60日間に、シフトがありません</td></tr> : null}
               {visibleShifts.map((x) => (

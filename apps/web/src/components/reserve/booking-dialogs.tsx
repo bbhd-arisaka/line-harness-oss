@@ -10,9 +10,9 @@ import { errorText } from '@/lib/error-text'
 import { STATUS_LABEL, formatDateJa, hhmmToMin, minToHhmm, reserveApi } from '@/lib/reserve'
 import type { BookingStatus, CalendarBundle, ReserveBooking } from '@/lib/reserve'
 
-const pinkBtn = 'rounded bg-[#e8355d] px-4 py-2 text-sm font-medium text-white hover:bg-[#d02850] disabled:opacity-60'
-const grayBtn = 'rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60'
-const inputCls = 'w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
+const pinkBtn = 'rounded-full bg-[#e8355d] px-5 py-2 text-sm font-semibold text-white shadow-md shadow-rose-200 transition hover:bg-[#d02850] disabled:opacity-60'
+const grayBtn = 'rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60'
+const inputCls = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20'
 
 export function displayName(b: Pick<ReserveBooking, 'name' | 'guestName' | 'friend'>): string {
   return b.name || b.guestName || b.friend?.realName || b.friend?.systemDisplayName || b.friend?.displayName || '(名前なし)'
@@ -151,13 +151,13 @@ export function BookingEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="relative h-full w-[min(660px,100vw)] overflow-y-auto bg-white shadow-xl">
-        <button type="button" className="sticky left-0 top-0 z-10 flex items-center gap-1 bg-black px-3 py-2 text-sm text-white" onClick={onClose}>
+      <div className="relative h-full w-[min(680px,100vw)] overflow-y-auto bg-white shadow-2xl">
+        <button type="button" className="sticky left-0 top-0 z-10 flex items-center gap-1 rounded-br-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-black" onClick={onClose}>
           <span aria-hidden>×</span> Close
         </button>
         <div className="px-6 pb-24 pt-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">{editing ? '予約の編集' : '新規予約登録'}</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-gray-900">{editing ? '予約の編集' : '新規予約登録'}</h2>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={isBlock} onChange={(e) => setIsBlock(e.target.checked)} /> この時間の予約をブロックする
             </label>
@@ -249,7 +249,7 @@ export function BookingEditor({
           ) : null}
           {error ? <p className="py-2 text-sm text-red-600">{error}</p> : null}
           <div className="py-6 text-center">
-            <button type="button" className="rounded-full bg-[#e8355d] px-10 py-2.5 text-sm font-medium text-white shadow hover:bg-[#d02850] disabled:opacity-60" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : editing ? '予約を更新' : isBlock ? 'ブロック枠を登録する' : '予約を登録する'}</button>
+            <button type="button" className={`${pinkBtn} px-10 py-3`} disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : editing ? '予約を更新' : isBlock ? 'ブロック枠を登録する' : '予約を登録する'}</button>
           </div>
         </div>
       </div>

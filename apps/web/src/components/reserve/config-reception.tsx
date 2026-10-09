@@ -25,13 +25,13 @@ function DayRuleEditor({ rule, onChange, label }: { rule: DayRule; onChange: (r:
                 ) : null}
               </div>
             ))
-          : <span className="text-gray-400">{rule.closed ? '休業' : '24時間'}</span>}
+          : <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${rule.closed ? 'bg-gray-100 text-gray-500' : 'bg-sky-50 text-sky-700'}`}>{rule.closed ? '休業日' : '24時間受付'}</span>}
       </div>
       {!rule.closed && !rule.allDay ? (
-        <button type="button" aria-label="受付時間を追加" className="mt-1 text-[#e8355d]" onClick={() => onChange({ ...rule, ranges: [...rule.ranges, { from: '13:00', to: '17:00' }] })}><PlusIcon size={16} weight="bold" /></button>
+        <button type="button" aria-label="受付時間を追加" className="mt-0.5 rounded-full bg-rose-50 p-1.5 text-[#e8355d] transition hover:bg-rose-100" onClick={() => onChange({ ...rule, ranges: [...rule.ranges, { from: '13:00', to: '17:00' }] })}><PlusIcon size={16} weight="bold" /></button>
       ) : null}
-      <label className="mt-1 inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={rule.closed} onChange={(e) => onChange({ ...rule, closed: e.target.checked, allDay: e.target.checked ? false : rule.allDay, ranges: rule.ranges.length ? rule.ranges : [{ from: '10:00', to: '19:00' }] })} /> 休業</label>
-      <label className="mt-1 inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={rule.allDay} onChange={(e) => onChange({ ...rule, allDay: e.target.checked, closed: e.target.checked ? false : rule.closed, ranges: rule.ranges.length ? rule.ranges : [{ from: '10:00', to: '19:00' }] })} /> 24時間</label>
+      <label className={`mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${rule.closed ? 'border-gray-400 bg-gray-100 text-gray-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}><input type="checkbox" className="accent-gray-600" checked={rule.closed} onChange={(e) => onChange({ ...rule, closed: e.target.checked, allDay: e.target.checked ? false : rule.allDay, ranges: rule.ranges.length ? rule.ranges : [{ from: '10:00', to: '19:00' }] })} /> 休業</label>
+      <label className={`mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${rule.allDay ? 'border-sky-400 bg-sky-50 text-sky-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}><input type="checkbox" className="accent-sky-600" checked={rule.allDay} onChange={(e) => onChange({ ...rule, allDay: e.target.checked, closed: e.target.checked ? false : rule.closed, ranges: rule.ranges.length ? rule.ranges : [{ from: '10:00', to: '19:00' }] })} /> 24時間</label>
     </div>
   )
 }
@@ -61,7 +61,7 @@ export default function ReceptionConfig({ bundle, reload }: { bundle: CalendarBu
         ) : (
           WEEKDAYS.map((w) => (
             <div key={w.key} className="grid grid-cols-[90px_1fr] gap-3 py-2">
-              <div className="pt-1.5 text-sm font-medium">{w.label}</div>
+              <div className="pt-1.5 text-sm font-bold text-gray-800">{w.label}</div>
               <DayRuleEditor label={w.label} rule={r.weekdays[w.key]} onChange={(d) => patch({ weekdays: { ...r.weekdays, [w.key]: d } })} />
             </div>
           ))
@@ -74,7 +74,7 @@ export default function ReceptionConfig({ bundle, reload }: { bundle: CalendarBu
               <button type="button" aria-label="この特定日を削除" className="pt-1.5 text-gray-400 hover:text-red-600" onClick={() => patch({ specialDays: r.specialDays.filter((_, j) => j !== i) })}><TrashIcon size={15} /></button>
             </div>
           ))}
-          <button type="button" className="mx-auto flex items-center gap-1 text-sm text-[#e8355d]" onClick={() => patch({ specialDays: [...r.specialDays, { date: '', closed: true, allDay: false, ranges: [{ from: '10:00', to: '19:00' }] }] })}>
+          <button type="button" className="mx-auto flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50/60 px-4 py-1.5 text-sm font-semibold text-[#e8355d] transition hover:bg-rose-50" onClick={() => patch({ specialDays: [...r.specialDays, { date: '', closed: true, allDay: false, ranges: [{ from: '10:00', to: '19:00' }] }] })}>
             <PlusIcon size={14} weight="bold" /> 特定日の設定を追加
           </button>
         </div>

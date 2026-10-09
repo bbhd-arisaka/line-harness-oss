@@ -8,7 +8,7 @@ import { describeAction, describeTiming } from '@/lib/friend-add-actions'
 import type { FriendAddActionItem } from '@/lib/friend-add-actions'
 import { reserveApi } from '@/lib/reserve'
 import type { CalendarBundle, FollowItem, FollowSettings, ReminderItem, ReminderSettings, ReserveActionKey, ReserveActions } from '@/lib/reserve'
-import { Block, PageTitle, Row, SaveBar, orangeBtn, smallInput, useSectionSave } from './config-common'
+import { Block, PageTitle, Row, SaveBar, orangeBtn, pinkBtn, smallInput, useSectionSave } from './config-common'
 
 type ModalState = { actions: FriendAddActionItem[]; change: boolean; onSave: (a: FriendAddActionItem[]) => void } | null
 
@@ -27,9 +27,9 @@ function ActionButton({ actions, onOpen, onClear, lookups, disabled }: { actions
     <div>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={disabled} className={`${orangeBtn} disabled:cursor-not-allowed disabled:opacity-40`} onClick={onOpen}><LightningIcon size={14} weight="fill" /> アクション設定</button>
-        {actions.length > 0 && !disabled ? <button type="button" className="rounded border border-green-600 bg-white px-3 py-2 text-sm font-medium text-green-700 hover:bg-green-50" onClick={onClear}>設定解除</button> : null}
+        {actions.length > 0 && !disabled ? <button type="button" className="rounded-lg border border-emerald-600 bg-white px-3.5 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50" onClick={onClear}>設定解除</button> : null}
       </div>
-      {actions.length > 0 ? <ul className="mt-1 space-y-0.5 text-[11px] text-gray-700">{summary(actions, lookups)}</ul> : null}
+      {actions.length > 0 ? <ul className="mt-2 space-y-1 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">{summary(actions, lookups)}</ul> : null}
     </div>
   )
 }
@@ -140,13 +140,13 @@ export function EpisodeConfig({ bundle, reload }: { bundle: CalendarBundle; relo
 
   return (
     <div>
-      <div id="reminder" className="mb-10 scroll-mt-4">
-        <div className="mb-2 flex items-center gap-3"><h2 className="text-xl font-semibold text-gray-900">リマインダ設定</h2><Toggle on={rem.enabled} label="リマインダ" onChange={(v) => setRem({ ...rem, enabled: v })} /></div>
+      <div id="reminder" className="mb-6 scroll-mt-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-2 flex items-center gap-3"><h2 className="text-2xl font-bold tracking-tight text-gray-900">リマインダ設定</h2><Toggle on={rem.enabled} label="リマインダ" onChange={(v) => setRem({ ...rem, enabled: v })} /></div>
         <p className="mb-1 text-sm text-gray-600">予約した友だちに対して、予約日前の効果的なタイミングでリマインドアクションを起こすことができます。</p>
         <p className="mb-4 text-sm font-semibold text-gray-800">設定前に入っている予約にはリマインダは送信されません。</p>
         <p className="mb-3 text-xs text-gray-500">時刻指定と残り時間指定を合わせて、10件まで登録できます。</p>
         {rem.items.map((it) => (
-          <div key={it.id} className="mb-3 rounded border border-gray-300 bg-white p-3">
+          <div key={it.id} className="mb-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <select className={smallInput} value={it.kind} onChange={(e) => patchRem(it.id, { kind: e.target.value as ReminderItem['kind'] })}>
                 <option value="time">時刻指定</option>
@@ -174,20 +174,20 @@ export function EpisodeConfig({ bundle, reload }: { bundle: CalendarBundle; relo
             </div>
           </div>
         ))}
-        <button type="button" disabled={total(rem.items.length)} className="inline-flex items-center gap-1 text-sm text-[#e8355d] disabled:opacity-40" onClick={() => setRem({ ...rem, items: [...rem.items, { id: newId('r'), kind: 'time', daysBefore: 1, time: '19:00', amount: 1, unit: 'hours', actions: [] }] })}>
+        <button type="button" disabled={total(rem.items.length)} className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-rose-300 bg-rose-50/40 px-5 py-2.5 text-sm font-semibold text-[#e8355d] transition hover:bg-rose-50 disabled:opacity-40" onClick={() => setRem({ ...rem, items: [...rem.items, { id: newId('r'), kind: 'time', daysBefore: 1, time: '19:00', amount: 1, unit: 'hours', actions: [] }] })}>
           <PlusIcon size={14} weight="bold" /> タイミングを追加
         </button>
-        <div className="mt-4"><button type="button" className="rounded-full bg-[#e8355d] px-8 py-2.5 text-sm font-medium text-white hover:bg-[#d02850] disabled:opacity-60" disabled={remSave.busy} onClick={() => void remSave.save(rem)}>設定を保存する</button>{remSave.message ? <span className={`ml-3 text-sm ${remSave.message.ok ? 'text-green-700' : 'text-red-600'}`}>{remSave.message.text}</span> : null}</div>
+        <div className="mt-4"><button type="button" className={pinkBtn} disabled={remSave.busy} onClick={() => void remSave.save(rem)}>設定を保存する</button>{remSave.message ? <span className={`ml-3 text-sm ${remSave.message.ok ? 'text-green-700' : 'text-red-600'}`}>{remSave.message.text}</span> : null}</div>
       </div>
 
-      <div id="follow" className="scroll-mt-4">
-        <div className="mb-2 flex items-center gap-3"><h2 className="text-xl font-semibold text-gray-900">フォロー設定</h2><Toggle on={fol.enabled} label="フォロー" onChange={(v) => setFol({ ...fol, enabled: v })} /></div>
+      <div id="follow" className="scroll-mt-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mb-2 flex items-center gap-3"><h2 className="text-2xl font-bold tracking-tight text-gray-900">フォロー設定</h2><Toggle on={fol.enabled} label="フォロー" onChange={(v) => setFol({ ...fol, enabled: v })} /></div>
         <p className="mb-1 text-sm text-gray-600">友だちが来店・来場した後に、任意のタイミングで感謝のメッセージやアンケートの送付などができます。</p>
         <p className="mb-1 text-sm text-gray-600">実際に来店・来場したかどうかは、「来店/来場済み」ステータスで管理できます。</p>
         <p className="mb-4 text-sm font-semibold text-gray-800">「来店/来場済み」ステータスにチェックがついていない友だちに対してはフォローアクションは実行されません。</p>
         <p className="mb-3 text-xs text-gray-500">時刻指定と経過時間指定を合わせて、10件まで登録できます。</p>
         {fol.items.map((it) => (
-          <div key={it.id} className="mb-3 rounded border border-gray-300 bg-white p-3">
+          <div key={it.id} className="mb-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <select className={smallInput} value={it.kind} onChange={(e) => patchFol(it.id, { kind: e.target.value as FollowItem['kind'] })}>
                 <option value="time">時刻指定</option>
@@ -216,10 +216,10 @@ export function EpisodeConfig({ bundle, reload }: { bundle: CalendarBundle; relo
             </div>
           </div>
         ))}
-        <button type="button" disabled={total(fol.items.length)} className="inline-flex items-center gap-1 text-sm text-[#e8355d] disabled:opacity-40" onClick={() => setFol({ ...fol, items: [...fol.items, { id: newId('f'), kind: 'time', daysAfter: 1, time: '19:00', amount: 1, unit: 'hours', actions: [] }] })}>
+        <button type="button" disabled={total(fol.items.length)} className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-rose-300 bg-rose-50/40 px-5 py-2.5 text-sm font-semibold text-[#e8355d] transition hover:bg-rose-50 disabled:opacity-40" onClick={() => setFol({ ...fol, items: [...fol.items, { id: newId('f'), kind: 'time', daysAfter: 1, time: '19:00', amount: 1, unit: 'hours', actions: [] }] })}>
           <PlusIcon size={14} weight="bold" /> タイミングを追加
         </button>
-        <div className="mt-4"><button type="button" className="rounded-full bg-[#e8355d] px-8 py-2.5 text-sm font-medium text-white hover:bg-[#d02850] disabled:opacity-60" disabled={folSave.busy} onClick={() => void folSave.save(fol)}>設定を保存する</button>{folSave.message ? <span className={`ml-3 text-sm ${folSave.message.ok ? 'text-green-700' : 'text-red-600'}`}>{folSave.message.text}</span> : null}</div>
+        <div className="mt-4"><button type="button" className={pinkBtn} disabled={folSave.busy} onClick={() => void folSave.save(fol)}>設定を保存する</button>{folSave.message ? <span className={`ml-3 text-sm ${folSave.message.ok ? 'text-green-700' : 'text-red-600'}`}>{folSave.message.text}</span> : null}</div>
       </div>
 
       {modal ? (

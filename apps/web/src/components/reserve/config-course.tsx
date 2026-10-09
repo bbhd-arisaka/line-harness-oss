@@ -220,15 +220,15 @@ function CourseEditor({ bundle, course, onClose, onSaved }: { bundle: CalendarBu
 }
 
 function ItemRow({ name, visible, sub, color, icon, onVisible, onEdit, onCopy, onDelete, onDragStart, onDropHere }: { name: string; visible: boolean; sub?: string; color?: string; icon?: string; onVisible: (v: boolean) => void; onEdit: () => void; onCopy: () => void; onDelete: () => void; onDragStart: () => void; onDropHere: () => void }) {
-  const ic = 'rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-30'
+  const ic = 'rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30'
   return (
-    <div className="flex items-center gap-3 border-b border-gray-200 py-2.5" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); onDropHere() }}>
+    <div className="my-1.5 flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm transition hover:border-emerald-300 hover:shadow" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); onDropHere() }}>
       {color ? <span className="h-3 w-3 rounded-full" style={{ background: color }} /> : icon ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={icon} alt="" className="h-7 w-7 rounded-full object-cover" /> : <span className="h-7 w-7 rounded-full bg-gray-700 text-center text-xs leading-7 text-white">{name.charAt(0)}</span>}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate font-medium">{name}</span>
         {sub ? <span className="shrink-0 rounded-full bg-[#8fb8e8] px-2 py-0.5 text-[11px] font-medium text-white">{sub}</span> : null}
       </div>
-      <select className={smallInput} aria-label="表示" value={visible ? '1' : '0'} onChange={(e) => onVisible(e.target.value === '1')}><option value="1">表示する</option><option value="0">非表示</option></select>
+      <select className={`${smallInput} text-xs`} aria-label="表示" value={visible ? '1' : '0'} onChange={(e) => onVisible(e.target.value === '1')}><option value="1">表示する</option><option value="0">非表示</option></select>
       <button type="button" aria-label="編集" className={ic} onClick={onEdit}><PencilSimpleIcon size={16} /></button>
       <button type="button" aria-label="複製" className={ic} onClick={onCopy}><CopyIcon size={16} /></button>
       <button type="button" aria-label="削除" className={ic} onClick={onDelete}><TrashIcon size={16} /></button>
@@ -337,7 +337,7 @@ export default function CourseConfig({ bundle, reload }: { bundle: CalendarBundl
               onDropHere={() => dropAt('slot', slots, i, (ids) => reserveApi.orderSlots(calendar.id, ids))}
             />
           ))}
-          <button type="button" className="mt-3 inline-flex w-full items-center justify-center gap-1 py-2 text-sm text-[#e8355d]" onClick={() => setSlotEditor({ slot: null })}><PlusIcon size={14} weight="bold" /> 予約枠を追加する</button>
+          <button type="button" className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-rose-300 bg-rose-50/40 py-3 text-sm font-semibold text-[#e8355d] transition hover:bg-rose-50" onClick={() => setSlotEditor({ slot: null })}><PlusIcon size={14} weight="bold" /> 予約枠を追加する</button>
         </div>
       </Block>
 
@@ -373,7 +373,7 @@ export default function CourseConfig({ bundle, reload }: { bundle: CalendarBundl
               onDropHere={() => dropAt('course', courses, i, (ids) => reserveApi.orderCourses(calendar.id, ids))}
             />
           ))}
-          <button type="button" className="mt-3 inline-flex w-full items-center justify-center gap-1 py-2 text-sm text-[#e8355d]" onClick={() => setCourseEditor({ course: null })}><PlusIcon size={14} weight="bold" /> コースを追加する</button>
+          <button type="button" className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-rose-300 bg-rose-50/40 py-3 text-sm font-semibold text-[#e8355d] transition hover:bg-rose-50" onClick={() => setCourseEditor({ course: null })}><PlusIcon size={14} weight="bold" /> コースを追加する</button>
         </div>
       </Block>
 

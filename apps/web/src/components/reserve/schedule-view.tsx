@@ -11,8 +11,8 @@ import { BookingDetail, BookingEditor, displayName } from './booking-dialogs'
 import type { EditorPreset } from './booking-dialogs'
 
 type View = 'day' | 'month' | 'list'
-const pinkBtn = 'inline-flex items-center gap-1.5 rounded-full bg-[#e8355d] px-5 py-2 text-sm font-medium text-white hover:bg-[#d02850]'
-const toolBtn = 'inline-flex items-center justify-center border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50'
+const pinkBtn = 'inline-flex items-center gap-1.5 rounded-full bg-[#e8355d] px-5 py-2 text-sm font-semibold text-white shadow-md shadow-rose-200 transition hover:bg-[#d02850]'
+const toolBtn = 'inline-flex items-center justify-center border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50'
 
 function storageKey(calendarId: string) {
   return `reserve-filter-${calendarId}`
@@ -56,22 +56,22 @@ export default function ScheduleView({ bundle, reload, initialView, initialDate 
   const accountId = calendar.lineAccountId
 
   return (
-    <div className="px-4 py-4">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h2 className="text-xl font-semibold text-gray-900">予約</h2>
-        <div className="inline-flex overflow-hidden rounded border border-gray-300">
+    <div className="px-5 py-5">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <h2 className="text-2xl font-bold tracking-tight text-gray-900">予約</h2>
+        <div className="inline-flex overflow-hidden rounded-lg border border-gray-300 shadow-sm">
           {([['day', '日', RowsIcon], ['month', '月', CalendarBlankIcon], ['list', 'リスト', ListIcon]] as const).map(([v, label, Icon]) => (
-            <button key={v} type="button" onClick={() => setView(v)} className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm ${view === v ? 'bg-gray-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+            <button key={v} type="button" onClick={() => setView(v)} className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm ${view === v ? 'bg-emerald-600 font-semibold text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
               <Icon size={14} /> {label}
             </button>
           ))}
         </div>
         {view !== 'list' ? (
-          <div className="inline-flex">
-            <button type="button" className={`${toolBtn} rounded-l`} onClick={() => move(-1)} aria-label="前へ"><CaretLeftIcon size={14} /></button>
+          <div className="inline-flex shadow-sm">
+            <button type="button" className={`${toolBtn} rounded-l-lg`} onClick={() => move(-1)} aria-label="前へ"><CaretLeftIcon size={14} /></button>
             <button type="button" className={`${toolBtn} border-l-0`} onClick={() => setDate(todayJst())}>今日</button>
             <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className={`${toolBtn} border-l-0 w-40`} aria-label="日付" />
-            <button type="button" className={`${toolBtn} rounded-r border-l-0`} onClick={() => move(1)} aria-label="次へ"><CaretRightIcon size={14} /></button>
+            <button type="button" className={`${toolBtn} rounded-r-lg border-l-0`} onClick={() => move(1)} aria-label="次へ"><CaretRightIcon size={14} /></button>
           </div>
         ) : null}
         <button type="button" className={`${pinkBtn} ml-auto`} onClick={() => setEditor({ preset: { date } })}>＋ 新規予約</button>
@@ -79,11 +79,11 @@ export default function ScheduleView({ bundle, reload, initialView, initialDate 
 
       {view !== 'list' ? (
         <div className="relative mb-2">
-          <button type="button" onClick={() => setShowFilter((v) => !v)} className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+          <button type="button" onClick={() => setShowFilter((v) => !v)} className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50">
             <span className={`h-2.5 w-2.5 rounded-full ${hiddenSlots.length ? 'bg-[#e8355d]' : 'bg-gray-300'}`} /> 予約表示フィルター <FunnelIcon size={12} />
           </button>
           {showFilter ? (
-            <div className="absolute z-20 mt-1 w-64 rounded border border-gray-300 bg-white p-3 text-sm shadow">
+            <div className="absolute z-20 mt-1 w-64 rounded-xl border border-gray-200 bg-white p-3 text-sm shadow-xl">
               <p className="mb-1 text-xs text-gray-500">表示する{calendar.slotSettings.title}(このブラウザに保存されます)</p>
               {[...slots.map((s) => ({ id: s.id, name: s.name })), { id: 'none', name: '未指定' }].map((s) => (
                 <label key={s.id} className="flex items-center gap-2 py-0.5">
@@ -192,9 +192,9 @@ function DayView({
   return (
     <div>
       {error ? <p className="mb-2 text-sm text-red-600">{error}</p> : null}
-      <div className="flex overflow-hidden rounded border border-gray-300 bg-white">
-        <div className="w-36 shrink-0 border-r border-gray-300">
-          <div className="h-8 border-b border-gray-300" />
+      <div className="flex overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="w-40 shrink-0 border-r border-gray-200 bg-gray-50/60">
+          <div className="h-9 border-b border-gray-200" />
           {rows.map((r) => (
             <div key={r.id ?? 'none'} className="flex items-center gap-2 border-b border-gray-200 px-2 text-sm font-medium text-gray-800" style={{ height: rowH }}>
               {r.icon ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={r.icon} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="h-6 w-6 shrink-0 rounded-full bg-gray-700 text-center text-[11px] leading-6 text-white">{r.name.charAt(0)}</span>}
@@ -204,9 +204,9 @@ function DayView({
         </div>
         <div ref={scroller} className="min-w-0 flex-1 overflow-x-auto">
           <div style={{ width }} className="relative">
-            <div className="flex h-8 border-b border-gray-300 text-xs text-gray-600">
+            <div className="flex h-9 border-b border-gray-200 bg-gray-50/60 text-xs font-medium text-gray-500">
               {Array.from({ length: 24 }, (_, h) => (
-                <div key={h} className="border-l border-gray-200 pl-1 pt-1.5" style={{ width: pxPerHour }}>{`${String(h).padStart(2, '0')}:00`}</div>
+                <div key={h} className="border-l border-gray-200 pl-1.5 pt-2" style={{ width: pxPerHour }}>{`${String(h).padStart(2, '0')}:00`}</div>
               ))}
             </div>
             {rows.map((r) => (
@@ -239,7 +239,7 @@ function DayView({
                           ev.stopPropagation()
                           onOpen(b.id)
                         }}
-                        className="absolute top-1 overflow-hidden rounded px-1.5 py-0.5 text-left text-[11px] leading-tight text-white shadow"
+                        className="absolute top-1 overflow-hidden rounded-lg px-2 py-1 text-left text-[11px] leading-tight text-white shadow-md ring-1 ring-black/5 transition hover:brightness-110"
                         style={{
                           left: (s / 60) * pxPerHour,
                           width: Math.max(24, ((e - s) / 60) * pxPerHour - 2),
@@ -276,7 +276,7 @@ function DayView({
           <button type="button" aria-label="最後へ" className="hover:text-gray-800" onClick={() => scroller.current?.scrollTo({ left: scroller.current.scrollWidth, behavior: 'smooth' })}><SkipForwardIcon size={22} weight="fill" /></button>
         </div>
       </div>
-      <p className="mt-2 text-center text-xs text-gray-500">空いている時間をクリックすると、その時間の新規予約を登録できます。</p>
+      <p className="mt-3 text-center text-xs text-gray-500">空いている時間をクリックすると、その時間の新規予約を登録できます。</p>
     </div>
   )
 }
@@ -314,19 +314,19 @@ function MonthView({ bundle, date, hiddenSlots, tick, onOpen, onPickDay }: { bun
   return (
     <div>
       {error ? <p className="mb-2 text-sm text-red-600">{error}</p> : null}
-      <div className="mb-1 text-center text-lg font-semibold">{first.slice(0, 4)}年{Number(first.slice(5, 7))}月</div>
-      <div className="grid grid-cols-7 border-l border-t border-gray-300 bg-white text-xs">
+      <div className="mb-3 text-center text-xl font-bold text-gray-900">{first.slice(0, 4)}年{Number(first.slice(5, 7))}月</div>
+      <div className="grid grid-cols-7 overflow-hidden rounded-2xl border-l border-t border-gray-200 bg-white text-xs shadow-sm">
         {WEEK_JA.map((w, i) => (
-          <div key={w} className={`border-b border-r border-gray-300 bg-gray-50 py-1 text-center ${i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : ''}`}>{w}</div>
+          <div key={w} className={`border-b border-r border-gray-200 bg-gray-50 py-2 text-center font-semibold ${i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : ''}`}>{w}</div>
         ))}
         {days.map((d) => {
           const list = visible.filter((b) => b.startsAt.slice(0, 10) === d)
           const inMonth = d.slice(0, 7) === first.slice(0, 7)
           return (
-            <div key={d} className={`min-h-[96px] cursor-pointer border-b border-r border-gray-300 p-1 ${inMonth ? 'bg-white' : 'bg-gray-50 text-gray-400'}`} onClick={() => onPickDay(d)}>
-              <div className={`mb-0.5 inline-block rounded-full px-1.5 ${d === today ? 'bg-[#e8355d] text-white' : ''}`}>{Number(d.slice(8))}</div>
+            <div key={d} className={`min-h-[104px] cursor-pointer border-b border-r border-gray-200 p-1.5 transition hover:bg-emerald-50/40 ${inMonth ? 'bg-white' : 'bg-gray-50/70 text-gray-400'}`} onClick={() => onPickDay(d)}>
+              <div className={`mb-1 inline-block rounded-full px-1.5 py-0.5 font-semibold ${d === today ? 'bg-[#e8355d] text-white' : ''}`}>{Number(d.slice(8))}</div>
               {list.slice(0, 3).map((b) => (
-                <button key={b.id} type="button" onClick={(e) => { e.stopPropagation(); onOpen(b.id) }} className={`mb-0.5 block w-full truncate rounded px-1 text-left text-[11px] ${b.isBlock ? 'bg-gray-200 text-gray-700' : b.status === 'pending' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'}`}>
+                <button key={b.id} type="button" onClick={(e) => { e.stopPropagation(); onOpen(b.id) }} className={`mb-0.5 block w-full truncate rounded-md px-1.5 py-0.5 text-left text-[11px] font-medium ${b.isBlock ? 'bg-gray-200 text-gray-700' : b.status === 'pending' ? 'bg-amber-100 text-amber-900' : 'bg-blue-100 text-blue-900'}`}>
                   {b.startsAt.slice(11, 16)} {b.isBlock ? 'ブロック' : displayName(b)}
                 </button>
               ))}
@@ -429,7 +429,7 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
     }
   }
 
-  const sel = 'w-full min-w-0 rounded border border-gray-300 bg-white px-1.5 py-1.5 text-xs'
+  const sel = 'w-full min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20'
   const fl = 'pt-1.5 text-xs font-semibold text-gray-700'
   return (
     <div>
@@ -441,10 +441,10 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
             <button type="button" disabled={selected.length === 0} onClick={() => setBulk(true)} className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">一括操作: 来店/来場済みに変更する ({selected.length})</button>
             <button type="button" className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#4a9d2f] px-5 py-2 text-sm font-medium text-white hover:bg-[#3f8727]" onClick={() => void download()}><DownloadSimpleIcon size={14} weight="bold" /> CSV</button>
           </div>
-          <div className="overflow-x-auto bg-white">
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
             <table className="w-full min-w-[820px] text-sm">
-              <thead className="text-center text-xs text-gray-700">
-                <tr className="border-b border-gray-300">
+              <thead className="bg-gray-50 text-center text-xs text-gray-600">
+                <tr className="border-b border-gray-200">
                   <th className="w-8 px-2 py-2"><input type="checkbox" aria-label="すべて選択" checked={items.length > 0 && selected.length === items.length} onChange={(e) => setSelected(e.target.checked ? items.filter((i) => !i.isBlock).map((i) => i.id) : [])} /></th>
                   <th className="px-2 py-2 font-semibold">{calendar.slotSettings.title}</th>
                   <th className="px-2 py-2 font-semibold">予約日時</th>
@@ -482,7 +482,7 @@ function ListView({ bundle, tick, onOpen, onChanged }: { bundle: CalendarBundle;
             </table>
           </div>
         </div>
-        <aside className="w-full shrink-0 rounded border border-gray-300 bg-white p-4 lg:w-80">
+        <aside className="w-full shrink-0 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:w-80">
           <h3 className="mb-3 border-b-2 border-[#9fc77e] pb-1 text-base font-semibold text-gray-900">絞り込みメニュー</h3>
           <div className="grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-2 gap-y-2.5">
             <span className={fl}>{calendar.slotSettings.title}</span>

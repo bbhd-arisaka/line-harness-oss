@@ -126,11 +126,11 @@ export default function ScreenConfig({ bundle, reload }: { bundle: CalendarBundl
       <Block title="管理者情報" id="admin" hint="店舗・会社・オーナーなど、予約の受付元の情報です。表示すると、友だち予約画面の下に「管理者情報」ボタンが出ます。">
         <Row label="管理者情報表示">
           <label className="mr-3 inline-flex items-center gap-2"><input type="checkbox" checked={s.adminInfo.show} onChange={(e) => setS({ ...s, adminInfo: { ...s.adminInfo, show: e.target.checked } })} /> 表示する</label>
-          <button type="button" className="rounded-full border border-green-600 px-3 py-1 text-xs text-green-700 hover:bg-green-50" onClick={() => { setAdminDraft(s.adminInfo); setDialog('admin') }}>内容を設定する</button>
+          <button type="button" className="rounded-full border border-emerald-600 bg-emerald-50/50 px-3.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50" onClick={() => { setAdminDraft(s.adminInfo); setDialog('admin') }}>内容を設定する</button>
         </Row>
         <Row label="同意事項" note="表示にすると、友だちが予約するときに同意が必要になります。項目名が空のときは「注意事項・利用規約」と表示します。">
           <label className="mr-3 inline-flex items-center gap-2"><input type="checkbox" checked={s.consent.show} onChange={(e) => setS({ ...s, consent: { ...s.consent, show: e.target.checked } })} /> 表示する</label>
-          <button type="button" className="rounded-full border border-green-600 px-3 py-1 text-xs text-green-700 hover:bg-green-50" onClick={() => { setConsentDraft(s.consent); setDialog('consent') }}>内容を設定する</button>
+          <button type="button" className="rounded-full border border-emerald-600 bg-emerald-50/50 px-3.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50" onClick={() => { setConsentDraft(s.consent); setDialog('consent') }}>内容を設定する</button>
         </Row>
       </Block>
 
@@ -143,10 +143,10 @@ export default function ScreenConfig({ bundle, reload }: { bundle: CalendarBundl
       <Block title="予約情報取得項目" id="fields" hint="友だちが予約するときに入力してもらう項目です。追加した項目は、管理者の新規予約にも出ます。">
         <div className="py-2">
           {s.fields.map((f, i) => (
-            <div key={f.id} className="flex items-center gap-3 border-b border-gray-200 py-2.5">
+            <div key={f.id} className="my-1.5 flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-2.5 shadow-sm transition hover:border-emerald-300">
               <div className="min-w-0 flex-1">
                 <span className="font-medium">{f.label}</span>
-                {f.required ? <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[11px] text-red-700">必須</span> : null}
+                {f.required ? <span className="ml-2 rounded bg-[#f0627f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span> : null}
                 <span className="ml-2 text-xs text-gray-500">{f.type === 'text' ? KIND_LABEL[f.textKind] : f.type === 'textarea' ? '段落' : 'プルダウン'}</span>
               </div>
               <button type="button" aria-label="編集" className="rounded p-1.5 text-gray-500 hover:bg-gray-100" onClick={() => setFieldEdit({ index: i, field: f, isNew: false })}><PencilSimpleIcon size={16} /></button>

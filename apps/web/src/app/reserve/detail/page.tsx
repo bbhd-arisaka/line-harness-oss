@@ -106,32 +106,32 @@ function Shell() {
   const { calendar } = bundle
   const active = calendar.status === 'active'
 
-  const tabCls = (t: Tab) => `inline-flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm ${tab === t ? 'border-green-500 text-white' : 'border-transparent text-gray-300 hover:text-white'}`
+  const tabCls = (t: Tab) => `inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition ${tab === t ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="flex flex-wrap items-center gap-x-5 gap-y-1 bg-[#2b2b2b] px-4 text-white">
-        <Link href="/reserve" aria-label="カレンダー一覧へ戻る" className="py-3 text-gray-200 hover:text-white"><ListIcon size={20} /></Link>
-        <span className="py-3 text-sm font-semibold">{calendar.name}</span>
-        <span className="hidden h-6 w-px bg-gray-600 sm:block" />
-        <nav className="flex">
+    <div className="min-h-screen bg-gray-50">
+      <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-gray-200 bg-white/95 px-5 py-2.5 shadow-sm backdrop-blur">
+        <Link href="/reserve" aria-label="カレンダー一覧へ戻る" className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"><ListIcon size={20} /></Link>
+        <span className="max-w-[16rem] truncate text-base font-bold text-gray-900">{calendar.name}</span>
+        <span className="hidden h-6 w-px bg-gray-200 sm:block" />
+        <nav className="flex gap-1">
           <button type="button" className={tabCls('schedule')} onClick={() => go({ tab: 'schedule' })}><CalendarDotsIcon size={16} /> 予約一覧</button>
           <button type="button" className={tabCls('shift')} onClick={() => go({ tab: 'shift' })}><ClockIcon size={16} /> シフト</button>
           <button type="button" className={tabCls('config')} onClick={() => go({ tab: 'config' })}><GearIcon size={16} /> 予約設定</button>
         </nav>
-        <div className="ml-auto flex items-center gap-4 py-2 text-xs">
-          <button type="button" role="switch" aria-checked={active} onClick={() => void toggleStatus()} className="flex items-center gap-2" title="友だちからの予約受付を、稼働中・停止中に切り替えます">
-            <span className={`relative h-5 w-9 rounded-full ${active ? 'bg-green-500' : 'bg-gray-500'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${active ? 'left-[18px]' : 'left-0.5'}`} /></span>
-            <span className="leading-tight"><span className="block text-[10px] text-gray-300">友だち予約</span><b>{active ? '稼働中' : '停止中'}</b></span>
+        <div className="ml-auto flex items-center gap-3 text-xs">
+          <button type="button" role="switch" aria-checked={active} onClick={() => void toggleStatus()} className={`flex items-center gap-2.5 rounded-full border px-3 py-1.5 transition ${active ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200 bg-gray-50'}`} title="友だちからの予約受付を、稼働中・停止中に切り替えます">
+            <span className={`relative h-5 w-9 rounded-full transition ${active ? 'bg-emerald-500' : 'bg-gray-400'}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${active ? 'left-[18px]' : 'left-0.5'}`} /></span>
+            <span className="leading-tight"><span className="block text-[10px] text-gray-500">友だち予約</span><b className={active ? 'text-emerald-700' : 'text-gray-600'}>{active ? '稼働中' : '停止中'}</b></span>
           </button>
-          <button type="button" className="flex items-center gap-1 text-gray-200 hover:text-white" onClick={() => setSiteOpen(true)}><DeviceMobileIcon size={16} /> 予約サイト確認</button>
+          <button type="button" className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900" onClick={() => setSiteOpen(true)}><DeviceMobileIcon size={16} /> 予約サイト確認</button>
           <div className="relative">
-            <button type="button" className="relative flex items-center gap-1 text-gray-200 hover:text-white" onClick={() => void openBell()}>
+            <button type="button" className="relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900" onClick={() => void openBell()}>
               <BellIcon size={16} /> お知らせ
-              {bundle.pendingCount > 0 ? <span className="absolute -right-3 -top-2 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">{bundle.pendingCount}</span> : null}
+              {bundle.pendingCount > 0 ? <span className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white shadow">{bundle.pendingCount}</span> : null}
             </button>
             {bell ? (
-              <div className="absolute right-0 top-8 z-30 w-80 rounded border border-gray-300 bg-white p-2 text-sm text-gray-800 shadow-lg">
+              <div className="absolute right-0 top-11 z-30 w-80 rounded-xl border border-gray-200 bg-white p-2 text-sm text-gray-800 shadow-xl">
                 <p className="px-2 py-1 text-xs text-gray-500">新規予約と、承認待ちのリクエスト{notices && notices.success && notices.data.pendingCount ? `(承認待ち ${notices.data.pendingCount}件)` : ''}</p>
                 {!notices ? <div className="p-3"><Loader size="sm" /></div> : null}
                 {notices && notices.success && notices.data.items.length === 0 ? <p className="p-3 text-xs text-gray-500">お知らせはありません</p> : null}
@@ -152,25 +152,25 @@ function Shell() {
         </div>
       </header>
 
-      {error ? <p className="bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p> : null}
+      {error ? <p className="bg-red-50 px-5 py-2 text-sm text-red-700">{error}</p> : null}
 
       {tab === 'schedule' ? <ScheduleView key={`s-${version}`} bundle={bundle} reload={() => void load()} initialView={params.get('view')} initialDate={params.get('date')} /> : null}
       {tab === 'shift' ? <ShiftView bundle={bundle} /> : null}
       {tab === 'config' ? (
-        <div className="flex flex-col gap-6 px-4 py-5 md:flex-row">
-          <aside className="w-full shrink-0 md:w-56">
-            <h2 className="mb-3 text-lg font-semibold text-gray-900">予約設定</h2>
-            <ul className="border border-gray-200">
+        <div className="flex flex-col gap-6 px-5 py-6 md:flex-row">
+          <aside className="w-full shrink-0 md:sticky md:top-20 md:w-60 md:self-start">
+            <h2 className="mb-3 px-1 text-xs font-bold uppercase tracking-wider text-gray-500">予約設定</h2>
+            <ul className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
               {SECTIONS.map((s) => (
-                <li key={s.key} className="border-b border-gray-200 last:border-b-0">
-                  <button type="button" onClick={() => go({ tab: 'config', section: s.key })} className={`flex w-full items-center gap-2 px-3 py-3 text-left text-sm ${section === s.key ? 'bg-green-50 font-medium' : 'hover:bg-gray-50'}`}>
-                    <GearIcon size={16} className="text-green-600" weight="fill" /> {s.label}
+                <li key={s.key} className="border-b border-gray-100 last:border-b-0">
+                  <button type="button" onClick={() => go({ tab: 'config', section: s.key })} className={`flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm transition ${section === s.key ? 'bg-emerald-50 font-semibold text-emerald-800' : 'text-gray-700 hover:bg-gray-50'}`}>
+                    <GearIcon size={16} className={section === s.key ? 'text-emerald-600' : 'text-gray-400'} weight="fill" /> {s.label}
                   </button>
                   {section === s.key && s.subs ? (
-                    <ul className="bg-white">
+                    <ul className="bg-white pb-1">
                       {s.subs.map((sub) => (
                         <li key={sub.id}>
-                          <button type="button" className="block w-full border-t border-gray-100 px-9 py-2 text-left text-xs text-gray-700 hover:bg-yellow-50" onClick={() => document.getElementById(sub.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{sub.label}</button>
+                          <button type="button" className="block w-full border-l-2 border-transparent px-10 py-1.5 text-left text-xs text-gray-600 hover:border-emerald-400 hover:bg-emerald-50/60 hover:text-emerald-800" onClick={() => document.getElementById(sub.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{sub.label}</button>
                         </li>
                       ))}
                     </ul>
@@ -179,7 +179,7 @@ function Shell() {
               ))}
             </ul>
           </aside>
-          <div className="min-w-0 max-w-3xl flex-1">
+          <div className="min-w-0 max-w-4xl flex-1">
             {section === 'reception' ? <ReceptionConfig bundle={bundle} reload={() => void load()} /> : null}
             {section === 'course' ? <CourseConfig bundle={bundle} reload={() => void load()} /> : null}
             {section === 'screen' ? <ScreenConfig bundle={bundle} reload={() => void load()} /> : null}
