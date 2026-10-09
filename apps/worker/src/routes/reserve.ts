@@ -488,7 +488,7 @@ reserve.get('/api/reserve/bookings/:bid', async (c) => {
   let friend = null;
   let recent: unknown[] = [];
   if (b.friendId) {
-    friend = await c.env.DB.prepare('SELECT id, display_name, real_name, system_display_name, picture_url, notes FROM friends WHERE id = ?').bind(b.friendId).first();
+    friend = await c.env.DB.prepare('SELECT id, display_name, real_name, system_display_name, picture_url, memo AS notes FROM friends WHERE id = ?').bind(b.friendId).first();
     const r = await listReserveBookings(c.env.DB, s.cal.id, { friendId: b.friendId, limit: 5, order: 'desc' });
     recent = r.items.filter((x) => x.id !== b.id).map((x) => ({ id: x.id, startsAt: x.startsAt, status: x.status }));
   }
