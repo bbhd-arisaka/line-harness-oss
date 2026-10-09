@@ -323,6 +323,15 @@ chats.get('/api/chats', async (c) => {
       recent_msg AS (
         SELECT friend_id, content, direction, message_type, created_at AS preview_at
         FROM any_agg
+      ),
+      form_agg AS (
+        -- 最新のフォーム回答(お客様からの連絡と同じ扱い)。メッセージより新しければ、一覧の表示に使う。
+        -- text は MAX(created_at) の行の値(SQLite の argmax 挙動)
+        SELECT friend_id, text AS form_text, MAX(created_at) AS form_at
+        FROM friend_events
+        WHERE event_type = 'form_submitted'
+          AND friend_id IN (SELECT friend_id FROM page)
+        GROUP BY friend_id
       )
       SELECT
         f.id AS id,
@@ -336,10 +345,10 @@ chats.get('/api/chats', async (c) => {
         c.operator_id,
         COALESCE(c.status, 'resolved') AS status,
         c.notes,
-        COALESCE(rm.preview_at, d.last_message_at) AS last_message_at,
-        rm.content AS last_message_content,
-        rm.direction AS last_message_direction,
-        rm.message_type AS last_message_type,
+        CASE WHEN fa.form_at > COALESCE(rm.preview_at, '') THEN fa.form_at ELSE COALESCE(rm.preview_at, d.last_message_at) END AS last_message_at,
+        CASE WHEN fa.form_at > COALESCE(rm.preview_at, '') THEN fa.form_text ELSE rm.content END AS last_message_content,
+        CASE WHEN fa.form_at > COALESCE(rm.preview_at, '') THEN 'incoming' ELSE rm.direction END AS last_message_direction,
+        CASE WHEN fa.form_at > COALESCE(rm.preview_at, '') THEN 'text' ELSE rm.message_type END AS last_message_type,
         COALESCE(c.created_at, d.last_message_at) AS created_at,
         COALESCE(c.updated_at, d.last_message_at) AS updated_at
       FROM page d
@@ -348,6 +357,7 @@ chats.get('/api/chats', async (c) => {
         SELECT id FROM chats WHERE friend_id = f.id ORDER BY created_at DESC LIMIT 1
       )
       LEFT JOIN recent_msg rm ON rm.friend_id = f.id
+      LEFT JOIN form_agg fa ON fa.friend_id = f.id
       ORDER BY d.last_message_at DESC, d.friend_id DESC
     `;
 

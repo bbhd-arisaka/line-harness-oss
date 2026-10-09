@@ -31,6 +31,7 @@ import { checkDateAgainstRule, parseYmd, type DateRule } from '../lib/date-rules
 import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { notifyEvent } from '../services/notifications.js';
+import { handleFormAnswered } from '../services/form-answered.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
 import { findCallerFriend } from '../services/caller-friend.js';
 import { exportSubmissionToGoogleSheet } from '../services/google-sheets-export.js';
@@ -938,6 +939,9 @@ forms.post('/api/forms/:id/submit', async (c) => {
 
     // 通知設定(回答フォームに回答時)
     await notifyEvent(c.env.DB, { accountId: null, timing: 'form_answered', friendId, formId, detail: `フォーム「${form.name}」に回答がありました` });
+
+    // トークを上に持ってきて未読にし、アプリの端末にも通知する(お客様から連絡が来たときと同じ扱い)
+    await handleFormAnswered(c.env, c.env.DB, optionalExecutionCtx(c), { friendId, accountId: friend.line_account_id ?? null, formName: form.name });
 
     // Side effects (best-effort, don't fail the request)
     {

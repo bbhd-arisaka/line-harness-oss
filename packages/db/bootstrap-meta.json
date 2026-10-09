@@ -106,7 +106,8 @@
     "098_reserve_calendars.sql",
     "099_reserve_slot_icon.sql",
     "100_app_push_muted_accounts.sql",
-    "101_demo_review_data.sql"
+    "101_demo_review_data.sql",
+    "102_app_push_muted_kinds.sql"
   ],
-  "migrationCount": 107
+  "migrationCount": 108
 }

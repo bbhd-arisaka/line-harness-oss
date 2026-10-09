@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
-import { describeMessageForPush, notifyIncomingMessage, resolvePushRecipients } from './push-notify.js';
+import { describeFormAnswered, describeMessageForPush, notifyFormAnswered, notifyIncomingMessage, resolvePushRecipients } from './push-notify.js';
 import { resetApnsJwtCache } from './apns.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
@@ -129,5 +129,50 @@ describe('notifyIncomingMessage', () => {
     staff('o', 'owner'); session('o', 'D');
     await expect(notifyIncomingMessage(await env(), db, { friendId: 'fr1', accountId: 'A', messageType: 'text', content: 'x' }, { fetchImpl })).resolves.toBeUndefined();
     err.mockRestore();
+  });
+});
+
+describe('通知の種類(新着メッセージ / フォームの回答)を、端末ごとに選べる', () => {
+  it('止めている種類は、その端末に送らない。他の種類は届く', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner');
+    session('o', 'ALL');
+    session('o', 'NO-FORM');
+    session('o', 'NO-MSG');
+    session('o', 'NONE');
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["form_answered"]' WHERE apns_token = 'NO-FORM'`).run();
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["message"]' WHERE apns_token = 'NO-MSG'`).run();
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["message","form_answered"]' WHERE apns_token = 'NONE'`).run();
+    expect([...(await resolvePushRecipients(db, 'A'))].sort()).toEqual(['ALL', 'NO-FORM']);
+    expect([...(await resolvePushRecipients(db, 'A', Date.now(), 'message'))].sort()).toEqual(['ALL', 'NO-FORM']);
+    expect([...(await resolvePushRecipients(db, 'A', Date.now(), 'form_answered'))].sort()).toEqual(['ALL', 'NO-MSG']);
+  });
+  it('知らない種類・壊れた値は無視して、すべて受け取る', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner');
+    session('o', 'X');
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = 'not json'`).run();
+    expect(await resolvePushRecipients(db, 'A', Date.now(), 'form_answered')).toEqual(['X']);
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["unknown"]'`).run();
+    expect(await resolvePushRecipients(db, 'A', Date.now(), 'form_answered')).toEqual(['X']);
+  });
+  it('フォームの回答: 友だち名・フォーム名・chatId を付けて送る。止めた端末には送らない', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner'); session('o', 'OK'); session('o', 'MUTED');
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["form_answered"]' WHERE apns_token = 'MUTED'`).run();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    await notifyFormAnswered(await env(), db, { friendId: 'fr1', accountId: 'A', formName: 'ご予約アンケート' }, { fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0] as [string, Init];
+    expect(url).toBe('https://api.push.apple.com/3/device/OK');
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      aps: { alert: { title: '山田太郎', subtitle: 'A', body: 'フォーム「ご予約アンケート」に回答がありました' } },
+      chatId: 'chat1',
+      accountId: 'A',
+    });
+  });
+  it('フォーム名が長い・空のときの本文', () => {
+    expect(describeFormAnswered('あ'.repeat(50))).toBe(`フォーム「${'あ'.repeat(40)}…」に回答がありました`);
+    expect(describeFormAnswered('  ')).toBe('フォームに回答がありました');
   });
 });

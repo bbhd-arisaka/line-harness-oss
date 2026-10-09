@@ -1,7 +1,10 @@
 import { Hono } from 'hono';
 import {
   clearLoginFailures,
+  APP_PUSH_KINDS,
   getAppSessionMutedAccounts,
+  getAppSessionMutedKinds,
+  isAppPushKind,
   countRecentLoginFailures,
   createAppSession,
   hashForKey,
@@ -10,6 +13,7 @@ import {
   revokeAppSession,
   setAppSessionApnsToken,
   setAppSessionMutedAccounts,
+  setAppSessionMutedKinds,
 } from '@line-crm/db';
 import { verifyAdminCredentials } from '../services/app-auth.js';
 import { isTenantPermitted, resolveExternalStaff } from '../services/external-auth.js';
@@ -20,7 +24,7 @@ import type { Env } from '../index.js';
  *  POST /api/app/login   メール・パスワード → アプリ用トークン(端末ごと・90日・取り消し可能)
  *  POST /api/app/logout  この端末のトークンを取り消す
  *  PUT  /api/app/device  プッシュ通知(APNs)の送り先を登録する
- *  GET/PUT /api/app/push-settings  この端末で通知を止める公式アカウント(アカウントごとの通知設定)
+ *  GET/PUT /api/app/push-settings  この端末の通知設定: 止める公式アカウント・止める種類(新着メッセージ/フォームの回答)。アプリの設定画面だけで完結する
  *  POST /api/app/account-deletion  アカウント削除の申請(App Store の要件)。全端末からログアウトされ、以後入れなくなる
  * トークンは Authorization: Bearer で使う(Cookie ではないので、CSRF の対象外)。
  */
@@ -90,23 +94,40 @@ appAuth.put('/api/app/device', async (c) => {
   return c.json({ success: true, data: null });
 });
 
-// この端末の、アカウントごとの通知設定(止めている公式アカウントのID)。端末ごとに持つ
+// この端末の通知設定(止めている公式アカウント・止めている通知の種類)。端末ごとに持つ。
+// PUT は、送られた項目だけを更新する(古いアプリが mutedAccountIds だけ送っても、種類の設定は消えない)
+async function pushSettingsOf(db: D1Database, sessionId: string) {
+  return {
+    mutedAccountIds: await getAppSessionMutedAccounts(db, sessionId),
+    mutedKinds: await getAppSessionMutedKinds(db, sessionId),
+    kinds: APP_PUSH_KINDS.map((k) => ({ key: k.key, label: k.label, description: k.description })),
+  };
+}
+
 appAuth.get('/api/app/push-settings', async (c) => {
   const sessionId = c.get('appSessionId');
   if (!sessionId) return c.json({ success: false, error: 'アプリのログインで呼び出してください' }, 400);
-  return c.json({ success: true, data: { mutedAccountIds: await getAppSessionMutedAccounts(c.env.DB, sessionId) } });
+  return c.json({ success: true, data: await pushSettingsOf(c.env.DB, sessionId) });
 });
 
 appAuth.put('/api/app/push-settings', async (c) => {
   const sessionId = c.get('appSessionId');
   if (!sessionId) return c.json({ success: false, error: 'アプリのログインで呼び出してください' }, 400);
-  const body = await c.req.json<{ mutedAccountIds?: unknown }>().catch(() => ({}) as { mutedAccountIds?: unknown });
+  const body = await c.req.json<{ mutedAccountIds?: unknown; mutedKinds?: unknown }>().catch(() => ({}) as { mutedAccountIds?: unknown; mutedKinds?: unknown });
   const ids = body.mutedAccountIds;
-  if (!Array.isArray(ids) || ids.length > 200 || ids.some((x) => typeof x !== 'string' || !x || x.length > 64)) {
+  const kinds = body.mutedKinds;
+  if (ids === undefined && kinds === undefined) {
+    return c.json({ success: false, error: '変更する項目(mutedAccountIds か mutedKinds)を送ってください' }, 400);
+  }
+  if (ids !== undefined && (!Array.isArray(ids) || ids.length > 200 || ids.some((x) => typeof x !== 'string' || !x || x.length > 64))) {
     return c.json({ success: false, error: 'mutedAccountIds が正しくありません' }, 400);
   }
-  await setAppSessionMutedAccounts(c.env.DB, sessionId, ids as string[]);
-  return c.json({ success: true, data: { mutedAccountIds: await getAppSessionMutedAccounts(c.env.DB, sessionId) } });
+  if (kinds !== undefined && (!Array.isArray(kinds) || kinds.length > 20 || kinds.some((x) => !isAppPushKind(x)))) {
+    return c.json({ success: false, error: 'mutedKinds が正しくありません' }, 400);
+  }
+  if (ids !== undefined) await setAppSessionMutedAccounts(c.env.DB, sessionId, ids as string[]);
+  if (kinds !== undefined) await setAppSessionMutedKinds(c.env.DB, sessionId, kinds as string[]);
+  return c.json({ success: true, data: await pushSettingsOf(c.env.DB, sessionId) });
 });
 
 // アカウント削除の申請。ユーザー本体は beyond admin にあるため、ここでは「その場で入れなくする」ことと

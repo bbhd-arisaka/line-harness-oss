@@ -8,6 +8,7 @@ import { accountLabel } from '../../../src/lib/accounts';
 import { usePushStatus } from '../../../src/state/push';
 import { api } from '../../../src/state/services';
 import { describeError } from '../../../src/lib/errors';
+import type { PushSettings } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 import { withReadableWidth } from '../../../src/components/readable-width';
 
@@ -35,6 +36,9 @@ function SettingsScreen() {
 
   // 公式アカウントごとの通知(この端末だけの設定)
   const [muted, setMuted] = useState<string[] | null>(null);
+  // 通知する内容(新着メッセージ・フォームの回答 など)。種類の一覧はサーバーが返す
+  const [mutedKinds, setMutedKinds] = useState<string[] | null>(null);
+  const [kinds, setKinds] = useState<PushSettings['kinds']>([]);
   const [mutedError, setMutedError] = useState<string | null>(null);
   useEffect(() => {
     if (push.state === 'unsupported') return;
@@ -42,7 +46,10 @@ function SettingsScreen() {
     api
       .getPushSettings()
       .then((r) => {
-        if (!cancelled) setMuted(r.mutedAccountIds);
+        if (cancelled) return;
+        setMuted(r.mutedAccountIds);
+        setMutedKinds(r.mutedKinds ?? []);
+        setKinds(r.kinds ?? []);
       })
       .catch((e) => {
         if (!cancelled) setMutedError(describeError(e, '通知の設定を読み込めませんでした'));
@@ -58,10 +65,24 @@ function SettingsScreen() {
     setMuted(next);
     setMutedError(null);
     try {
-      const r = await api.setPushSettings(next);
+      const r = await api.setPushSettings({ mutedAccountIds: next });
       setMuted(r.mutedAccountIds);
     } catch (e) {
       setMuted(before);
+      setMutedError(describeError(e, '通知の設定を保存できませんでした'));
+    }
+  }
+
+  async function toggleKind(kind: string, enabled: boolean) {
+    const before = mutedKinds ?? [];
+    const next = enabled ? before.filter((x) => x !== kind) : [...before, kind];
+    setMutedKinds(next);
+    setMutedError(null);
+    try {
+      const r = await api.setPushSettings({ mutedKinds: next });
+      setMutedKinds(r.mutedKinds);
+    } catch (e) {
+      setMutedKinds(before);
       setMutedError(describeError(e, '通知の設定を保存できませんでした'));
     }
   }
@@ -136,6 +157,30 @@ function SettingsScreen() {
               <Button title="iPhone の設定を開く" variant="secondary" onPress={() => void Linking.openSettings()} style={{ marginTop: 8 }} />
             ) : push.state === 'undetermined' ? (
               <Button title="通知を受け取る" variant="secondary" loading={push.busy} onPress={() => void push.enable()} style={{ marginTop: 8 }} />
+            ) : null}
+          </Card>
+
+          <SectionTitle>通知する内容</SectionTitle>
+          <Card>
+            <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginBottom: 6 }}>
+              このスマートフォンで、何が起きたときに通知するかを選べます。設定はこのアプリの中だけで完結します(Web版の設定は要りません)。
+            </Text>
+            {kinds.map((k) => (
+              <View key={k.key} style={styles.accountRow}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ color: c.text, fontSize: 15 }}>{k.label}</Text>
+                  <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 1 }}>{k.description}</Text>
+                </View>
+                <Switch
+                  accessibilityLabel={`${k.label}の通知`}
+                  value={mutedKinds !== null && !mutedKinds.includes(k.key)}
+                  disabled={mutedKinds === null}
+                  onValueChange={(v) => void toggleKind(k.key, v)}
+                />
+              </View>
+            ))}
+            {kinds.length === 0 && mutedKinds === null ? (
+              <Text style={{ color: c.textMuted, fontSize: 13 }}>読み込み中…</Text>
             ) : null}
           </Card>
 

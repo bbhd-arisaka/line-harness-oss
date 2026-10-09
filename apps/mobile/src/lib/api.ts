@@ -10,6 +10,7 @@ import type {
   FriendRichMenu,
   LineAccount,
   LoginResult,
+  PushSettings,
   UpdatedChat,
 } from './types';
 import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
@@ -116,9 +117,10 @@ export function createApiClient(options: ApiClientOptions) {
     requestAccountDeletion: () => request<null>('POST', '/api/app/account-deletion'),
     /** プッシュ通知の送り先(APNs デバイストークン)を登録。null で解除。 */
     setApnsToken: (apnsToken: string | null) => request<null>('PUT', '/api/app/device', { body: { apnsToken } }),
-    /** この端末で、通知を止めている公式アカウントのID */
-    getPushSettings: () => request<{ mutedAccountIds: string[] }>('GET', '/api/app/push-settings'),
-    setPushSettings: (mutedAccountIds: string[]) => request<{ mutedAccountIds: string[] }>('PUT', '/api/app/push-settings', { body: { mutedAccountIds } }),
+    /** この端末の通知設定: 止めている公式アカウント・止めている通知の種類(設定はアプリの中だけで完結する) */
+    getPushSettings: () => request<PushSettings>('GET', '/api/app/push-settings'),
+    /** 送った項目だけを更新する(公式アカウント・種類のどちらか、または両方) */
+    setPushSettings: (change: { mutedAccountIds?: string[]; mutedKinds?: string[] }) => request<PushSettings>('PUT', '/api/app/push-settings', { body: change }),
 
     // ── 公式アカウント ──
     listLineAccounts: () => request<LineAccount[]>('GET', '/api/line-accounts'),

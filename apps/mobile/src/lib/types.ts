@@ -35,6 +35,13 @@ export interface LineAccount {
   stats?: { friendCount: number; activeScenarios: number; messagesThisMonth: number };
 }
 
+/** GET /api/app/push-settings: この端末の通知設定。通知の種類の一覧(kinds)はサーバーが返す */
+export interface PushSettings {
+  mutedAccountIds: string[];
+  mutedKinds: string[];
+  kinds: { key: string; label: string; description: string }[];
+}
+
 /** chats.status: unread=未対応 / in_progress=対応中 / resolved=対応済み */
 export type ChatStatus = 'unread' | 'in_progress' | 'resolved';
 

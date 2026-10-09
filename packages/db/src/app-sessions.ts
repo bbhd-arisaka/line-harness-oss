@@ -114,6 +114,35 @@ export function parseMutedAccountIds(raw: string | null): string[] {
   }
 }
 
+/** アプリの通知で、「何を知らせるか」の種類。設定はアプリの設定画面だけで完結する(端末ごと) */
+export const APP_PUSH_KINDS = [
+  { key: 'message', label: '新着メッセージ', description: 'お客様からLINEが届いたとき' },
+  { key: 'form_answered', label: 'フォームの回答', description: 'お客様がフォームに回答したとき' },
+] as const;
+export type AppPushKind = (typeof APP_PUSH_KINDS)[number]['key'];
+export const isAppPushKind = (x: unknown): x is AppPushKind => APP_PUSH_KINDS.some((k) => k.key === x);
+
+/** 保存された JSON から、止めている種類を取り出す(知らない種類は捨てる) */
+export function parseMutedPushKinds(raw: string | null): AppPushKind[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? [...new Set(v.filter(isAppPushKind))] : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getAppSessionMutedKinds(db: D1Database, sessionId: string): Promise<AppPushKind[]> {
+  const r = await db.prepare('SELECT muted_push_kinds FROM app_sessions WHERE id = ?').bind(sessionId).first<{ muted_push_kinds: string | null }>();
+  return parseMutedPushKinds(r?.muted_push_kinds ?? null);
+}
+
+export async function setAppSessionMutedKinds(db: D1Database, sessionId: string, kinds: string[]): Promise<void> {
+  const clean = [...new Set(kinds.filter(isAppPushKind))];
+  await db.prepare('UPDATE app_sessions SET muted_push_kinds = ? WHERE id = ?').bind(clean.length ? JSON.stringify(clean) : null, sessionId).run();
+}
+
 export async function listAppSessionsForStaff(db: D1Database, staffId: string): Promise<AppSessionRow[]> {
   const r = await db
     .prepare('SELECT id, staff_id, device_name, apns_token, created_at, last_used_at, expires_at, revoked_at FROM app_sessions WHERE staff_id = ? AND revoked_at IS NULL ORDER BY created_at DESC')
