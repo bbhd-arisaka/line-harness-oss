@@ -1,0 +1,86 @@
+name: Mobile iOS Build (TestFlight 配信)
+
+# iOSアプリ(apps/mobile)を EAS でビルドし、必要なら App Store Connect(TestFlight)へ提出する。手動実行。
+# 事前に、リポジトリの Secrets に次を登録しておく:
+#   EXPO_TOKEN        ... expo.dev のアクセストークン(登録済み)
+#   ASC_KEY_P8        ... App Store Connect API キー(.p8 ファイルの中身そのまま)
+#   ASC_KEY_ID        ... そのキーの「キーID」
+#   ASC_ISSUER_ID     ... App Store Connect の「発行者ID(Issuer ID)」
+#   APPLE_TEAM_ID     ... Apple Developer の「チームID」(10文字)
+# 提出する場合は、App Store Connect にアプリ(App Store Connect のアプリ登録)を作っておき、その「Apple ID」(数字)を入力する。
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: ビルド後に TestFlight へ提出する(App Store Connect にアプリを作ってから)
+        type: boolean
+        default: false
+      asc_app_id:
+        description: 提出するとき: App Store Connect のアプリの「Apple ID」(数字)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      # ビルドする前に、型チェックとテストを必ず通す
+      - run: npx tsc --noEmit
+      - run: npm test
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: App Store Connect のキーを、一時ファイルに置く(ログには出さない)
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -e
+          umask 077
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc-key.p8"
+          test -s "$RUNNER_TEMP/asc-key.p8"
+      - name: 提出先のアプリ(Apple ID)を、提出の設定に入れる
+        if: ${{ inputs.submit }}
+        env:
+          ASC_APP_ID: ${{ inputs.asc_app_id }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$ASC_APP_ID"
+          node -e "
+            const fs = require('fs');
+            const c = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+            c.submit = c.submit || {};
+            c.submit.production = c.submit.production || {};
+            c.submit.production.ios = { ascAppId: process.env.ASC_APP_ID, appleTeamId: process.env.APPLE_TEAM_ID };
+            fs.writeFileSync('eas.json', JSON.stringify(c, null, 2));
+          "
+      - name: iOS をビルド(本番用・TestFlight 向け)
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_APPLE_TEAM_TYPE: COMPANY_OR_ORGANIZATION
+          SUBMIT: ${{ inputs.submit }}
+        run: |
+          if [ "$SUBMIT" = "true" ]; then
+            eas build --platform ios --profile production --non-interactive --wait --auto-submit
+          else
+            eas build --platform ios --profile production --non-interactive --wait
+          fi
+      - name: キーの一時ファイルを消す
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asc-key.p8"
