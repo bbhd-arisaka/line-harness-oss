@@ -224,19 +224,10 @@ export function OptionModal({
           })()}
         </Sub>
         <Sub label="トークの回答結果カード">
-          <label className={check}>
-            <input
-              type="checkbox"
-              checked={l.answerCard?.enabled === true}
-              onChange={(e) => setL({ answerCard: { ...l.answerCard, enabled: e.target.checked } })}
-            />
-            回答があったら、トークに「回答結果を見る」カードを出す
-          </label>
           <p className="text-[11px] text-[#757578]">
-            お客様から届いたメッセージとして、トークに残ります(お客様には何も送りません)。ボタンから、Web版・アプリで回答結果を開けます。
+            回答があると、トークに「回答結果を見る」カードが、お客様から届いたメッセージとして残ります(お客様には何も送りません)。ボタンから、Web版・アプリで回答結果を開けます。カードは、すべてのフォームで自動で出ます。下で文言だけ変えられます。
           </p>
-          {l.answerCard?.enabled === true && (
-            <div className="space-y-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
+          <div className="space-y-2 rounded border border-[#e3e3e6] bg-[#fafafb] p-3">
               <div>
                 <p className="mb-1 text-xs text-[#757578]">見出し</p>
                 <TagTextEditor
@@ -286,8 +277,7 @@ export function OptionModal({
               <p className="text-[11px] text-[#757578]">
                 <TaggedText text="{{name}} はお客様の名前、{{form}} はフォーム名に置き換わります。空欄のところは、上の例の文言になります。" />
               </p>
-            </div>
-          )}
+          </div>
         </Sub>
         <Sub label="2回目以降の回答">
           <label className={check}>
