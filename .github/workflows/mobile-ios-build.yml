@@ -50,7 +50,7 @@ jobs:
       - name: 署名の材料(配布用証明書・プロファイル)を、App Store Connect API で作る
         env:
           ASC_KEY_PATH: ${{ runner.temp }}/asc-key.p8
-          ASC_KEY_ID: 8Y9VPP4N35
+          ASC_KEY_ID: 4UX2H763SY
           ASC_ISSUER_ID: d27e3cd5-37fa-46e7-b777-d56ab06f0fbb
           BUNDLE_ID: jp.cms-manager.beyondline
           OUT_DIR: ${{ runner.temp }}/ios-credentials
