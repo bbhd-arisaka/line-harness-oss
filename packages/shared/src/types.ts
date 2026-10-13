@@ -413,6 +413,8 @@ export interface LineAccount {
   displayOrder: number;
   /** OGP: og:site_name。空欄時は name がフォールバックとして使われる。 */
   ogSiteName: string | null;
+  /** Lステップと並行運用中のときの、Lステップの受信URL(設定があると、受信をLステップにも転送し、beyond line からは自動送信しない) */
+  lstepForwardUrl?: string | null;
   /** OGP: アカウント全体のデフォルト og:description。個別レコードで未設定時に使用。 */
   ogDefaultDescription: string | null;
   /** OGP: アカウント全体のデフォルト og:image。個別レコードで未設定時に使用。 */

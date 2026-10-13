@@ -156,11 +156,11 @@ export function AccountFormSections({
           label="Channel Access Token"
           value={state.channelAccessToken}
           onChange={(v) => update({ channelAccessToken: v })}
-          required={showMessagingRequired}
+          required={false}
           type="password"
           hint={
             showMessagingRequired
-              ? undefined
+              ? '空欄のままで構いません(Channel IDとSecretから、短期のトークンを自動で発行し、自動で更新します)。Lステップなど他のサービスと併用するときは、LINE Developers で長期トークンを「発行・再発行」しないでください(他のサービスのトークンが無効になります)'
               : '空欄なら現在の値を維持。再発行した場合のみ入力'
           }
         />

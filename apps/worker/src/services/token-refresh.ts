@@ -33,7 +33,7 @@ interface TokenResponse {
   token_type: string;
 }
 
-async function issueNewToken(
+export async function issueNewToken(
   channelId: string,
   channelSecret: string,
 ): Promise<TokenResponse> {

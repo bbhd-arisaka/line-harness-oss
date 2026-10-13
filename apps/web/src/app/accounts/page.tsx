@@ -26,6 +26,7 @@ import {
 import AccountSetupUrls from '@/components/accounts/account-setup-urls'
 import LinkBaseUrlSetting from '@/components/accounts/link-base-url-setting'
 import FollowerImportButton from '@/components/accounts/follower-import-button'
+import LstepForwardSetting from '@/components/accounts/lstep-forward-setting'
 
 const ReorderMode = dynamic(() => import('@/components/accounts/reorder-mode'), { ssr: false })
 const AccountEditModal = dynamic(() => import('@/components/accounts/account-edit-modal'), { ssr: false })
@@ -40,6 +41,8 @@ interface LineAccountListItem {
   isActive: boolean
   loginChannelId: string | null
   liffId: string | null
+  /** Lステップと並行運用中のときの、Lステップの受信URL */
+  lstepForwardUrl?: string | null
   createdAt: string
   updatedAt: string
   stats: {
@@ -121,7 +124,7 @@ export default function AccountsPage() {
   const handleCreate = async (event: React.FormEvent) => {
     event.preventDefault()
     setCreateError('')
-    if (!form.channelId || !form.name || !form.channelAccessToken || !form.channelSecret) {
+    if (!form.channelId || !form.name || !form.channelSecret) {
       setCreateError('Messaging APIの必須項目を入力してください')
       return
     }
@@ -405,6 +408,7 @@ export default function AccountsPage() {
                 />
                 <TestRecipientsSetting accountId={account.id} />
                 <FollowerImportButton accountId={account.id} onImported={reloadAccounts} />
+                <LstepForwardSetting accountId={account.id} initialUrl={account.lstepForwardUrl ?? null} onUpdated={reloadAccounts} />
 
                 <div className="mt-3 flex items-center justify-between border-t border-kumo-line pt-3">
                   <p className="text-xs text-kumo-subtle">登録: {new Date(account.createdAt).toLocaleDateString('ja-JP')}</p>

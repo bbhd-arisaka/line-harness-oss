@@ -27,6 +27,7 @@ import type { HarnessProxyDispatch } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import { ensureSchedulerArmed } from '../durable-objects/tenant-scheduler.js';
 import { notifyIncomingMessage } from '../services/push-notify.js';
+import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import type { IncomingMessageNotice } from '../services/push-notify.js';
@@ -113,6 +114,8 @@ webhook.post('/webhook', async (c) => {
   // Slow path: iterate DB-registered accounts for genuinely multi-account installs.
   let channelAccessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
   let matchedAccountId: string | null = null;
+  // Lステップと並行運用中のアカウントは、受け取った Webhook をそのまま Lステップにも転送する
+  let lstepForwardUrl: string | null = null;
   let valid = false;
 
   const envSecret = c.env.LINE_CHANNEL_SECRET;
@@ -126,6 +129,7 @@ webhook.post('/webhook', async (c) => {
       if (main) {
         channelAccessToken = main.channel_access_token;
         matchedAccountId = main.id;
+        lstepForwardUrl = main.lstep_forward_url ?? null;
       }
     }
   }
@@ -139,6 +143,7 @@ webhook.post('/webhook', async (c) => {
       if (isValid) {
         channelAccessToken = account.channel_access_token;
         matchedAccountId = account.id;
+        lstepForwardUrl = account.lstep_forward_url ?? null;
         valid = true;
         break;
       }
@@ -150,15 +155,30 @@ webhook.post('/webhook', async (c) => {
     return c.json({ status: 'ok' }, 200);
   }
 
+  // 並行運用: 検証に通ったら、すぐに Lステップへ転送を始める(本文は1バイトも変えない)。
+  // Lステップが本番なので、その応答ステータスを、そのまま LINE に返す。
+  const parallelMode = lstepForwardUrl !== null;
+  const forwardPromise = lstepForwardUrl
+    ? forwardWebhookToLstep(lstepForwardUrl, rawBody, signature, c.req.header('Content-Type'))
+    : null;
+  const finish = async (): Promise<Response> => {
+    if (!forwardPromise) return c.json({ status: 'ok' }, 200);
+    const result = await forwardPromise;
+    if (!result.ok) console.error('[webhook] Lステップへの転送に失敗', result.error);
+    return new Response(null, { status: statusForLine(result) });
+  };
+
   let body: WebhookRequestBody;
   try {
     body = JSON.parse(rawBody) as WebhookRequestBody;
   } catch {
     console.error('Failed to parse webhook body');
-    return c.json({ status: 'ok' }, 200);
+    return finish();
   }
 
-  const lineClient = new LineClient(channelAccessToken);
+  // 並行運用中は、beyond line から LINE への自動送信(自動応答・あいさつ・リッチメニュー切替など)をしない。
+  // Lステップと二重に返信しないため(返信用トークンを先に使うと、Lステップ側の返信が失敗する)
+  const lineClient = parallelMode ? suppressSending(new LineClient(channelAccessToken)) : new LineClient(channelAccessToken);
 
   // iOS アプリへのプッシュ通知(APNs 設定が無ければ何もしない)。
   // 背景で実行し、失敗しても Webhook の応答・処理には影響させない。
@@ -176,8 +196,9 @@ webhook.post('/webhook', async (c) => {
 
   // 非同期処理 — LINE は ~1s 以内のレスポンスを要求
   const processingPromise = (async () => {
-    const proxyDispatch: HarnessProxyDispatch = (request) =>
-      dispatchLineProxyLocally(request, c.env, c.executionCtx);
+    const proxyDispatch: HarnessProxyDispatch = parallelMode
+      ? async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      : (request) => dispatchLineProxyLocally(request, c.env, c.executionCtx);
     for (const event of body.events) {
       try {
         await handleEvent(
@@ -191,6 +212,7 @@ webhook.post('/webhook', async (c) => {
           c.env.IMAGES,
           proxyDispatch,
           onIncoming,
+          parallelMode,
         );
       } catch (err) {
         console.error('Error handling webhook event:', err);
@@ -206,8 +228,28 @@ webhook.post('/webhook', async (c) => {
   // 逃がし、失敗しても webhook 応答（LINE 側の ~1s タイムアウト）には影響しない。
   c.executionCtx.waitUntil(ensureSchedulerArmed(c.env));
 
-  return c.json({ status: 'ok' }, 200);
+  return finish();
 });
+
+/** 並行運用中のアカウント用: LINE への送信・リッチメニューの変更を、何もせずに成功扱いにする(受信の記録だけ行う) */
+export function suppressSending(client: LineClient): LineClient {
+  const noop = async () => ({});
+  const names = [
+    'pushMessage',
+    'multicast',
+    'broadcast',
+    'replyMessage',
+    'pushTextMessage',
+    'pushFlexMessage',
+    'pushImageMessage',
+    'linkRichMenuToUser',
+    'unlinkRichMenuFromUser',
+    'setDefaultRichMenu',
+  ] as const;
+  const target = client as unknown as Record<string, unknown>;
+  for (const n of names) target[n] = noop;
+  return client;
+}
 
 async function handleEvent(
   db: D1Database,
@@ -220,6 +262,8 @@ async function handleEvent(
   r2?: R2Bucket,
   proxyDispatch?: HarnessProxyDispatch,
   onIncoming?: (notice: IncomingMessageNotice) => void,
+  /** Lステップと並行運用中: 受信の記録だけ行い、自動送信(シナリオ・イベントルール・あいさつ)は一切しない */
+  parallelMode = false,
 ): Promise<void> {
   if (event.type === 'follow') {
     const userId =
@@ -279,6 +323,12 @@ async function handleEvent(
       metadata: { lineAccountId },
       occurredAt: firstFollowedAt,
     });
+
+    // 並行運用中は、友だちの記録と通知だけで終える(シナリオ・友だち追加時設定・イベントルールは動かさない)
+    if (parallelMode) {
+      await notifyEvent(db, { accountId: lineAccountId, timing: 'friend_add', friendId: friend.id, friendName: friend.display_name });
+      return;
+    }
 
     // Resolve referral link (entry_route) for this friend.
     // /auth/callback (OAuth path) writes friends.ref_code in parallel with
@@ -491,6 +541,7 @@ async function handleEvent(
     // メニュータップで誤発火し、条件側に source を見る術がないため。
     // なお upsertChatOnMessage は呼ばない: メニュータップは自発メッセージでは
     // ないので、未対応 inbox を汚さないのが正しい (テキスト経路との意図的な差分)。
+    if (parallelMode) return;
     await fireEvent(db, 'postback_received', {
       friendId: friend.id,
       eventData: { text: postbackData, matched: postbackMatched },
@@ -617,7 +668,8 @@ async function handleEvent(
 
     // 自動返信チェック（このアカウントのルール + グローバルルールのみ）。
     // silent タイプは返信しないが matched=true になり unread / push を抑止する。
-    const { matched, replyTokenConsumed } = await matchAndReply(
+    // 並行運用中は自動返信をしない(Lステップが返す)。受信は「自発メッセージ」として未対応にする
+    const { matched, replyTokenConsumed } = parallelMode ? { matched: false, replyTokenConsumed: false } : await matchAndReply(
       db,
       lineClient,
       friend,
@@ -651,6 +703,7 @@ async function handleEvent(
 
     // イベントバス発火: message_received
     // Pass replyToken only when auto_reply didn't actually consume it
+    if (parallelMode) return;
     await fireEvent(db, 'message_received', {
       friendId: friend.id,
       eventData: { text: incomingText, matched },

@@ -632,7 +632,7 @@ CREATE TABLE IF NOT EXISTS line_accounts (
   og_default_description TEXT,
   created_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-, login_channel_id TEXT, login_channel_secret TEXT, liff_id TEXT, token_expires_at TEXT);
+, login_channel_id TEXT, login_channel_secret TEXT, liff_id TEXT, token_expires_at TEXT, lstep_forward_url TEXT);
 
 CREATE TABLE IF NOT EXISTS link_clicks (
   id TEXT PRIMARY KEY,

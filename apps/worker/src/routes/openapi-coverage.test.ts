@@ -352,6 +352,7 @@ const KNOWN_GAPS: readonly string[] = [
   'GET /api/app/push-settings',
   'PUT /api/app/push-settings',
   'GET /api/chats/{id}/form-answers/{submissionId}',
+  'PUT /api/line-accounts/{id}/lstep-forward',
   'POST /api/app/account-deletion',
   'POST /api/staff/{id}/deletion-request/cancel',
   'GET /api/auth/session',

@@ -20,6 +20,8 @@ export interface LineAccount {
   og_site_name: string | null;
   og_default_image_url: string | null;
   og_default_description: string | null;
+  /** Lステップと並行運用中のときの、Lステップの受信URL。設定があるアカウントは、beyond line からの自動送信をしない */
+  lstep_forward_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -347,4 +349,13 @@ export async function updateLineAccountOrder(
 
   // db.batch is atomic on D1; if any UPDATE fails, none commit.
   await db.batch(stmts);
+}
+
+/** 並行運用(Lステップへの転送)の設定。null で解除 */
+export async function setLineAccountLstepForwardUrl(db: D1Database, id: string, url: string | null): Promise<LineAccount | null> {
+  await db
+    .prepare(`UPDATE line_accounts SET lstep_forward_url = ?, updated_at = ? WHERE id = ?`)
+    .bind(url, jstNow(), id)
+    .run();
+  return db.prepare(`SELECT * FROM line_accounts WHERE id = ?`).bind(id).first<LineAccount>();
 }

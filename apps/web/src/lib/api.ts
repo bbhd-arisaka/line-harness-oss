@@ -828,6 +828,9 @@ export const api = {
     /** LIFF を自動作成して割り当てる(LINEログインチャネルのID・シークレット登録済みのアカウント向け) */
     setupLiff: (id: string) =>
       fetchApi<ApiResponse<LineAccount> & { liffSetup?: LiffSetupOutcome }>(`/api/line-accounts/${id}/setup-liff`, { method: 'POST' }),
+    /** Lステップと並行運用する(受信をLステップにも転送する)。url=null で解除 */
+    setLstepForward: (id: string, url: string | null) =>
+      fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}/lstep-forward`, { method: 'PUT', body: JSON.stringify({ url }) }),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/line-accounts/${id}`, { method: 'DELETE' }),
     updateOrder: (ordered: Array<{ id: string; displayOrder: number }>) =>

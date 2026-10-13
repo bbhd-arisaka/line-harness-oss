@@ -4,6 +4,7 @@ import {
   getLineAccounts,
   getLineAccountById,
   createLineAccount,
+  setLineAccountLstepForwardUrl,
   updateLineAccount,
   updateLineAccountFields,
   updateLineAccountOrder,
@@ -23,6 +24,8 @@ import { countAccountMonthlyMessages, jstYyyyMmDd } from '../services/quota.js';
 import { listAdminDestinations, resolveTenantId } from '../services/notifications.js';
 import { countDeliverableAudience } from '../services/quota-alert.js';
 import { ensureLiffApp, LiffSetupError } from '../services/liff-setup.js';
+import { issueNewToken } from '../services/token-refresh.js';
+import { validateLstepForwardUrl } from '../services/lstep-forward.js';
 
 const lineAccounts = new Hono<Env>();
 
@@ -97,6 +100,8 @@ function serializeLineAccount(row: DbLineAccount) {
     ogSiteName: row.og_site_name,
     ogDefaultImageUrl: row.og_default_image_url,
     ogDefaultDescription: row.og_default_description,
+    // Lステップの受信URLは秘密ではない(転送先の宛先)。設定があるアカウントは「並行運用中」
+    lstepForwardUrl: row.lstep_forward_url ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     // Intentionally omit channelAccessToken / channelSecret / loginChannelSecret
@@ -566,6 +571,27 @@ async function checkUniqueLoginAndLiff(
   return null;
 }
 
+// PUT /api/line-accounts/:id/lstep-forward - Lステップと並行運用する(受信をLステップにも転送する)。url=null で解除
+lineAccounts.put('/api/line-accounts/:id/lstep-forward', requireRole('owner'), async (c) => {
+  try {
+    const id = c.req.param('id')!;
+    const body = await c.req.json<{ url?: string | null }>().catch(() => ({}) as { url?: string | null });
+    const account = await getLineAccountById(c.env.DB, id);
+    if (!account) return c.json({ success: false, error: 'LINE account not found' }, 404);
+    if (body.url === null || body.url === '') {
+      const updated = await setLineAccountLstepForwardUrl(c.env.DB, id, null);
+      return c.json({ success: true, data: serializeLineAccount(updated ?? account) });
+    }
+    const checked = validateLstepForwardUrl(body.url);
+    if (!checked.ok) return c.json({ success: false, error: checked.error }, 400);
+    const updated = await setLineAccountLstepForwardUrl(c.env.DB, id, checked.url);
+    return c.json({ success: true, data: serializeLineAccount(updated ?? account) });
+  } catch (err) {
+    console.error('PUT /api/line-accounts/:id/lstep-forward error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // POST /api/line-accounts - create
 lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
   try {
@@ -582,11 +608,26 @@ lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
       ogDefaultDescription?: string | null;
     }>();
 
-    if (!body.channelId || !body.name || !body.channelAccessToken || !body.channelSecret) {
+    if (!body.channelId || !body.name || !body.channelSecret) {
       return c.json(
-        { success: false, error: 'channelId, name, channelAccessToken, and channelSecret are required' },
+        { success: false, error: 'channelId, name, and channelSecret are required' },
         400,
       );
+    }
+    // アクセストークンが無いときは、チャネルIDとシークレットから、短期(30日・自動更新)のトークンをサーバー側で発行する。
+    // 長期トークンは、再発行すると他のサービス(Lステップなど)のトークンが無効になるので、使わない。
+    let issuedTokenExpiresAt: string | null = null;
+    if (!body.channelAccessToken) {
+      try {
+        const issued = await issueNewToken(body.channelId, body.channelSecret);
+        body.channelAccessToken = issued.access_token;
+        issuedTokenExpiresAt = new Date(Date.now() + issued.expires_in * 1000 + 9 * 3600_000).toISOString().slice(0, -1) + '+09:00';
+      } catch {
+        return c.json(
+          { success: false, error: 'アクセストークンを発行できませんでした。チャネルIDとチャネルシークレットが正しいか確認してください' },
+          400,
+        );
+      }
     }
 
     // Optional fields: empty string from UI = "not provided" → store NULL.
@@ -617,6 +658,10 @@ lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
       ogDefaultImageUrl: normalizeOptionalString(body.ogDefaultImageUrl) ?? null,
       ogDefaultDescription: normalizeOptionalString(body.ogDefaultDescription) ?? null,
     });
+
+    if (issuedTokenExpiresAt) {
+      await updateLineAccount(c.env.DB, account.id, { token_expires_at: issuedTokenExpiresAt });
+    }
 
     // One read-only request at connection time records whether this account
     // can use followers/ids. This never starts the migration and is non-fatal:
