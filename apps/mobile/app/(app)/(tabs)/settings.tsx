@@ -170,18 +170,20 @@ function SettingsScreen() {
 
       {push.state !== 'unsupported' ? (
         <>
-          <SectionTitle>通知</SectionTitle>
-          <Card>
-            <Row
-              label="新着通知"
-              value={push.state === 'granted' ? 'オン' : push.state === 'denied' ? 'オフ(iPhone の設定で拒否されています)' : push.state === 'loading' ? '確認中…' : 'オフ'}
-            />
-            {push.state === 'denied' ? (
-              <Button title="iPhone の設定を開く" variant="secondary" onPress={() => void Linking.openSettings()} style={{ marginTop: 8 }} />
-            ) : push.state === 'undetermined' ? (
-              <Button title="通知を受け取る" variant="secondary" loading={push.busy} onPress={() => void push.enable()} style={{ marginTop: 8 }} />
-            ) : null}
-          </Card>
+          {/* iPhone の通知の許可が「オン」のときは、何も出さない。許可が要るとき(未確認・拒否)だけ、操作を出す */}
+          {push.state === 'denied' || push.state === 'undetermined' ? (
+            <>
+              <SectionTitle>iPhone の通知の許可</SectionTitle>
+              <Card>
+                <Row label="状態" value={push.state === 'denied' ? 'オフ(iPhone の設定で拒否されています)' : 'まだ許可していません'} />
+                {push.state === 'denied' ? (
+                  <Button title="iPhone の設定を開く" variant="secondary" onPress={() => void Linking.openSettings()} style={{ marginTop: 8 }} />
+                ) : (
+                  <Button title="通知を受け取る" variant="secondary" loading={push.busy} onPress={() => void push.enable()} style={{ marginTop: 8 }} />
+                )}
+              </Card>
+            </>
+          ) : null}
 
           <SectionTitle>{acc.selected ? `「${accountLabel(acc.selected)}」の通知` : '公式アカウントの通知'}</SectionTitle>
           <Card>
