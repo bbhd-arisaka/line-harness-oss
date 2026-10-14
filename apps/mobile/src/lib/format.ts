@@ -128,6 +128,24 @@ export function messageTypeLabel(type: string | null | undefined): string {
   return TYPE_LABEL[type] ?? `[${type}]`;
 }
 
+// リッチメニューのタブ切替・「店舗からメッセージを送る」ボタンのタップは、サーバーが
+// `switch-to-<UUID>` / `rmreply:<UUID>` というお客様からの文字として記録する。
+// そのまま吹き出しで見せるとノイズなので、トークでは中央の小さな行「リッチメニュー切替」などに置き換える(Web版と同じ)。
+const RICH_MENU_TAP_RE = /^(?:switch-to-|rmreply:)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function isRichMenuTapText(content: string | null | undefined): boolean {
+  return !!content && RICH_MENU_TAP_RE.test(content.trim());
+}
+
+export function richMenuTapLabel(content: string): string {
+  return content.trim().startsWith('rmreply:') ? 'リッチメニューのボタン' : 'リッチメニュー切替';
+}
+
+/** お客様の、リッチメニューのタップ(テキストとして記録されたもの)か */
+export function isRichMenuTap(m: { direction: string; messageType: string; content: string }): boolean {
+  return m.direction === 'incoming' && m.messageType === 'text' && isRichMenuTapText(m.content);
+}
+
 /** トーク一覧の最後のメッセージ(1行)。自分の送信には「あなた: 」を付ける。 */
 export function messagePreview(chat: {
   lastMessageContent: string | null;
@@ -137,7 +155,9 @@ export function messagePreview(chat: {
   const body =
     chat.lastMessageType && chat.lastMessageType !== 'text'
       ? messageTypeLabel(chat.lastMessageType)
-      : (chat.lastMessageContent ?? '').replace(/\s+/g, ' ').trim();
+      : isRichMenuTapText(chat.lastMessageContent)
+        ? richMenuTapLabel(chat.lastMessageContent ?? '')
+        : (chat.lastMessageContent ?? '').replace(/\s+/g, ' ').trim();
   if (!body) return chat.lastMessageType ? messageTypeLabel(chat.lastMessageType) : '';
   return chat.lastMessageDirection === 'outgoing' ? `あなた: ${body}` : body;
 }
@@ -291,7 +311,23 @@ function timeMs(iso: string): number {
 export function buildChatItems(messages: ChatMessage[], events?: ChatEvent[]): ChatListItem[] {
   type Entry = { at: string; order: number; item: ChatListItem };
   const entries: Entry[] = [];
-  for (const m of messages) entries.push({ at: m.createdAt, order: 0, item: { type: 'bubble', key: m.id, bubble: toBubble(m) } });
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (isRichMenuTap(m)) {
+      // 同じ日に続けて押した分は、1つの行にまとめる(「リッチメニュー切替 ×3」)
+      let run = 1;
+      while (i + run < messages.length && isRichMenuTap(messages[i + run]) && dayKey(messages[i + run].createdAt) === dayKey(m.createdAt)) run++;
+      const label = richMenuTapLabel(m.content);
+      entries.push({
+        at: m.createdAt,
+        order: 0,
+        item: { type: 'event', key: `menu-tap-${m.id}`, event: { id: m.id, type: 'rich_menu_tap', text: run > 1 ? `${label} ×${run}` : label, time: formatTime(m.createdAt), createdAt: m.createdAt } },
+      });
+      i += run - 1;
+      continue;
+    }
+    entries.push({ at: m.createdAt, order: 0, item: { type: 'bubble', key: m.id, bubble: toBubble(m) } });
+  }
   for (const e of events ?? []) entries.push({ at: e.createdAt, order: 1, item: { type: 'event', key: `event-${e.id}`, event: toEventRow(e) } });
   if (events && events.length > 0) {
     // 安定ソート: 時刻 → メッセージ優先 → 元の並び

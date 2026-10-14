@@ -8,12 +8,14 @@ import {
   formatDateTime,
   formatListTime,
   formatTime,
+  isRichMenuTapText,
   messagePreview,
   messageTypeLabel,
   parseFormAnswerCard,
   nameInitial,
   parseApiDate,
   resolveFriendName,
+  richMenuTapLabel,
   sameEvents,
   sameMessages,
   statusLabel,
@@ -240,5 +242,43 @@ describe('フォーム回答カード(form_answer)', () => {
   });
   it('種類の表示名', () => {
     expect(messageTypeLabel('form_answer')).toBe('[フォーム回答]');
+  });
+});
+
+describe('リッチメニューのタップ(rmreply: / switch-to-)は、変な文字列の吹き出しにしない', () => {
+  const UUID = '6a9c3d79-65cc-4581-b23c-da7bed3fc627';
+  it('判定とラベル: rmreply はボタン、switch-to はメニュー切替。ふつうの文は対象外', () => {
+    expect(isRichMenuTapText(`rmreply:${UUID}`)).toBe(true);
+    expect(isRichMenuTapText(`switch-to-${UUID}`)).toBe(true);
+    expect(isRichMenuTapText(`rmreply:${UUID}x`)).toBe(false);
+    expect(isRichMenuTapText('rmreply:こんにちは')).toBe(false);
+    expect(isRichMenuTapText('こんにちは')).toBe(false);
+    expect(isRichMenuTapText(null)).toBe(false);
+    expect(richMenuTapLabel(`rmreply:${UUID}`)).toBe('リッチメニューのボタン');
+    expect(richMenuTapLabel(`switch-to-${UUID}`)).toBe('リッチメニュー切替');
+  });
+  it('トークでは、中央の小さな行になる(お客様の吹き出しにならない)。前後のメッセージはそのまま', () => {
+    const items = buildChatItems([
+      msg({ id: 'a', createdAt: '2026-10-15T01:00:00+09:00', content: 'こんにちは' }),
+      msg({ id: 'b', createdAt: '2026-10-15T01:49:00+09:00', content: `rmreply:${UUID}` }),
+      msg({ id: 'c', createdAt: '2026-10-15T01:49:05+09:00', direction: 'outgoing', content: '返信' }),
+    ]);
+    expect(items.filter((i) => i.type !== 'date').map((i) => (i.type === 'event' ? `E:${i.event.text}` : `B:${i.key}`))).toEqual(['B:a', 'E:リッチメニューのボタン', 'B:c']);
+  });
+  it('同じ日に続けて押した分は、1つの行(×回数)にまとめる。日をまたぐときは分ける', () => {
+    const items = buildChatItems([
+      msg({ id: 'a', createdAt: '2026-10-15T01:00:00+09:00', content: `switch-to-${UUID}` }),
+      msg({ id: 'b', createdAt: '2026-10-15T01:01:00+09:00', content: `switch-to-${UUID}` }),
+      msg({ id: 'c', createdAt: '2026-10-15T01:02:00+09:00', content: `switch-to-${UUID}` }),
+      msg({ id: 'd', createdAt: '2026-10-16T09:00:00+09:00', content: `switch-to-${UUID}` }),
+    ]);
+    expect(items.filter((i) => i.type === 'event').map((i) => (i.type === 'event' ? i.event.text : ''))).toEqual(['リッチメニュー切替 ×3', 'リッチメニュー切替']);
+  });
+  it('スタッフの送信(outgoing)で同じ文字になっていても、対象にしない', () => {
+    const items = buildChatItems([msg({ id: 'x', direction: 'outgoing', content: `rmreply:${UUID}` })]);
+    expect(items.some((i) => i.type === 'event')).toBe(false);
+  });
+  it('トーク一覧の最後のメッセージも、ラベルで出す', () => {
+    expect(messagePreview({ lastMessageContent: `rmreply:${UUID}`, lastMessageType: 'text', lastMessageDirection: 'incoming' })).toBe('リッチメニューのボタン');
   });
 });
