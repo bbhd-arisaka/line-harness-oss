@@ -47,11 +47,21 @@ bucket_name = "line-harness-images"
 name = "TENANT_SCHEDULER"
 class_name = "TenantScheduler"
 
+# トークの新着を、開いている管理画面(Web)へ知らせる DO(WebSocket Hibernation)。
+# 実装: apps/worker/src/durable-objects/chat-events.ts
+[[durable_objects.bindings]]
+name = "CHAT_EVENTS"
+class_name = "ChatEvents"
+
 # SQLite ストレージ (alarm 状態を持つ) を使う新規 DO クラスなので
 # new_sqlite_classes での migration 登録が必要。
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TenantScheduler"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ChatEvents"]
 
 # Cron Trigger は引き続き残す。DO alarm と共存させる (自己ホスト環境が
 # cron のみで運用を続けられるようにするため)。両方が同じ分に発火しても、
@@ -112,6 +122,10 @@ bucket_name = "line-harness-images"
 [[env.production.durable_objects.bindings]]
 name = "TENANT_SCHEDULER"
 class_name = "TenantScheduler"
+
+[[env.production.durable_objects.bindings]]
+name = "CHAT_EVENTS"
+class_name = "ChatEvents"
 
 [env.production.triggers]
 crons = ["* * * * *", "0 */6 * * *"]

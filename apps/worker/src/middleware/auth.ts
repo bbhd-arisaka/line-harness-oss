@@ -141,6 +141,23 @@ async function authenticateExternal(c: Context<Env>): Promise<AuthenticatedStaff
   return member ? { id: member.id, name: member.name, role: member.role, external: true } : null;
 }
 
+/**
+ * Hono の外(WebSocket の接続など)で、スタッフを決めたいときの入口。
+ * 管理画面の Cookie か Authorization(API キー)で、authMiddleware と同じ判断をする。
+ * アプリのトークンは対象外(アプリは WebSocket を使わない)。
+ */
+export async function authenticateRequest(request: Request, env: Env['Bindings']): Promise<AuthenticatedStaff | null> {
+  const shim = {
+    env,
+    req: { header: (name: string) => request.headers.get(name) ?? undefined },
+  } as unknown as Context<Env>;
+  const bearer = bearerToken(shim);
+  if (bearer && bearer.startsWith(APP_TOKEN_PREFIX)) return null;
+  const staff = await authenticateApiToken(shim, bearer ?? cookieToken(shim));
+  if (staff) return staff;
+  return bearer ? null : authenticateExternal(shim);
+}
+
 export async function authMiddleware(c: Context<Env>, next: Next): Promise<Response | void> {
   // Skip auth for the LINE webhook endpoint — it uses signature verification instead
   // Skip auth for OpenAPI docs — public documentation

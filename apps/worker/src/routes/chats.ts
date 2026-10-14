@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
 import { notifyEvent } from '../services/notifications.js';
+import { publishChatEventInBackground } from '../services/chat-events.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
 import type { Message } from '@line-crm/line-sdk';
 import { messageToLogPayload } from '../services/step-delivery.js';
@@ -421,6 +422,19 @@ chats.get('/api/chats', async (c) => {
   }
 });
 
+// 新着の有無だけを返す軽い確認(画面が、トーク一覧を取り直す必要があるかを判断する)。
+// messages_log の created_at には索引があるので、1行しか読まない。WebSocket がつながらないときの保険と、アプリの一覧が使う。
+// 「/api/chats/:id」より先に登録すること。
+chats.get('/api/chats/pulse', async (c) => {
+  try {
+    const row = await c.env.DB.prepare('SELECT MAX(created_at) AS latest FROM messages_log').first<{ latest: string | null }>();
+    return c.json({ success: true, data: { latest: row?.latest ?? null } });
+  } catch (err) {
+    console.error('GET /api/chats/pulse error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 chats.get('/api/chats/:id', async (c) => {
   try {
     const rawId = c.req.param('id');
@@ -696,6 +710,16 @@ chats.post('/api/chats/:id/send', async (c) => {
       .bind(logId, friend.id, log.messageType, log.content, lineAccountId, jstNow())
       .run();
     invalidateUnansweredCache(c.env.DB);
+    // 開いている他の管理画面(Web)にも、送信を知らせる
+    {
+      let ctx: ExecutionContext | undefined;
+      try {
+        ctx = c.executionCtx;
+      } catch {
+        ctx = undefined;
+      }
+      await publishChatEventInBackground(c.env, ctx, { kind: 'sent', friendId: friend.id, accountId: lineAccountId ?? null });
+    }
 
     // チャットの最終メッセージ日時を更新（chat.id を直接使う — friend_id で呼ばれても resolveOrCreateChat 済み）
     await updateChat(c.env.DB, chat.id, { status: 'in_progress', lastMessageAt: jstNow() });

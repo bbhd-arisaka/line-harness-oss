@@ -10,7 +10,9 @@ import { parseStickerMessageContent, stickerFallback } from '@line-crm/shared'
 import { api, fetchApi, ApiError } from '@/lib/api'
 import { FriendNameEditDialog, NameEditPencil, type FriendNameFields } from '@/components/friends/friend-name-edit-dialog'
 import { UNANSWERED_REFRESH_EVENT } from '@/lib/events'
-import { hasNewIncoming, isNearBottom, mergeFreshChats } from '@/lib/chat-list-merge'
+import { isNearBottom, mergeFreshChats, upsertChatRow } from '@/lib/chat-list-merge'
+import { createCoalescer, isEventForAccount, type ChatEventMessage } from '@/lib/chat-events-client'
+import { useChatEvents } from '@/hooks/use-chat-events'
 import { useAccount } from '@/contexts/account-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 import FlexPreviewComponent from '@/components/flex-preview'
@@ -90,13 +92,8 @@ const statusFilters: { key: StatusFilter; label: string }[] = [
 const SHOW_LOADING_PREF_KEY = 'lh_chat_show_loading_indicator'
 // 一覧の1ページ件数。worker 側 /api/chats のデフォルト LIMIT と揃える。
 const CHAT_PAGE_SIZE = 300
-/** 新着の自動反映の間隔(画面が見えている間だけ) */
-const CHAT_AUTO_REFRESH_MS = 10_000
-/**
- * 新着の自動反映は、いったん止めている。トーク一覧の取得は1回で約16万行を読む(D1 の無料枠は1日500万行)ため、
- * 10秒ごとに取り直すと、開いているだけで1日の上限を使い切ってしまう。軽い「新着の有無の確認」に作り直すまで、オフ。
- */
-const CHAT_AUTO_REFRESH_ENABLED = false
+/** WebSocket がつながらないときの、新着の有無の確認の間隔(1回で1行しか読まない) */
+const CHAT_FALLBACK_POLL_MS = 60_000
 const LOADING_SECONDS_PREF_KEY = 'lh_chat_loading_seconds'
 const LOADING_REFRESH_INTERVAL_MS = 4000
 
@@ -535,15 +532,35 @@ export default function ChatsPage() {
     loadChats()
   }, [loadChats])
 
-  // 新着の自動反映: 画面を開いている間は、一覧と開いているトークを定期的に取り直す(再読み込みしなくても新着が出る)。
-  // 画面が見えていないタブでは止め、見えたとき・ウィンドウに戻ったときはすぐ確認する。
-  // 表示中の「さらに読み込む」の行・入力中のメモや本文・スクロール位置は触らない。
+  // 新着の自動反映: サーバーから「どのトークに新着があったか」の合図(WebSocket)が届いたときだけ、そのトークを取り直す。
+  // (10秒ごとに一覧を丸ごと取り直す方式はやめた: 一覧の取得は1回で数万行を読み、DB の無料枠を使い切るため)
+  // - 合図が来たトークだけ取り直して、一覧の行と、開いているトークの両方に反映する
+  // - つなぎ直したときと、WebSocket が使えないときは、一覧全体を取り直す(取りこぼし対策)
+  // - 入力中の本文・メモ・「さらに読み込む」の行・スクロール位置は触らない
   const selectedChatIdRef = useRef<string | null>(null)
   useEffect(() => { selectedChatIdRef.current = selectedChatId }, [selectedChatId])
+  const chatDetailRef = useRef<ChatDetail | null>(null)
+  useEffect(() => { chatDetailRef.current = chatDetail }, [chatDetail])
+  const selectedAccountIdRef = useRef<string | null>(null)
+  useEffect(() => { selectedAccountIdRef.current = selectedAccountId ?? null }, [selectedAccountId])
   const silentRefreshing = useRef(false)
   const lastBadgeRefreshAtRef = useRef(0)
   /** 自分の送信(画面へ先に反映する)の時刻。それより前に始まった取り直しの結果で、送信直後の表示を巻き戻さない */
   const lastLocalChangeAtRef = useRef(0)
+
+  const applyDetailSilently = useCallback((next: ChatDetail, startedAt: number) => {
+    if (sendLockRef.current || lastLocalChangeAtRef.current >= startedAt) return
+    setChatDetail((prev) => {
+      if (!prev || (prev.friendId !== next.friendId && prev.id !== next.id)) return prev
+      const same =
+        timelineSignature(prev.messages, prev.events) === timelineSignature(next.messages, next.events) &&
+        prev.status === next.status &&
+        prev.friendName === next.friendName
+      return same ? prev : { ...next }
+    })
+  }, [])
+
+  /** 一覧全体の取り直し(重い: 1回で数万行)。つなぎ直したとき・絞り込み中・WebSocket が使えないときだけ使う */
   const silentRefresh = useCallback(async () => {
     if (silentRefreshing.current || document.visibilityState === 'hidden' || sendLockRef.current) return
     silentRefreshing.current = true
@@ -557,43 +574,104 @@ export default function ChatsPage() {
       ])
       if (listRes?.success && listSeq === loadChatsSeq.current) {
         const fresh = listRes.data as unknown as Chat[]
-        setChats((prev) => {
-          if (hasNewIncoming(prev, fresh) && Date.now() - lastBadgeRefreshAtRef.current > 60_000) {
-            lastBadgeRefreshAtRef.current = Date.now()
-            // 未対応の件数(サイドバーのバッジ)も更新する。集計が重いので1分に1回まで
-            window.setTimeout(() => window.dispatchEvent(new Event(UNANSWERED_REFRESH_EVENT)), 0)
-          }
-          return mergeFreshChats(prev, fresh, CHAT_PAGE_SIZE, unansweredOnlyRef.current)
-        })
+        setChats((prev) => mergeFreshChats(prev, fresh, CHAT_PAGE_SIZE, unansweredOnlyRef.current))
       }
-      if (openId && detailRes?.success && selectedChatIdRef.current === openId && !sendLockRef.current && lastLocalChangeAtRef.current < startedAt) {
-        const next = detailRes.data as unknown as ChatDetail
-        setChatDetail((prev) => {
-          if (!prev || prev.id !== next.id) return prev
-          const same =
-            timelineSignature(prev.messages, prev.events) === timelineSignature(next.messages, next.events) &&
-            prev.status === next.status &&
-            prev.friendName === next.friendName
-          return same ? prev : { ...next }
-        })
+      if (openId && detailRes?.success && selectedChatIdRef.current === openId) {
+        applyDetailSilently(detailRes.data as unknown as ChatDetail, startedAt)
       }
     } finally {
       silentRefreshing.current = false
     }
-  }, [buildListParams])
-  useEffect(() => {
-    if (!CHAT_AUTO_REFRESH_ENABLED) return
-    const tick = () => { void silentRefresh() }
-    const timer = window.setInterval(tick, CHAT_AUTO_REFRESH_MS)
-    const onVisible = () => { if (document.visibilityState === 'visible') tick() }
-    document.addEventListener('visibilitychange', onVisible)
-    window.addEventListener('focus', onVisible)
-    return () => {
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener('focus', onVisible)
+  }, [buildListParams, applyDetailSilently])
+
+  /** 合図が来た1人のトークだけ取り直して、一覧の行と、開いているトークに反映する(軽い) */
+  const refreshOneChat = useCallback(async (friendId: string) => {
+    const startedAt = Date.now()
+    try {
+      const res = await api.chats.get(friendId)
+      if (!res.success) return
+      const d = res.data as unknown as ChatDetail
+      const open = chatDetailRef.current
+      if (open && (open.friendId === d.friendId || open.id === d.id) && selectedChatIdRef.current) applyDetailSilently(d, startedAt)
+      const last = d.messages?.[d.messages.length - 1]
+      const lastType = last?.messageType === 'form_answer' ? 'text' : last?.messageType ?? d.lastMessageType ?? null
+      let lastContent: string | null = d.lastMessageContent ?? null
+      if (last) {
+        if (last.messageType === 'text') lastContent = last.content.slice(0, 200)
+        else if (last.messageType === 'form_answer') {
+          try { lastContent = String((JSON.parse(last.content) as { title?: string }).title ?? '').slice(0, 200) || null } catch { lastContent = null }
+        } else lastContent = null
+      }
+      setChats((prev) => {
+        const existing = prev.find((c) => c.friendId === d.friendId)
+        const row: Chat = {
+          id: existing?.id ?? d.friendId,
+          friendId: d.friendId,
+          friendName: d.friendName,
+          friendPictureUrl: d.friendPictureUrl,
+          operatorId: d.operatorId ?? null,
+          status: d.status,
+          notes: d.notes ?? null,
+          lastMessageAt: last?.createdAt ?? d.lastMessageAt ?? existing?.lastMessageAt ?? null,
+          lastMessageContent: lastContent,
+          lastMessageDirection: last?.direction ?? d.lastMessageDirection ?? null,
+          lastMessageType: lastType,
+          createdAt: d.createdAt,
+          updatedAt: d.updatedAt,
+        }
+        return upsertChatRow(prev, row)
+      })
+    } catch {
+      /* 取れなければ、次の合図・つなぎ直しで取り直す */
     }
+  }, [applyDetailSilently])
+
+  const eventCoalescer = useRef<ReturnType<typeof createCoalescer> | null>(null)
+  useEffect(() => {
+    eventCoalescer.current = createCoalescer(400, (friendId) => { void refreshOneChat(friendId) })
+    return () => eventCoalescer.current?.clear()
+  }, [refreshOneChat])
+  const fullRefreshCoalescer = useRef<ReturnType<typeof createCoalescer> | null>(null)
+  useEffect(() => {
+    fullRefreshCoalescer.current = createCoalescer(3_000, () => { void silentRefresh() })
+    return () => fullRefreshCoalescer.current?.clear()
   }, [silentRefresh])
+
+  const handleChatEvent = useCallback((e: ChatEventMessage) => {
+    if (!isEventForAccount(selectedAccountIdRef.current, e.accountId)) return
+    if (statusFilterRef.current !== 'all' || unansweredOnlyRef.current) {
+      // 絞り込み中は、行の出入りの判断が難しいので、一覧全体を(まとめて1回)取り直す。開いているトークは個別に取り直す
+      fullRefreshCoalescer.current?.push('all')
+      if (chatDetailRef.current?.friendId === e.friendId) eventCoalescer.current?.push(e.friendId)
+    } else {
+      eventCoalescer.current?.push(e.friendId)
+    }
+    // お客様の新着・友だち追加・フォーム回答は、サイドバーの未対応バッジにも関わる(集計が重いので1分に1回まで)
+    if (e.kind !== 'sent' && Date.now() - lastBadgeRefreshAtRef.current > 60_000) {
+      lastBadgeRefreshAtRef.current = Date.now()
+      window.dispatchEvent(new Event(UNANSWERED_REFRESH_EVENT))
+    }
+  }, [])
+  const chatEventsStatus = useChatEvents(handleChatEvent, () => { void silentRefresh() })
+
+  // WebSocket がつながらないときの保険: 60秒ごとに「新着の有無」だけ(1行)確認して、変わっていれば取り直す
+  useEffect(() => {
+    if (chatEventsStatus === 'open') return
+    let latest: string | null = null
+    let stopped = false
+    const tick = async () => {
+      if (stopped || document.visibilityState === 'hidden') return
+      try {
+        const res = await fetchApi<{ success: boolean; data?: { latest: string | null } }>('/api/chats/pulse')
+        const next = res.success ? res.data?.latest ?? null : null
+        if (latest !== null && next !== null && next !== latest) void silentRefresh()
+        if (next !== null) latest = next
+      } catch { /* 次の確認で */ }
+    }
+    void tick()
+    const timer = window.setInterval(() => { void tick() }, CHAT_FALLBACK_POLL_MS)
+    return () => { stopped = true; window.clearInterval(timer) }
+  }, [chatEventsStatus, silentRefresh])
 
   // Deep-link from other pages (e.g. /form-submissions): ?friend=<friendId>
   // chat list returns id = friend_id, so selectedChatId === friendId is correct.

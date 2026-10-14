@@ -91,6 +91,8 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
     const accountId = await friendAccountId(db, conversationMatch[1]);
     return accountId && allowed.includes(accountId) ? next() : forbidden(c);
   }
+  // 新着の有無だけの確認(時刻1つだけを返す。トークの中身は含まない)
+  if (isGet && path === '/api/chats/pulse') return next();
   const chatMatch = path.match(/^\/api\/chats\/([^/]+)(?:\/.*)?$/);
   if (chatMatch) {
     const accountId = await chatAccountId(db, chatMatch[1]);

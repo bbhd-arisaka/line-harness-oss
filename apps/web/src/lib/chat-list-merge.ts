@@ -23,3 +23,15 @@ export function hasNewIncoming<T extends { id: string; lastMessageAt: string | n
 export function isNearBottom(el: { scrollHeight: number; scrollTop: number; clientHeight: number }, threshold = 80): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold
 }
+
+/**
+ * 1人のトークの最新の状態を、一覧に反映する(合図が来たトークだけ取り直したとき用)。
+ * 同じ友だちの行があれば置き換え、無ければ追加して、新しい順(lastMessageAt の降順)の位置に入れる。
+ */
+export function upsertChatRow<T extends { friendId: string; lastMessageAt: string | null }>(prev: T[], row: T): T[] {
+  const rest = prev.filter((p) => p.friendId !== row.friendId)
+  const at = row.lastMessageAt ?? ''
+  let i = 0
+  while (i < rest.length && (rest[i].lastMessageAt ?? '') >= at) i++
+  return [...rest.slice(0, i), row, ...rest.slice(i)]
+}

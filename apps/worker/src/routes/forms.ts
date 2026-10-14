@@ -32,6 +32,7 @@ import { enrollFriendInScenario } from '@line-crm/db';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { notifyEvent } from '../services/notifications.js';
 import { handleFormAnswered } from '../services/form-answered.js';
+import { publishChatEventInBackground } from '../services/chat-events.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
 import { findCallerFriend } from '../services/caller-friend.js';
 import { exportSubmissionToGoogleSheet } from '../services/google-sheets-export.js';
@@ -950,6 +951,8 @@ forms.post('/api/forms/:id/submit', async (c) => {
       lstepOptions: form.lstep_options,
       friendName: friend.real_name?.trim() || friend.display_name,
     });
+    // 開いている管理画面(Web)へ、その場で知らせる
+    await publishChatEventInBackground(c.env, optionalExecutionCtx(c), { kind: 'form_answered', friendId, accountId: friend.line_account_id ?? null });
 
     // Side effects (best-effort, don't fail the request)
     {

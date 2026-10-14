@@ -268,6 +268,7 @@ const KNOWN_GAPS: readonly string[] = [
   'PUT /api/automations/{id}',
   // chats (6)
   'GET /api/chats',
+  'GET /api/chats/pulse',
   'GET /api/chats/{id}',
   'POST /api/chats',
   'POST /api/chats/{id}/loading',

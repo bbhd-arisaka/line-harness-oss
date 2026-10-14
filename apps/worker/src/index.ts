@@ -13,6 +13,8 @@ import {
 } from '@line-crm/db';
 import { scheduled } from './scheduled.js';
 import { TenantScheduler } from './durable-objects/tenant-scheduler.js';
+import { ChatEvents } from './durable-objects/chat-events.js';
+import { handleChatEventsUpgrade, isChatEventsUpgrade } from './services/chat-events-socket.js';
 import { authMiddleware } from './middleware/auth.js';
 import { accountAccessGuard } from './middleware/account-access.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
@@ -179,6 +181,8 @@ export type Env = {
     // armed されない」という気づきにくい壊れ方をするので、変更するときは
     // 両方揃えること。実体は durable-objects/tenant-scheduler.ts の TenantScheduler。
     TENANT_SCHEDULER: DurableObjectNamespace<TenantScheduler>;
+    /** トークの新着を、開いている管理画面へ知らせる DO(durable-objects/chat-events.ts)。無い環境では、合図を送らない */
+    CHAT_EVENTS?: DurableObjectNamespace<ChatEvents>;
   };
   Variables: {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };
@@ -1019,10 +1023,14 @@ app.notFound(notFoundHandler);
 // wrangler.toml の [[durable_objects.bindings]] class_name は同スクリプトからの
 // named export を解決するので、メインエントリである index.ts から再 export する
 // 必要がある（実装自体は durable-objects/tenant-scheduler.ts に置いてある）。
-export { TenantScheduler };
+export { TenantScheduler, ChatEvents };
 
 export default {
-  fetch: app.fetch,
+  fetch(request: Request, env: Env['Bindings'], ctx?: ExecutionContext) {
+    // 管理画面の WebSocket(トークの新着の合図)は、Hono の外で受ける
+    if (isChatEventsUpgrade(request)) return handleChatEventsUpgrade(request, env);
+    return app.fetch(request, env, ctx);
+  },
   scheduled,
 };
 // redeploy trigger

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasNewIncoming, isNearBottom, mergeFreshChats } from './chat-list-merge'
+import { hasNewIncoming, isNearBottom, mergeFreshChats, upsertChatRow } from './chat-list-merge'
 
 const row = (id: string, at: string | null, dir: string | null = null) => ({ id, lastMessageAt: at, lastMessageDirection: dir })
 
@@ -35,5 +35,19 @@ describe('isNearBottom', () => {
   it('下端から80px以内なら追従してよい', () => {
     expect(isNearBottom({ scrollHeight: 1000, scrollTop: 450, clientHeight: 500 })).toBe(true)
     expect(isNearBottom({ scrollHeight: 1000, scrollTop: 100, clientHeight: 500 })).toBe(false)
+  })
+})
+
+describe('upsertChatRow(合図が来たトークだけ一覧に反映)', () => {
+  const r = (friendId: string, at: string | null) => ({ friendId, lastMessageAt: at })
+  it('既存の行は置き換えて、新しい順の位置に動かす', () => {
+    const prev = [r('a', '10'), r('b', '09'), r('c', '08')]
+    expect(upsertChatRow(prev, r('c', '11')).map((x) => x.friendId)).toEqual(['c', 'a', 'b'])
+    expect(upsertChatRow(prev, r('b', '09')).map((x) => x.friendId)).toEqual(['a', 'b', 'c'])
+  })
+  it('新しいトークは追加する。時刻が無い行は末尾に回る', () => {
+    const prev = [r('a', '10'), r('b', '09')]
+    expect(upsertChatRow(prev, r('n', '12')).map((x) => x.friendId)).toEqual(['n', 'a', 'b'])
+    expect(upsertChatRow(prev, r('z', null)).map((x) => x.friendId)).toEqual(['a', 'b', 'z'])
   })
 })

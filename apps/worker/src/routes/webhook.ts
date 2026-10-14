@@ -27,6 +27,8 @@ import type { HarnessProxyDispatch } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import { ensureSchedulerArmed } from '../durable-objects/tenant-scheduler.js';
 import { notifyFriendAdded, notifyIncomingMessage } from '../services/push-notify.js';
+import { publishChatEvent } from '../services/chat-events.js';
+import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
@@ -207,6 +209,15 @@ webhook.post('/webhook', async (c) => {
     }
   };
 
+  // 開いている管理画面(Web)へ、トークの新着をその場で知らせる(失敗しても処理は止めない)
+  const onChatEvent = (e: { kind: ChatEventKind; friendId: string; accountId: string | null }): void => {
+    try {
+      c.executionCtx.waitUntil(publishChatEvent(c.env, e));
+    } catch (err) {
+      console.error('[webhook] chat event failed', err instanceof Error ? err.message : 'error');
+    }
+  };
+
   // 非同期処理 — LINE は ~1s 以内のレスポンスを要求
   const processingPromise = (async () => {
     const proxyDispatch: HarnessProxyDispatch = parallelMode
@@ -227,6 +238,7 @@ webhook.post('/webhook', async (c) => {
           onIncoming,
           parallelMode,
           onFriendAdded,
+          onChatEvent,
         );
       } catch (err) {
         console.error('Error handling webhook event:', err);
@@ -280,6 +292,8 @@ async function handleEvent(
   parallelMode = false,
   /** 友だち追加のアプリ通知(並行運用中も送る。アプリへの通知で、お客様(LINE)には何も送らない) */
   onFriendAdded?: (notice: FriendAddedNotice) => void,
+  /** 開いている管理画面(Web)へ、トークの新着を知らせる */
+  onChatEvent?: (e: { kind: ChatEventKind; friendId: string; accountId: string | null }) => void,
 ): Promise<void> {
   if (event.type === 'follow') {
     const userId =
@@ -329,6 +343,7 @@ async function handleEvent(
 
     // アプリ(iOS)へ「友だち追加」を通知する(再追加・ブロック解除も含む。並行運用中も通知する)
     onFriendAdded?.({ friendId: friend.id, accountId: lineAccountId, friendName: friend.display_name, returning: alreadyKnown });
+    onChatEvent?.({ kind: 'friend_added', friendId: friend.id, accountId: lineAccountId });
 
     // 新規・再フォローのどちらでも、最初の友だち登録マイルを同じキーで非同期投入する。
     // first_followed_at を使うため再フォローやWebhook再送では二重加算されない。
@@ -645,6 +660,7 @@ async function handleEvent(
     // 画像だけ送ってきた友だち」をバッジ・未対応一覧から永久に落としてしまう。
     // 非 text は auto_reply keyword にマッチし得ないので常に要対応扱いで正しい。
     await upsertChatOnMessage(db, friend.id);
+    onChatEvent?.({ kind: 'message', friendId: friend.id, accountId: lineAccountId });
     // アプリへ通知(非 text は常に要対応扱い=unread にした場合と同じ)
     onIncoming?.({ friendId: friend.id, accountId: lineAccountId, messageType: msg.type, content: finalContent });
     // 通知設定(通常メッセージ)
@@ -684,6 +700,9 @@ async function handleEvent(
     });
 
     // (以前ここにあった「体験を完了する」の別アカウント連動デモは、アカウント別の友だち分離のため廃止)
+
+    // 自動応答に当たるメッセージも、トークには残るので、開いている画面には知らせる
+    onChatEvent?.({ kind: 'message', friendId: friend.id, accountId: lineAccountId });
 
     // 自動返信チェック（このアカウントのルール + グローバルルールのみ）。
     // silent タイプは返信しないが matched=true になり unread / push を抑止する。
