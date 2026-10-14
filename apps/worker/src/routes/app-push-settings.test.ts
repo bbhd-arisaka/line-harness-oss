@@ -7,7 +7,7 @@ import { appAuth } from './app-auth.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
 
-function setup() {
+function setup(allowed: string[] | null = null) {
   const { db, sqlite } = sqliteD1();
   sqlite.exec(schema);
   sqlite.exec(`INSERT INTO staff_members(id,name,role,api_key,is_active) VALUES('st','st','owner','k',1)`);
@@ -15,12 +15,13 @@ function setup() {
   const app = new Hono();
   app.use('*', async (c, next) => {
     (c as unknown as { set(k: string, v: unknown): void }).set('appSessionId', 's1');
+    (c as unknown as { set(k: string, v: unknown): void }).set('allowedAccountIds', allowed);
     await next();
   });
   app.route('/', appAuth);
-  const call = async (method: 'GET' | 'PUT', body?: unknown) => {
+  const call = async (method: 'GET' | 'PUT', body?: unknown, query = '') => {
     const res = await app.request(
-      new Request('http://worker.test/api/app/push-settings', {
+      new Request(`http://worker.test/api/app/push-settings${query}`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -28,7 +29,7 @@ function setup() {
       {},
       { DB: db } as never,
     );
-    return { status: res.status, json: (await res.json()) as { success: boolean; data?: { mutedAccountIds: string[]; mutedKinds: string[]; kinds: { key: string; label: string }[] } } };
+    return { status: res.status, json: (await res.json()) as { success: boolean; data?: { mutedAccountIds: string[]; mutedKinds: string[]; accountMuted?: boolean; accountId?: string; kinds: { key: string; label: string }[] } } };
   };
   return { call, sqlite };
 }
@@ -66,6 +67,43 @@ describe('/api/app/push-settings(アプリの設定画面だけで完結する�
     // 空にすると、すべて受け取る
     const r3 = await call('PUT', { mutedKinds: [] });
     expect(r3.json.data?.mutedKinds).toEqual([]);
+  });
+  it('公式アカウントごとの設定: そのアカウントの通知だけを止められ、ほかのアカウントには影響しない', async () => {
+    const { call } = setup();
+    const a = await call('PUT', { accountId: 'A', accountMuted: true });
+    expect(a.json.data).toMatchObject({ accountId: 'A', accountMuted: true });
+    const b = await call('GET', undefined, '?accountId=B');
+    expect(b.json.data).toMatchObject({ accountId: 'B', accountMuted: false });
+    const a2 = await call('GET', undefined, '?accountId=A');
+    expect(a2.json.data?.accountMuted).toBe(true);
+    // もう一度オンにする
+    const on = await call('PUT', { accountId: 'A', accountMuted: false });
+    expect(on.json.data?.accountMuted).toBe(false);
+  });
+  it('通知する内容も、公式アカウントごと。ほかのアカウント・端末全体の設定は変わらない。設定が無いアカウントは、端末全体の設定に従う', async () => {
+    const { call } = setup();
+    await call('PUT', { mutedKinds: ['form_answered'] }); // 端末全体(これまでの設定)
+    const initialB = await call('GET', undefined, '?accountId=B');
+    expect(initialB.json.data?.mutedKinds.sort()).toEqual(['form_answered']);
+    const a = await call('PUT', { accountId: 'A', mutedKinds: ['message'] });
+    expect(a.json.data?.mutedKinds.sort()).toEqual(['message']);
+    // B は、A の変更の影響を受けない(端末全体の設定のまま)
+    expect((await call('GET', undefined, '?accountId=B')).json.data?.mutedKinds.sort()).toEqual(['form_answered']);
+    // 端末全体の設定も変わらない
+    expect((await call('GET')).json.data?.mutedKinds.sort()).toEqual(['form_answered']);
+    // 初期オフの「友だち再追加」: そのアカウントでオンにできる
+    const on = await call('PUT', { accountId: 'A', mutedKinds: [] });
+    expect(on.json.data?.mutedKinds).toEqual([]);
+    expect((await call('GET', undefined, '?accountId=B')).json.data?.mutedKinds).toContain('form_answered');
+  });
+  it('見られないアカウントの設定は、読めない・変えられない(403)。形が違う値は 400', async () => {
+    const { call } = setup(['A']);
+    expect((await call('GET', undefined, '?accountId=X')).status).toBe(403);
+    expect((await call('PUT', { accountId: 'X', accountMuted: true })).status).toBe(403);
+    expect((await call('PUT', { accountId: 'A', accountMuted: 'yes' })).status).toBe(400);
+    expect((await call('PUT', { accountId: 'A' })).status).toBe(400);
+    expect((await call('PUT', { accountId: 'A', mutedKinds: ['unknown'] })).status).toBe(400);
+    expect((await call('PUT', { accountId: 'A', accountMuted: true })).status).toBe(200);
   });
   it('知らない種類・何も送らない・形が違う値は 400', async () => {
     const { call } = setup();

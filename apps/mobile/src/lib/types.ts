@@ -58,6 +58,9 @@ export interface FormAnswerDetail {
 /** GET /api/app/push-settings: この端末の通知設定。通知の種類の一覧(kinds)はサーバーが返す */
 export interface PushSettings {
   mutedAccountIds: string[];
+  /** accountId を付けて取ったとき: その公式アカウントの通知を止めているか */
+  accountMuted?: boolean;
+  /** 止めている通知の種類(accountId を付けたときは、その公式アカウントの設定) */
   mutedKinds: string[];
   kinds: { key: string; label: string; description: string }[];
 }

@@ -36,20 +36,27 @@ function SettingsScreen() {
   const push = usePushStatus();
   const version = Constants.expoConfig?.version ?? '-';
 
-  // 公式アカウントごとの通知(この端末だけの設定)
-  const [muted, setMuted] = useState<string[] | null>(null);
+  // 通知の設定は、いま見ている公式アカウントの分だけ(この端末だけの設定)。ほかのアカウントの分は、そのアカウントに切り替えて行う
+  const accountId = acc.selected?.id ?? null;
+  const [accountMuted, setAccountMuted] = useState<boolean | null>(null);
   // 通知する内容(新着メッセージ・フォームの回答 など)。種類の一覧はサーバーが返す
   const [mutedKinds, setMutedKinds] = useState<string[] | null>(null);
   const [kinds, setKinds] = useState<PushSettings['kinds']>([]);
   const [mutedError, setMutedError] = useState<string | null>(null);
   useEffect(() => {
-    if (push.state === 'unsupported') return;
+    if (push.state === 'unsupported' || !accountId) return;
     let cancelled = false;
+    // アカウントを切り替えたら、そのアカウントの設定を読み直す(effect の中で同期的に state を更新しない)
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setAccountMuted(null);
+      setMutedKinds(null);
+    });
     api
-      .getPushSettings()
+      .getPushSettings(accountId)
       .then((r) => {
         if (cancelled) return;
-        setMuted(r.mutedAccountIds);
+        setAccountMuted(r.accountMuted ?? (r.mutedAccountIds ?? []).includes(accountId));
         setMutedKinds(r.mutedKinds ?? []);
         setKinds(r.kinds ?? []);
       })
@@ -59,29 +66,30 @@ function SettingsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [push.state]);
+  }, [push.state, accountId]);
 
-  async function toggleAccount(accountId: string, enabled: boolean) {
-    const before = muted ?? [];
-    const next = enabled ? before.filter((x) => x !== accountId) : [...before, accountId];
-    setMuted(next);
+  async function toggleAccountNotice(enabled: boolean) {
+    if (!accountId) return;
+    const before = accountMuted;
+    setAccountMuted(!enabled);
     setMutedError(null);
     try {
-      const r = await api.setPushSettings({ mutedAccountIds: next });
-      setMuted(r.mutedAccountIds);
+      const r = await api.setPushSettings({ accountId, accountMuted: !enabled });
+      setAccountMuted(r.accountMuted ?? !enabled);
     } catch (e) {
-      setMuted(before);
+      setAccountMuted(before);
       setMutedError(describeError(e, '通知の設定を保存できませんでした'));
     }
   }
 
   async function toggleKind(kind: string, enabled: boolean) {
+    if (!accountId) return;
     const before = mutedKinds ?? [];
     const next = enabled ? before.filter((x) => x !== kind) : [...before, kind];
     setMutedKinds(next);
     setMutedError(null);
     try {
-      const r = await api.setPushSettings({ mutedKinds: next });
+      const r = await api.setPushSettings({ accountId, mutedKinds: next });
       setMutedKinds(r.mutedKinds);
     } catch (e) {
       setMutedKinds(before);
@@ -175,11 +183,24 @@ function SettingsScreen() {
             ) : null}
           </Card>
 
-          <SectionTitle>通知する内容</SectionTitle>
+          <SectionTitle>{acc.selected ? `「${accountLabel(acc.selected)}」の通知` : '公式アカウントの通知'}</SectionTitle>
           <Card>
             <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginBottom: 6 }}>
-              このスマートフォンで、何が起きたときに通知するかを選べます。設定はこのアプリの中だけで完結します(Web版の設定は要りません)。
+              ここは、いま見ている公式アカウントの通知の設定です(このスマートフォンだけの設定。Web版の設定は要りません)。ほかの公式アカウントの通知は、そのアカウントに切り替えて設定します。
             </Text>
+            <View style={styles.accountRow}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ color: c.text, fontSize: 15, fontWeight: '700' }}>このアカウントの通知</Text>
+                <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 1 }}>オフにすると、このアカウントの通知はすべて届きません</Text>
+              </View>
+              <Switch
+                accessibilityLabel="このアカウントの通知"
+                value={accountMuted !== null && !accountMuted}
+                disabled={accountMuted === null}
+                onValueChange={(v) => void toggleAccountNotice(v)}
+              />
+            </View>
+            <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 10, marginBottom: 2 }}>通知する内容</Text>
             {kinds.map((k) => (
               <View key={k.key} style={styles.accountRow}>
                 <View style={{ flex: 1, marginRight: 12 }}>
@@ -189,7 +210,7 @@ function SettingsScreen() {
                 <Switch
                   accessibilityLabel={`${k.label}の通知`}
                   value={mutedKinds !== null && !mutedKinds.includes(k.key)}
-                  disabled={mutedKinds === null}
+                  disabled={mutedKinds === null || accountMuted === true}
                   onValueChange={(v) => void toggleKind(k.key, v)}
                 />
               </View>
@@ -197,26 +218,6 @@ function SettingsScreen() {
             {kinds.length === 0 && mutedKinds === null ? (
               <Text style={{ color: c.textMuted, fontSize: 13 }}>読み込み中…</Text>
             ) : null}
-          </Card>
-
-          <SectionTitle>公式アカウントごとの通知</SectionTitle>
-          <Card>
-            <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginBottom: 6 }}>
-              このスマートフォンで、通知を受け取る公式アカウントを選べます(オフにしたアカウントの新着は、通知されません)。
-            </Text>
-            {acc.accounts.map((a) => (
-              <View key={a.id} style={styles.accountRow}>
-                <Text style={{ color: c.text, fontSize: 15, flex: 1, marginRight: 12 }} numberOfLines={1}>
-                  {accountLabel(a)}
-                </Text>
-                <Switch
-                  accessibilityLabel={`${accountLabel(a)}の通知`}
-                  value={muted !== null && !muted.includes(a.id)}
-                  disabled={muted === null}
-                  onValueChange={(v) => void toggleAccount(a.id, v)}
-                />
-              </View>
-            ))}
             {mutedError ? (
               <Text style={{ color: c.danger, fontSize: 13, marginTop: 6 }} accessibilityRole="alert">
                 {mutedError}

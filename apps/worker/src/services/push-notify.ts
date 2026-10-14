@@ -1,4 +1,4 @@
-import { effectiveMutedPushKinds, getStaffAllowedAccountIds, parseMutedAccountIds } from '@line-crm/db';
+import { getStaffAllowedAccountIds, mutedPushKindsForAccount, parseMutedAccountIds } from '@line-crm/db';
 import type { AppPushKind } from '@line-crm/db';
 import { clearInvalidApnsToken, getApnsConfig, sendApnsAlert } from './apns.js';
 import type { ApnsEnv, ApnsSendOptions } from './apns.js';
@@ -47,6 +47,7 @@ interface SessionRow {
   muted_account_ids: string | null;
   muted_push_kinds: string | null;
   enabled_push_kinds: string | null;
+  push_by_account: string | null;
   expires_at: string;
   staff_id: string;
   role: string | null;
@@ -61,7 +62,7 @@ export async function resolvePushRecipients(
 ): Promise<string[]> {
   const rows = await db
     .prepare(
-      `SELECT s.apns_token, s.muted_account_ids, s.muted_push_kinds, s.enabled_push_kinds, s.expires_at, s.staff_id, m.role
+      `SELECT s.apns_token, s.muted_account_ids, s.muted_push_kinds, s.enabled_push_kinds, s.push_by_account, s.expires_at, s.staff_id, m.role
          FROM app_sessions s INNER JOIN staff_members m ON m.id = s.staff_id
         WHERE s.revoked_at IS NULL AND s.apns_token IS NOT NULL AND s.apns_token != ''
           AND m.is_active = 1
@@ -93,7 +94,8 @@ export async function resolvePushRecipients(
     // この端末が、この公式アカウントの通知を止めている
     if (accountId !== null && parseMutedAccountIds(row.muted_account_ids).includes(accountId)) continue;
     // この端末が、この種類(メッセージ・フォームの回答など)の通知を止めている(初期オフの種類は、オンにした端末だけ送る)
-    if (effectiveMutedPushKinds(row.muted_push_kinds, row.enabled_push_kinds).includes(kind)) continue;
+    // (設定は、公式アカウントごとに持つ。そのアカウントの設定が無ければ、端末全体の設定)
+    if (mutedPushKindsForAccount(row, accountId).includes(kind)) continue;
     if (seen.has(row.apns_token)) continue;
     if (!(await canSee(row.staff_id, row.role))) continue;
     seen.add(row.apns_token);

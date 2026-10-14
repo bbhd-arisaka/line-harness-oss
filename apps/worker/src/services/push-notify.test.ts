@@ -178,6 +178,35 @@ describe('通知の種類(新着メッセージ / フォームの回答)を、�
   });
 });
 
+describe('通知の設定は、公式アカウントごと', () => {
+  it('その端末が、そのアカウントで止めている種類は送らない。ほかのアカウントには影響しない', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner'); session('o', 'DEV');
+    // A では「新着メッセージ」を止め、B は設定なし(端末全体の設定=何も止めていない)
+    sqlite.prepare(`UPDATE app_sessions SET push_by_account = '{"A":{"m":["message"],"e":[]}}' WHERE apns_token = 'DEV'`).run();
+    expect(await resolvePushRecipients(db, 'A', Date.now(), 'message')).toEqual([]);
+    expect(await resolvePushRecipients(db, 'A', Date.now(), 'form_answered')).toEqual(['DEV']);
+    expect(await resolvePushRecipients(db, 'B', Date.now(), 'message')).toEqual(['DEV']);
+  });
+  it('そのアカウントの設定が無ければ、端末全体の設定に従う。再追加(初期オフ)は、そのアカウントでオンにした端末だけ', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner'); session('o', 'DEV');
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["form_answered"]' WHERE apns_token = 'DEV'`).run();
+    expect(await resolvePushRecipients(db, 'Z', Date.now(), 'form_answered')).toEqual([]);
+    expect(await resolvePushRecipients(db, 'Z', Date.now(), 'friend_readded')).toEqual([]);
+    sqlite.prepare(`UPDATE app_sessions SET push_by_account = '{"Z":{"m":[],"e":["friend_readded"]}}' WHERE apns_token = 'DEV'`).run();
+    expect(await resolvePushRecipients(db, 'Z', Date.now(), 'friend_readded')).toEqual(['DEV']);
+    expect(await resolvePushRecipients(db, 'Z', Date.now(), 'form_answered')).toEqual(['DEV']); // Z の設定が優先される
+    expect(await resolvePushRecipients(db, 'Y', Date.now(), 'friend_readded')).toEqual([]); // 他は、初期オフのまま
+  });
+  it('壊れた値は無視して、端末全体の設定に従う', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner'); session('o', 'DEV');
+    sqlite.prepare(`UPDATE app_sessions SET push_by_account = 'not json'`).run();
+    expect(await resolvePushRecipients(db, 'A', Date.now(), 'message')).toEqual(['DEV']);
+  });
+});
+
 describe('友だち追加の通知', () => {
   it('友だち名・公式アカウント名・chatId を付けて送る。「友だち追加」を止めた端末には送らない', async () => {
     const { db, sqlite, staff, session } = setup();

@@ -171,6 +171,98 @@ export async function setAppSessionMutedKinds(db: D1Database, sessionId: string,
     .run();
 }
 
+// ── 通知の設定を、公式アカウントごとに持つ(端末 × 公式アカウント) ──
+// push_by_account: { "<公式アカウントID>": { "m": [止めている種類], "e": [オンにした初期オフの種類] } }
+// その公式アカウントの設定が無ければ、これまでの端末全体の設定(muted_push_kinds / enabled_push_kinds)を使う。
+
+export interface AccountPushEntry {
+  m: AppPushKind[];
+  e: AppPushKind[];
+}
+
+export function parsePushByAccount(raw: string | null): Record<string, AccountPushEntry> {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+    const out: Record<string, AccountPushEntry> = {};
+    for (const [id, e] of Object.entries(v as Record<string, unknown>)) {
+      if (!id || id.length > 64 || !e || typeof e !== 'object') continue;
+      const entry = e as { m?: unknown; e?: unknown };
+      out[id] = {
+        m: Array.isArray(entry.m) ? [...new Set(entry.m.filter(isAppPushKind))] : [],
+        e: Array.isArray(entry.e) ? [...new Set(entry.e.filter(isAppPushKind))] : [],
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** この端末が、この公式アカウントの通知で止めている種類(そのアカウントの設定があればそれ、無ければ端末全体の設定) */
+export function mutedPushKindsForAccount(
+  row: { muted_push_kinds: string | null; enabled_push_kinds: string | null; push_by_account: string | null },
+  accountId: string | null,
+): AppPushKind[] {
+  const entry = accountId ? parsePushByAccount(row.push_by_account)[accountId] : undefined;
+  if (entry) return effectiveMutedPushKinds(JSON.stringify(entry.m), JSON.stringify(entry.e));
+  return effectiveMutedPushKinds(row.muted_push_kinds, row.enabled_push_kinds);
+}
+
+/** アプリの通知設定画面が見せる、この公式アカウントの設定 */
+export async function getAppSessionPushForAccount(
+  db: D1Database,
+  sessionId: string,
+  accountId: string,
+): Promise<{ accountMuted: boolean; mutedKinds: AppPushKind[] }> {
+  const r = await db
+    .prepare('SELECT muted_account_ids, muted_push_kinds, enabled_push_kinds, push_by_account FROM app_sessions WHERE id = ?')
+    .bind(sessionId)
+    .first<{ muted_account_ids: string | null; muted_push_kinds: string | null; enabled_push_kinds: string | null; push_by_account: string | null }>();
+  if (!r) return { accountMuted: false, mutedKinds: [] };
+  return { accountMuted: parseMutedAccountIds(r.muted_account_ids).includes(accountId), mutedKinds: mutedPushKindsForAccount(r, accountId) };
+}
+
+/**
+ * この公式アカウントの通知設定を保存する(送られた項目だけ)。
+ * - accountMuted: このアカウントの通知そのものを止める(muted_account_ids に出し入れする。他のアカウントには影響しない)
+ * - mutedKinds: このアカウントで止める種類の全体(初期オフの種類は、一覧に入っていなければ「オンにした」と覚える)
+ */
+export async function setAppSessionPushForAccount(
+  db: D1Database,
+  sessionId: string,
+  accountId: string,
+  change: { accountMuted?: boolean; mutedKinds?: string[] },
+): Promise<void> {
+  const r = await db
+    .prepare('SELECT muted_account_ids, push_by_account FROM app_sessions WHERE id = ?')
+    .bind(sessionId)
+    .first<{ muted_account_ids: string | null; push_by_account: string | null }>();
+  if (!r) return;
+  let mutedAccounts = parseMutedAccountIds(r.muted_account_ids);
+  if (change.accountMuted !== undefined) {
+    mutedAccounts = mutedAccounts.filter((x) => x !== accountId);
+    if (change.accountMuted) mutedAccounts.push(accountId);
+  }
+  const byAccount = parsePushByAccount(r.push_by_account);
+  if (change.mutedKinds !== undefined) {
+    const clean = [...new Set(change.mutedKinds.filter(isAppPushKind))];
+    byAccount[accountId] = {
+      m: clean.filter((k) => !DEFAULT_OFF_PUSH_KINDS.includes(k)),
+      e: DEFAULT_OFF_PUSH_KINDS.filter((k) => !clean.includes(k)),
+    };
+  }
+  await db
+    .prepare('UPDATE app_sessions SET muted_account_ids = ?, push_by_account = ? WHERE id = ?')
+    .bind(
+      mutedAccounts.length ? JSON.stringify(mutedAccounts.slice(0, 200)) : null,
+      Object.keys(byAccount).length ? JSON.stringify(byAccount) : null,
+      sessionId,
+    )
+    .run();
+}
+
 export async function listAppSessionsForStaff(db: D1Database, staffId: string): Promise<AppSessionRow[]> {
   const r = await db
     .prepare('SELECT id, staff_id, device_name, apns_token, created_at, last_used_at, expires_at, revoked_at FROM app_sessions WHERE staff_id = ? AND revoked_at IS NULL ORDER BY created_at DESC')

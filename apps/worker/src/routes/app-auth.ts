@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import {
   clearLoginFailures,
   APP_PUSH_KINDS,
   getAppSessionMutedAccounts,
+  getAppSessionPushForAccount,
   getAppSessionMutedKinds,
   isAppPushKind,
   countRecentLoginFailures,
@@ -13,6 +15,7 @@ import {
   revokeAppSession,
   setAppSessionApnsToken,
   setAppSessionMutedAccounts,
+  setAppSessionPushForAccount,
   setAppSessionMutedKinds,
 } from '@line-crm/db';
 import { verifyAdminCredentials } from '../services/app-auth.js';
@@ -94,28 +97,53 @@ appAuth.put('/api/app/device', async (c) => {
   return c.json({ success: true, data: null });
 });
 
+/** このスタッフが見られる公式アカウントか(オーナー・制限なしは全部。制限のあるスタッフは、許可したアカウントだけ) */
+async function canSeeAccount(c: Context<Env>, accountId: string): Promise<boolean> {
+  const allowed = c.get('allowedAccountIds');
+  return !allowed || allowed.includes(accountId);
+}
+
 // この端末の通知設定(止めている公式アカウント・止めている通知の種類)。端末ごとに持つ。
 // PUT は、送られた項目だけを更新する(古いアプリが mutedAccountIds だけ送っても、種類の設定は消えない)
-async function pushSettingsOf(db: D1Database, sessionId: string) {
+// accountId を付けると、その公式アカウントの設定(accountMuted・mutedKinds)を返す(アプリの設定画面は、いま見ているアカウントの設定だけを出す)。
+async function pushSettingsOf(db: D1Database, sessionId: string, accountId?: string) {
+  const kinds = APP_PUSH_KINDS.map((k) => ({ key: k.key, label: k.label, description: k.description }));
+  if (accountId) {
+    const own = await getAppSessionPushForAccount(db, sessionId, accountId);
+    return { accountId, accountMuted: own.accountMuted, mutedAccountIds: await getAppSessionMutedAccounts(db, sessionId), mutedKinds: own.mutedKinds, kinds };
+  }
   return {
     mutedAccountIds: await getAppSessionMutedAccounts(db, sessionId),
     mutedKinds: await getAppSessionMutedKinds(db, sessionId),
-    kinds: APP_PUSH_KINDS.map((k) => ({ key: k.key, label: k.label, description: k.description })),
+    kinds,
   };
 }
 
 appAuth.get('/api/app/push-settings', async (c) => {
   const sessionId = c.get('appSessionId');
   if (!sessionId) return c.json({ success: false, error: 'アプリのログインで呼び出してください' }, 400);
-  return c.json({ success: true, data: await pushSettingsOf(c.env.DB, sessionId) });
+  const accountId = c.req.query('accountId') || undefined;
+  if (accountId !== undefined && (accountId.length > 64 || !(await canSeeAccount(c, accountId)))) return c.json({ success: false, error: 'このアカウントの設定は、変更できません' }, 403);
+  return c.json({ success: true, data: await pushSettingsOf(c.env.DB, sessionId, accountId) });
 });
 
 appAuth.put('/api/app/push-settings', async (c) => {
   const sessionId = c.get('appSessionId');
   if (!sessionId) return c.json({ success: false, error: 'アプリのログインで呼び出してください' }, 400);
-  const body = await c.req.json<{ mutedAccountIds?: unknown; mutedKinds?: unknown }>().catch(() => ({}) as { mutedAccountIds?: unknown; mutedKinds?: unknown });
+  const body = await c.req.json<{ mutedAccountIds?: unknown; mutedKinds?: unknown; accountId?: unknown; accountMuted?: unknown }>().catch(() => ({}) as { mutedAccountIds?: unknown; mutedKinds?: unknown; accountId?: unknown; accountMuted?: unknown });
   const ids = body.mutedAccountIds;
   const kinds = body.mutedKinds;
+  // accountId を付けたときは、その公式アカウントだけの設定(accountMuted・mutedKinds)を更新する(他のアカウントには影響しない)
+  if (body.accountId !== undefined) {
+    const accountId = body.accountId;
+    if (typeof accountId !== 'string' || !accountId || accountId.length > 64) return c.json({ success: false, error: 'accountId が正しくありません' }, 400);
+    if (body.accountMuted === undefined && kinds === undefined) return c.json({ success: false, error: '変更する項目(accountMuted か mutedKinds)を送ってください' }, 400);
+    if (body.accountMuted !== undefined && typeof body.accountMuted !== 'boolean') return c.json({ success: false, error: 'accountMuted が正しくありません' }, 400);
+    if (kinds !== undefined && (!Array.isArray(kinds) || kinds.length > 20 || kinds.some((x) => !isAppPushKind(x)))) return c.json({ success: false, error: 'mutedKinds が正しくありません' }, 400);
+    if (!(await canSeeAccount(c, accountId))) return c.json({ success: false, error: 'このアカウントの設定は、変更できません' }, 403);
+    await setAppSessionPushForAccount(c.env.DB, sessionId, accountId, { accountMuted: body.accountMuted as boolean | undefined, mutedKinds: kinds as string[] | undefined });
+    return c.json({ success: true, data: await pushSettingsOf(c.env.DB, sessionId, accountId) });
+  }
   if (ids === undefined && kinds === undefined) {
     return c.json({ success: false, error: '変更する項目(mutedAccountIds か mutedKinds)を送ってください' }, 400);
   }

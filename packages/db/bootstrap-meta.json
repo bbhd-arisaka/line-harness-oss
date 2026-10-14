@@ -109,7 +109,8 @@
     "101_demo_review_data.sql",
     "102_app_push_muted_kinds.sql",
     "103_line_account_lstep_forward.sql",
-    "104_app_push_enabled_kinds.sql"
+    "104_app_push_enabled_kinds.sql",
+    "105_app_push_by_account.sql"
   ],
-  "migrationCount": 110
+  "migrationCount": 111
 }

@@ -120,9 +120,9 @@ export function createApiClient(options: ApiClientOptions) {
     /** プッシュ通知の送り先(APNs デバイストークン)を登録。null で解除。 */
     setApnsToken: (apnsToken: string | null) => request<null>('PUT', '/api/app/device', { body: { apnsToken } }),
     /** この端末の通知設定: 止めている公式アカウント・止めている通知の種類(設定はアプリの中だけで完結する) */
-    getPushSettings: () => request<PushSettings>('GET', '/api/app/push-settings'),
-    /** 送った項目だけを更新する(公式アカウント・種類のどちらか、または両方) */
-    setPushSettings: (change: { mutedAccountIds?: string[]; mutedKinds?: string[] }) => request<PushSettings>('PUT', '/api/app/push-settings', { body: change }),
+    getPushSettings: (accountId?: string) => request<PushSettings>('GET', `/api/app/push-settings${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`),
+    /** 送った項目だけを更新する。accountId を付けると、その公式アカウントだけの設定(accountMuted・mutedKinds)を更新する */
+    setPushSettings: (change: { mutedAccountIds?: string[]; mutedKinds?: string[]; accountId?: string; accountMuted?: boolean }) => request<PushSettings>('PUT', '/api/app/push-settings', { body: change }),
 
     /** 新着の有無だけの軽い確認(最新のメッセージの時刻を返す。1行しか読まない)。トーク・一覧の定期確認に使う */
     getChatPulse: () => request<{ latest: string | null }>('GET', '/api/chats/pulse'),
