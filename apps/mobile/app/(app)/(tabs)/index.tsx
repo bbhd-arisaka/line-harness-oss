@@ -173,8 +173,24 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
     }
     void fetchFirst('silent');
   }, [reloadSignal, fetchFirst]);
-  // 一覧は、開いている間は15秒ごとに確認する(iPhoneの1列表示でも、新着が並びに反映される)
-  useInterval(() => void fetchFirst('silent'), 15_000, !loading);
+  // 一覧は、開いている間は20秒ごとに「新着の有無」だけを確認し(1行しか読まない)、変わっていたときだけ取り直す
+  // (一覧の取得は1回で数万行を読むので、定期的に丸ごと取り直さない)。iPhoneの1列表示でも、新着が並びに反映される
+  const lastPulse = useRef<string | null>(null);
+  useInterval(
+    () => {
+      void (async () => {
+        try {
+          const p = await api.getChatPulse();
+          if (lastPulse.current !== null && p.latest !== lastPulse.current) void fetchFirst('silent');
+          if (p.latest) lastPulse.current = p.latest;
+        } catch {
+          // 確認に失敗したときは、次の確認まで待つ
+        }
+      })();
+    },
+    20_000,
+    !loading,
+  );
   // 通知が届いたら、待たずにすぐ最新にする
   useEffect(() => {
     let retry: ReturnType<typeof setTimeout> | null = null;

@@ -35,6 +35,15 @@ export interface LineAccount {
   stats?: { friendCount: number; activeScenarios: number; messagesThisMonth: number };
 }
 
+/** GET /api/line-accounts/:id/friend-add: 友だち追加用の URL と QR コード(PNG を base64 で) */
+export interface FriendAddInfo {
+  accountId: string;
+  name: string;
+  basicId: string;
+  url: string;
+  qrPngBase64: string;
+}
+
 /** GET /api/chats/:id/form-answers/:submissionId: フォームの回答結果 */
 export interface FormAnswerDetail {
   submissionId: string;

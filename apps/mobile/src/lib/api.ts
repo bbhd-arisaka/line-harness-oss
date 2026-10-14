@@ -4,6 +4,7 @@ import type {
   ChatStatus,
   ChatSummary,
   FormAnswerDetail,
+  FriendAddInfo,
   FriendDetail,
   FriendFieldDefinition,
   FriendPage,
@@ -123,8 +124,13 @@ export function createApiClient(options: ApiClientOptions) {
     /** 送った項目だけを更新する(公式アカウント・種類のどちらか、または両方) */
     setPushSettings: (change: { mutedAccountIds?: string[]; mutedKinds?: string[] }) => request<PushSettings>('PUT', '/api/app/push-settings', { body: change }),
 
+    /** 新着の有無だけの軽い確認(最新のメッセージの時刻を返す。1行しか読まない)。トーク・一覧の定期確認に使う */
+    getChatPulse: () => request<{ latest: string | null }>('GET', '/api/chats/pulse'),
+
     // ── 公式アカウント ──
     listLineAccounts: () => request<LineAccount[]>('GET', '/api/line-accounts'),
+    /** 友だち追加用の URL と QR コード(画像で保存・URL のコピー用) */
+    getFriendAdd: (accountId: string) => request<FriendAddInfo>('GET', `/api/line-accounts/${accountId}/friend-add`),
 
     // ── トーク ──
     listChats: (params: {

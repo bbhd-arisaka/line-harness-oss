@@ -831,6 +831,9 @@ export const api = {
     /** Lステップと並行運用する(受信をLステップにも転送する)。url=null で解除 */
     setLstepForward: (id: string, url: string | null) =>
       fetchApi<ApiResponse<LineAccount>>(`/api/line-accounts/${id}/lstep-forward`, { method: 'PUT', body: JSON.stringify({ url }) }),
+    /** 友だち追加用の URL と QR コード(PNG を base64 で) */
+    friendAdd: (id: string) =>
+      fetchApi<ApiResponse<{ accountId: string; name: string; basicId: string; url: string; qrPngBase64: string }>>(`/api/line-accounts/${id}/friend-add`),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/line-accounts/${id}`, { method: 'DELETE' }),
     updateOrder: (ordered: Array<{ id: string; displayOrder: number }>) =>

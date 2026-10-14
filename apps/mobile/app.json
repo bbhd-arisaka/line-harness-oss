@@ -54,6 +54,13 @@
             "deploymentTarget": "16.4"
           }
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": false,
+          "savePhotosPermission": "友だち追加のQRコードを、写真アプリに保存するために使います。"
+        }
       ]
     ],
     "experiments": {

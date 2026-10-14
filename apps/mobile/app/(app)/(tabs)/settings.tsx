@@ -1,5 +1,6 @@
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { authStore, useAccounts, useAuth } from '../../../src/state/session';
@@ -30,6 +31,7 @@ function SettingsScreen() {
   const c = useColors();
   const auth = useAuth();
   const acc = useAccounts();
+  const router = useRouter();
   const staff = auth.staff;
   const push = usePushStatus();
   const version = Constants.expoConfig?.version ?? '-';
@@ -142,6 +144,19 @@ function SettingsScreen() {
           </Text>
         </View>
         <Text style={{ color: c.primaryText, fontWeight: '700', marginRight: 4 }}>切り替え</Text>
+        <Ionicons name="chevron-forward" size={18} color={c.primaryText} />
+      </Pressable>
+
+      <Pressable
+        onPress={() => router.push('/friend-add')}
+        accessibilityRole="button"
+        accessibilityLabel="友だち追加のQRコードとURLを表示する"
+        style={({ pressed }) => [styles.link, { backgroundColor: c.card, borderColor: c.border, opacity: pressed ? 0.8 : 1, marginTop: 10 }]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: c.text, fontSize: 16, fontWeight: '700' }}>友だち追加のQRコード・URL</Text>
+          <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 2 }}>QRは画像で保存、URLはワンタップでコピーできます</Text>
+        </View>
         <Ionicons name="chevron-forward" size={18} color={c.primaryText} />
       </Pressable>
 

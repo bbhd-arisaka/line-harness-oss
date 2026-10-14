@@ -26,6 +26,7 @@ import { countDeliverableAudience } from '../services/quota-alert.js';
 import { ensureLiffApp, LiffSetupError } from '../services/liff-setup.js';
 import { issueNewToken } from '../services/token-refresh.js';
 import { validateLstepForwardUrl } from '../services/lstep-forward.js';
+import { friendAddUrl, makeQrPng, toBase64 } from '../services/qr-png.js';
 
 const lineAccounts = new Hono<Env>();
 
@@ -375,6 +376,32 @@ lineAccounts.get('/api/line-accounts/:id', async (c) => {
     return c.json({ success: true, data });
   } catch (err) {
     console.error('GET /api/line-accounts/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// GET /api/line-accounts/:id/friend-add - 友だち追加用の URL と QR コード(PNG)。アプリ・Webで、画像の保存・URLのコピーに使う。
+// LINE から、この公式アカウントの ID(@から始まる)をその場で取得して作る(外部の QR サービスは使わない)。
+lineAccounts.get('/api/line-accounts/:id/friend-add', async (c) => {
+  try {
+    const account = await getLineAccountById(c.env.DB, c.req.param('id'));
+    if (!account) return c.json({ success: false, error: 'LINE account not found' }, 404);
+    // 制限のあるスタッフは、許可されたアカウントだけ(ミドルウェアでも確認済み。念のため)
+    const allowedIds = c.get('allowedAccountIds');
+    if (allowedIds && !allowedIds.includes(account.id)) return c.json({ success: false, error: 'このアカウントを操作する権限がありません。' }, 403);
+    const profile = await fetchBotProfile(account.channel_access_token);
+    if (!profile.basicId) {
+      return c.json({ success: false, error: 'LINE から、この公式アカウントの ID(@から始まる ID)を取得できませんでした。しばらくしてからもう一度お試しください。' }, 502);
+    }
+    const url = friendAddUrl(profile.basicId);
+    const png = await makeQrPng(url);
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({
+      success: true,
+      data: { accountId: account.id, name: account.name, basicId: profile.basicId, url, qrPngBase64: toBase64(png) },
+    });
+  } catch (err) {
+    console.error('GET /api/line-accounts/:id/friend-add error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

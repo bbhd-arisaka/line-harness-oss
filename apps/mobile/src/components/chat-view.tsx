@@ -233,7 +233,23 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
   );
 
   // 新着の取得(開いている間は10秒ごとに確認。通知が届いたら、待たずにすぐ確認)
-  useInterval(() => void load(true), POLL_MS, !!chat && !error);
+  // 定期の確認は「新着の有無」だけ(1行しか読まない)。変わっていた(または最初の)ときだけ、このトークを取り直す
+  const lastPulse = useRef<string | null>(null);
+  useInterval(
+    () => {
+      void (async () => {
+        try {
+          const p = await api.getChatPulse();
+          if (lastPulse.current === null || p.latest !== lastPulse.current) await load(true);
+          if (p.latest) lastPulse.current = p.latest;
+        } catch {
+          // 確認に失敗したときは、次の確認まで待つ
+        }
+      })();
+    },
+    POLL_MS,
+    !!chat && !error,
+  );
   useEffect(() => {
     let retry: ReturnType<typeof setTimeout> | null = null;
     const off = subscribeChatActivity((e) => {

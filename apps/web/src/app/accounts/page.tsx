@@ -27,6 +27,7 @@ import AccountSetupUrls from '@/components/accounts/account-setup-urls'
 import LinkBaseUrlSetting from '@/components/accounts/link-base-url-setting'
 import FollowerImportButton from '@/components/accounts/follower-import-button'
 import LstepForwardSetting from '@/components/accounts/lstep-forward-setting'
+import FriendAddQr from '@/components/accounts/friend-add-qr'
 
 const ReorderMode = dynamic(() => import('@/components/accounts/reorder-mode'), { ssr: false })
 const AccountEditModal = dynamic(() => import('@/components/accounts/account-edit-modal'), { ssr: false })
@@ -408,6 +409,7 @@ export default function AccountsPage() {
                 />
                 <TestRecipientsSetting accountId={account.id} />
                 <FollowerImportButton accountId={account.id} onImported={reloadAccounts} />
+                <FriendAddQr accountId={account.id} accountName={account.name} />
                 <LstepForwardSetting accountId={account.id} initialUrl={account.lstepForwardUrl ?? null} onUpdated={reloadAccounts} />
 
                 <div className="mt-3 flex items-center justify-between border-t border-kumo-line pt-3">

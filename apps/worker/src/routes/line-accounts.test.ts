@@ -917,3 +917,41 @@ describe('LIFF 自動作成', () => {
     expect(liffMocks.ensureLiffApp).not.toHaveBeenCalled();
   });
 });
+
+
+describe('GET /api/line-accounts/:id/friend-add(友だち追加のURLとQR)', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    vi.clearAllMocks();
+  });
+  const get = (role: 'owner' | 'admin' | 'staff' = 'owner') => setupApp(role).request('/api/line-accounts/acc1/friend-add');
+
+  test('LINE から取った ID で、友だち追加の URL と QR 画像(PNG)を返す', async () => {
+    dbMocks.getLineAccountById.mockResolvedValue({ id: 'acc1', name: '土岐店', channel_access_token: 'tok' });
+    const calls: string[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return new Response(JSON.stringify({ basicId: '@123abcde', displayName: '土岐店' }), { status: 200 });
+    }) as typeof fetch;
+    const res = await get('staff');
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { success: boolean; data: { url: string; basicId: string; name: string; qrPngBase64: string } };
+    expect(json.data.url).toBe('https://line.me/R/ti/p/%40123abcde');
+    expect(json.data.basicId).toBe('@123abcde');
+    expect(json.data.name).toBe('土岐店');
+    expect(Uint8Array.from(atob(json.data.qrPngBase64), (ch) => ch.charCodeAt(0)).subarray(1, 4)).toEqual(new Uint8Array([0x50, 0x4e, 0x47]));
+    expect(calls).toEqual(['https://api.line.me/v2/bot/info']);
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
+  });
+  test('LINE から ID が取れないときは 502(トークンの有効期限切れなど)', async () => {
+    dbMocks.getLineAccountById.mockResolvedValue({ id: 'acc1', name: '土岐店', channel_access_token: 'tok' });
+    globalThis.fetch = vi.fn(async () => new Response('{}', { status: 401 })) as typeof fetch;
+    const res = await get();
+    expect(res.status).toBe(502);
+  });
+  test('存在しないアカウントは 404', async () => {
+    dbMocks.getLineAccountById.mockResolvedValue(null);
+    expect((await get()).status).toBe(404);
+  });
+});
