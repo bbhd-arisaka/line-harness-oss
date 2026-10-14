@@ -92,6 +92,11 @@ const SHOW_LOADING_PREF_KEY = 'lh_chat_show_loading_indicator'
 const CHAT_PAGE_SIZE = 300
 /** 新着の自動反映の間隔(画面が見えている間だけ) */
 const CHAT_AUTO_REFRESH_MS = 10_000
+/**
+ * 新着の自動反映は、いったん止めている。トーク一覧の取得は1回で約16万行を読む(D1 の無料枠は1日500万行)ため、
+ * 10秒ごとに取り直すと、開いているだけで1日の上限を使い切ってしまう。軽い「新着の有無の確認」に作り直すまで、オフ。
+ */
+const CHAT_AUTO_REFRESH_ENABLED = false
 const LOADING_SECONDS_PREF_KEY = 'lh_chat_loading_seconds'
 const LOADING_REFRESH_INTERVAL_MS = 4000
 
@@ -577,6 +582,7 @@ export default function ChatsPage() {
     }
   }, [buildListParams])
   useEffect(() => {
+    if (!CHAT_AUTO_REFRESH_ENABLED) return
     const tick = () => { void silentRefresh() }
     const timer = window.setInterval(tick, CHAT_AUTO_REFRESH_MS)
     const onVisible = () => { if (document.visibilityState === 'visible') tick() }
