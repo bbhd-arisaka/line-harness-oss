@@ -6,6 +6,7 @@ import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { api, storage } from './services';
 import { useAccounts } from './session';
+import { emitChatActivity } from '../lib/chat-activity';
 import {
   normalizeApnsToken,
   parseNotificationTarget,
@@ -157,10 +158,7 @@ function NotificationTaps({ ready }: { ready: boolean }) {
 
   const open = useCallback(
     (response: Notifications.NotificationResponse) => {
-      // 通知の中身は、content.data にあるはずだが、環境によっては trigger.payload の側にだけ入っている。両方を見る
-      const req = response.notification.request;
-      const trigger = req.trigger as { payload?: unknown } | null;
-      const target = parseNotificationTarget(req.content.data) ?? parseNotificationTarget(trigger?.payload) ?? parseNotificationTarget((trigger?.payload as { body?: unknown } | undefined)?.body);
+      const target = targetOf(response.notification.request);
       const cur = accRef.current;
       const plan = planNavigation(
         target,
@@ -202,7 +200,29 @@ function NotificationTaps({ ready }: { ready: boolean }) {
     return () => sub.remove();
   }, [ready, handle]);
 
+  // アプリが前面のときに通知が届いたら、開いているトーク・トーク一覧にも新着を反映する(10秒ごとの確認を待たない)
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((n) => {
+      try {
+        emitChatActivity(targetOf(n.request)?.chatId ?? null);
+      } catch (e) {
+        logFailure('notify chat views', e);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   return null;
+}
+
+/** 通知の中身は、content.data にあるはずだが、環境によっては trigger.payload の側にだけ入っている。両方を見る */
+function targetOf(req: Notifications.NotificationRequest) {
+  const trigger = req.trigger as { payload?: unknown } | null;
+  return (
+    parseNotificationTarget(req.content.data) ??
+    parseNotificationTarget(trigger?.payload) ??
+    parseNotificationTarget((trigger?.payload as { body?: unknown } | undefined)?.body)
+  );
 }
 
 /** 設定画面用: いまの通知の状態と、有効にする操作 */

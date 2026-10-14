@@ -12,6 +12,7 @@ import { ImageViewer } from '../components/image-viewer';
 import { ErrorView, LoadingView } from '../components/ui';
 import { MIN_TAP, useColors } from '../theme/theme';
 import { describeError } from '../lib/errors';
+import { ACTIVITY_RETRY_MS, isActivityForChat, subscribeChatActivity } from '../lib/chat-activity';
 
 const POLL_MS = 10_000;
 const MAX_LENGTH = 5000; // LINE のテキストメッセージの上限
@@ -231,8 +232,22 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
     }, [load]),
   );
 
-  // 新着の取得(プッシュ通知に加えて、開いている間は10秒ごとにも確認)
+  // 新着の取得(開いている間は10秒ごとに確認。通知が届いたら、待たずにすぐ確認)
   useInterval(() => void load(true), POLL_MS, !!chat && !error);
+  useEffect(() => {
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const off = subscribeChatActivity((e) => {
+      if (!isActivityForChat(e, id)) return;
+      void load(true);
+      // 通知の直後は、サーバーの保存が少し遅れて見えることがあるので、もう一度確認する
+      if (retry) clearTimeout(retry);
+      retry = setTimeout(() => void load(true), ACTIVITY_RETRY_MS);
+    });
+    return () => {
+      off();
+      if (retry) clearTimeout(retry);
+    };
+  }, [id, load]);
 
   async function send() {
     const body = text.trim();

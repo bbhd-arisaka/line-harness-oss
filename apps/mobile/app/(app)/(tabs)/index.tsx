@@ -12,6 +12,8 @@ import { describeError } from '../../../src/lib/errors';
 import { isSplitLayout, LIST_PANE_WIDTH } from '../../../src/lib/layout';
 import { ChatView } from '../../../src/components/chat-view';
 import { useInterval } from '../../../src/state/hooks';
+import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
+import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
 
 const PAGE_SIZE = 50;
 
@@ -88,8 +90,14 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
       try {
         const rows = await api.listChats({ lineAccountId: accountId, status: filter === 'all' ? undefined : filter, limit: PAGE_SIZE });
         if (id !== seq.current) return;
-        setItems(rows);
-        setHasMore(rows.length >= PAGE_SIZE);
+        if (mode === 'silent') {
+          // 裏の更新: 「続きを読み込む」で出した古い行は消さない
+          setItems((prev) => mergeFreshPage(prev, rows, PAGE_SIZE));
+          if (rows.length < PAGE_SIZE) setHasMore(false);
+        } else {
+          setItems(rows);
+          setHasMore(rows.length >= PAGE_SIZE);
+        }
         setError(null);
       } catch (e) {
         if (id !== seq.current) return;
@@ -165,7 +173,21 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
     }
     void fetchFirst('silent');
   }, [reloadSignal, fetchFirst]);
-  useInterval(() => void fetchFirst('silent'), 15_000, !!onOpen && !loading);
+  // 一覧は、開いている間は15秒ごとに確認する(iPhoneの1列表示でも、新着が並びに反映される)
+  useInterval(() => void fetchFirst('silent'), 15_000, !loading);
+  // 通知が届いたら、待たずにすぐ最新にする
+  useEffect(() => {
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const off = subscribeChatActivity(() => {
+      void fetchFirst('silent');
+      if (retry) clearTimeout(retry);
+      retry = setTimeout(() => void fetchFirst('silent'), ACTIVITY_RETRY_MS);
+    });
+    return () => {
+      off();
+      if (retry) clearTimeout(retry);
+    };
+  }, [fetchFirst]);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>

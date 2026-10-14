@@ -10,6 +10,7 @@ import { parseStickerMessageContent, stickerFallback } from '@line-crm/shared'
 import { api, fetchApi, ApiError } from '@/lib/api'
 import { FriendNameEditDialog, NameEditPencil, type FriendNameFields } from '@/components/friends/friend-name-edit-dialog'
 import { UNANSWERED_REFRESH_EVENT } from '@/lib/events'
+import { hasNewIncoming, isNearBottom, mergeFreshChats } from '@/lib/chat-list-merge'
 import { useAccount } from '@/contexts/account-context'
 import CcPromptButton from '@/components/cc-prompt-button'
 import FlexPreviewComponent from '@/components/flex-preview'
@@ -89,6 +90,8 @@ const statusFilters: { key: StatusFilter; label: string }[] = [
 const SHOW_LOADING_PREF_KEY = 'lh_chat_show_loading_indicator'
 // 一覧の1ページ件数。worker 側 /api/chats のデフォルト LIMIT と揃える。
 const CHAT_PAGE_SIZE = 300
+/** 新着の自動反映の間隔(画面が見えている間だけ) */
+const CHAT_AUTO_REFRESH_MS = 10_000
 const LOADING_SECONDS_PREF_KEY = 'lh_chat_loading_seconds'
 const LOADING_REFRESH_INTERVAL_MS = 4000
 
@@ -527,6 +530,65 @@ export default function ChatsPage() {
     loadChats()
   }, [loadChats])
 
+  // 新着の自動反映: 画面を開いている間は、一覧と開いているトークを定期的に取り直す(再読み込みしなくても新着が出る)。
+  // 画面が見えていないタブでは止め、見えたとき・ウィンドウに戻ったときはすぐ確認する。
+  // 表示中の「さらに読み込む」の行・入力中のメモや本文・スクロール位置は触らない。
+  const selectedChatIdRef = useRef<string | null>(null)
+  useEffect(() => { selectedChatIdRef.current = selectedChatId }, [selectedChatId])
+  const silentRefreshing = useRef(false)
+  const lastBadgeRefreshAtRef = useRef(0)
+  /** 自分の送信(画面へ先に反映する)の時刻。それより前に始まった取り直しの結果で、送信直後の表示を巻き戻さない */
+  const lastLocalChangeAtRef = useRef(0)
+  const silentRefresh = useCallback(async () => {
+    if (silentRefreshing.current || document.visibilityState === 'hidden' || sendLockRef.current) return
+    silentRefreshing.current = true
+    const startedAt = Date.now()
+    const listSeq = loadChatsSeq.current
+    const openId = selectedChatIdRef.current
+    try {
+      const [listRes, detailRes] = await Promise.all([
+        api.chats.list(buildListParams(null)).catch(() => null),
+        openId ? api.chats.get(openId).catch(() => null) : Promise.resolve(null),
+      ])
+      if (listRes?.success && listSeq === loadChatsSeq.current) {
+        const fresh = listRes.data as unknown as Chat[]
+        setChats((prev) => {
+          if (hasNewIncoming(prev, fresh) && Date.now() - lastBadgeRefreshAtRef.current > 60_000) {
+            lastBadgeRefreshAtRef.current = Date.now()
+            // 未対応の件数(サイドバーのバッジ)も更新する。集計が重いので1分に1回まで
+            window.setTimeout(() => window.dispatchEvent(new Event(UNANSWERED_REFRESH_EVENT)), 0)
+          }
+          return mergeFreshChats(prev, fresh, CHAT_PAGE_SIZE, unansweredOnlyRef.current)
+        })
+      }
+      if (openId && detailRes?.success && selectedChatIdRef.current === openId && !sendLockRef.current && lastLocalChangeAtRef.current < startedAt) {
+        const next = detailRes.data as unknown as ChatDetail
+        setChatDetail((prev) => {
+          if (!prev || prev.id !== next.id) return prev
+          const same =
+            timelineSignature(prev.messages, prev.events) === timelineSignature(next.messages, next.events) &&
+            prev.status === next.status &&
+            prev.friendName === next.friendName
+          return same ? prev : { ...next }
+        })
+      }
+    } finally {
+      silentRefreshing.current = false
+    }
+  }, [buildListParams])
+  useEffect(() => {
+    const tick = () => { void silentRefresh() }
+    const timer = window.setInterval(tick, CHAT_AUTO_REFRESH_MS)
+    const onVisible = () => { if (document.visibilityState === 'visible') tick() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [silentRefresh])
+
   // Deep-link from other pages (e.g. /form-submissions): ?friend=<friendId>
   // chat list returns id = friend_id, so selectedChatId === friendId is correct.
   // If no chat exists yet, loadChatDetail will fail and the user can fall back to
@@ -583,10 +645,16 @@ export default function ChatsPage() {
   // 詳細が新しくロードされたら最下部（＝最新メッセージ）までスクロールする。
   // そこから上にスクロールすれば過去のメッセージを辿れる（LINE受信画面と同じUX）。
   // ユーザーが手動でスクロールしたら delayed auto-scroll は発動させない。
+  // 自動反映で新着が増えたときは、下端付近を見ているときだけ最新まで追従する(過去を読み返している最中に飛ばさない)
+  const nearBottomRef = useRef(true)
+  const scrolledChatIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (!chatDetail || (!chatDetail.messages?.length && !chatDetail.events?.length)) return
     const el = messagesScrollRef.current
     if (!el) return
+    const sameChat = scrolledChatIdRef.current === chatDetail.id
+    scrolledChatIdRef.current = chatDetail.id
+    if (sameChat && !nearBottomRef.current) return
     el.scrollTop = el.scrollHeight
     let userScrolled = false
     const onScroll = () => {
@@ -608,6 +676,15 @@ export default function ChatsPage() {
       el.removeEventListener('scroll', onScroll)
     }
   }, [chatDetail?.id, timelineSignature(chatDetail?.messages, chatDetail?.events)])
+  // 下端付近を見ているかを、スクロールのたびに覚えておく(上のフォロワーが使う)
+  useEffect(() => {
+    const el = messagesScrollRef.current
+    if (!el) return
+    nearBottomRef.current = true
+    const onScroll = () => { nearBottomRef.current = isNearBottom(el) }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [chatDetail?.id])
 
   // チャットを開いたら入力欄に自動フォーカスする — 「クリックしてもフォーカスが
   // 入らない」報告への対処で、そもそもクリックを不要にする。モバイルでは
@@ -705,6 +782,8 @@ export default function ChatsPage() {
     if (!messageContent.trim() && !pendingImage) return
     const sendingChatId = selectedChatId  // capture the chat id for this send
     sendLockRef.current = true
+    nearBottomRef.current = true // 自分の送信は、最新まで追従して見せる
+    lastLocalChangeAtRef.current = Date.now()
     setSending(true)
     try {
       const now = new Date().toISOString()
@@ -825,6 +904,7 @@ export default function ChatsPage() {
     } finally {
       setSending(false)
       sendLockRef.current = false
+      lastLocalChangeAtRef.current = Date.now()
     }
   }
 
