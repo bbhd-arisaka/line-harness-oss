@@ -34,13 +34,13 @@ function setup() {
 }
 
 describe('/api/app/push-settings(アプリの設定画面だけで完結する通知設定)', () => {
-  it('最初は何も止めていない。通知の種類の一覧(新着メッセージ・フォームの回答)も返す', async () => {
+  it('最初は何も止めていない。通知の種類の一覧(新着メッセージ・フォームの回答・友だち追加)も返す', async () => {
     const { call } = setup();
     const r = await call('GET');
     expect(r.status).toBe(200);
     expect(r.json.data).toMatchObject({ mutedAccountIds: [], mutedKinds: [] });
-    expect(r.json.data?.kinds.map((k) => k.key)).toEqual(['message', 'form_answered']);
-    expect(r.json.data?.kinds.map((k) => k.label)).toEqual(['新着メッセージ', 'フォームの回答']);
+    expect(r.json.data?.kinds.map((k) => k.key)).toEqual(['message', 'form_answered', 'friend_added']);
+    expect(r.json.data?.kinds.map((k) => k.label)).toEqual(['新着メッセージ', 'フォームの回答', '友だち追加']);
   });
   it('止める種類だけを保存できる。公式アカウントの設定は変わらない(古いアプリとの互換)', async () => {
     const { call } = setup();

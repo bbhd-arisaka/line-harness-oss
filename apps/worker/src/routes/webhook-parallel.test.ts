@@ -25,7 +25,7 @@ vi.mock('@line-crm/line-sdk', async () => {
   };
 });
 
-vi.mock('../services/push-notify.js', () => ({ notifyIncomingMessage: vi.fn() }));
+vi.mock('../services/push-notify.js', () => ({ notifyIncomingMessage: vi.fn(), notifyFriendAdded: vi.fn() }));
 vi.mock('../durable-objects/tenant-scheduler.js', () => ({ ensureSchedulerArmed: vi.fn(async () => {}) }));
 
 import { webhook, suppressSending } from './webhook.js';

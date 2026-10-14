@@ -47,7 +47,7 @@ vi.mock('../services/event-bus.js', () => ({
 }));
 
 const notifyMock = vi.hoisted(() => vi.fn());
-vi.mock('../services/push-notify.js', () => ({ notifyIncomingMessage: notifyMock }));
+vi.mock('../services/push-notify.js', () => ({ notifyIncomingMessage: notifyMock, notifyFriendAdded: vi.fn() }));
 
 vi.mock('../services/local-line-proxy.js', () => ({
   dispatchLineProxyLocally: vi.fn().mockResolvedValue(new Response(null, { status: 200 })),

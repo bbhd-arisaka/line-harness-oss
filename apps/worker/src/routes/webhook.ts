@@ -26,11 +26,11 @@ import { replyViaHarnessProxy } from '../services/line-proxy-send.js';
 import type { HarnessProxyDispatch } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import { ensureSchedulerArmed } from '../durable-objects/tenant-scheduler.js';
-import { notifyIncomingMessage } from '../services/push-notify.js';
+import { notifyFriendAdded, notifyIncomingMessage } from '../services/push-notify.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
-import type { IncomingMessageNotice } from '../services/push-notify.js';
+import type { FriendAddedNotice, IncomingMessageNotice } from '../services/push-notify.js';
 
 const webhook = new Hono<Env>();
 
@@ -194,6 +194,19 @@ webhook.post('/webhook', async (c) => {
     }
   };
 
+  // 友だち追加のアプリ通知(同じく背景で実行)
+  const onFriendAdded = (notice: FriendAddedNotice): void => {
+    try {
+      c.executionCtx.waitUntil(
+        notifyFriendAdded(c.env, db, notice).catch((err) => {
+          console.error('[webhook] friend-added push failed', err instanceof Error ? err.message : 'error');
+        }),
+      );
+    } catch (err) {
+      console.error('[webhook] friend-added push failed', err instanceof Error ? err.message : 'error');
+    }
+  };
+
   // 非同期処理 — LINE は ~1s 以内のレスポンスを要求
   const processingPromise = (async () => {
     const proxyDispatch: HarnessProxyDispatch = parallelMode
@@ -213,6 +226,7 @@ webhook.post('/webhook', async (c) => {
           proxyDispatch,
           onIncoming,
           parallelMode,
+          onFriendAdded,
         );
       } catch (err) {
         console.error('Error handling webhook event:', err);
@@ -264,6 +278,8 @@ async function handleEvent(
   onIncoming?: (notice: IncomingMessageNotice) => void,
   /** Lステップと並行運用中: 受信の記録だけ行い、自動送信(シナリオ・イベントルール・あいさつ)は一切しない */
   parallelMode = false,
+  /** 友だち追加のアプリ通知(並行運用中も送る。アプリへの通知で、お客様(LINE)には何も送らない) */
+  onFriendAdded?: (notice: FriendAddedNotice) => void,
 ): Promise<void> {
   if (event.type === 'follow') {
     const userId =
@@ -310,6 +326,9 @@ async function handleEvent(
     } catch (err) {
       console.error('[follow] failed to create chat row', err);
     }
+
+    // アプリ(iOS)へ「友だち追加」を通知する(再追加・ブロック解除も含む。並行運用中も通知する)
+    onFriendAdded?.({ friendId: friend.id, accountId: lineAccountId, friendName: friend.display_name, returning: alreadyKnown });
 
     // 新規・再フォローのどちらでも、最初の友だち登録マイルを同じキーで非同期投入する。
     // first_followed_at を使うため再フォローやWebhook再送では二重加算されない。

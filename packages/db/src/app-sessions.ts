@@ -118,6 +118,7 @@ export function parseMutedAccountIds(raw: string | null): string[] {
 export const APP_PUSH_KINDS = [
   { key: 'message', label: '新着メッセージ', description: 'お客様からLINEが届いたとき' },
   { key: 'form_answered', label: 'フォームの回答', description: 'お客様がフォームに回答したとき' },
+  { key: 'friend_added', label: '友だち追加', description: 'お客様が友だち追加したとき(ブロック解除を含む)' },
 ] as const;
 export type AppPushKind = (typeof APP_PUSH_KINDS)[number]['key'];
 export const isAppPushKind = (x: unknown): x is AppPushKind => APP_PUSH_KINDS.some((k) => k.key === x);

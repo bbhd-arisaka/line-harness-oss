@@ -4,7 +4,7 @@ import { clearInvalidApnsToken, getApnsConfig, sendApnsAlert } from './apns.js';
 import type { ApnsEnv, ApnsSendOptions } from './apns.js';
 
 /**
- * 友だちからの新着メッセージ・フォームの回答を、アプリ(iOS)を入れているスタッフの端末に通知する。
+ * 友だちからの新着メッセージ・フォームの回答・友だち追加を、アプリ(iOS)を入れているスタッフの端末に通知する。
  * - 何を通知するかは、端末ごとにアプリの設定画面で選ぶ(止めている種類は送らない。Web 側の設定は要らない)。
  * - APNs の設定(環境変数)が無ければ、何もしない(DB も触らない)。
  * - 宛先は、その公式アカウントを見る権限があるスタッフの端末だけ(middleware/account-access.ts と同じ解釈)。
@@ -183,6 +183,34 @@ export function describeFormAnswered(formName: string): string {
   const name = Array.from(formName.replace(/\s+/g, ' ').trim());
   const clipped = name.length > 40 ? `${name.slice(0, 40).join('')}…` : name.join('');
   return clipped ? `フォーム「${clipped}」に回答がありました` : 'フォームに回答がありました';
+}
+
+export interface FriendAddedNotice {
+  friendId: string;
+  accountId: string | null;
+  friendName?: string | null;
+  /** すでに名簿にいた人(ブロック解除・導入前からの友だち)の再追加か */
+  returning: boolean;
+}
+
+/** 友だち追加の本文(通知に出す1行) */
+export function describeFriendAdded(returning: boolean): string {
+  return returning ? '友だち追加されました(再追加・ブロック解除)' : '友だち追加されました';
+}
+
+/** お客様が友だち追加したとき、アプリの端末に通知する(「友だち追加」を止めている端末には送らない) */
+export async function notifyFriendAdded(
+  env: ApnsEnv,
+  db: D1Database,
+  notice: FriendAddedNotice,
+  options: ApnsSendOptions = {},
+): Promise<void> {
+  await sendPush(
+    env,
+    db,
+    { kind: 'friend_added', friendId: notice.friendId, accountId: notice.accountId, friendName: notice.friendName, body: describeFriendAdded(notice.returning) },
+    options,
+  );
 }
 
 /** お客様がフォームに回答したとき、アプリの端末に通知する(「フォームの回答」を止めている端末には送らない) */

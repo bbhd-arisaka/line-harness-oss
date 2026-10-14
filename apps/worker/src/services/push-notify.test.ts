@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
-import { describeFormAnswered, describeMessageForPush, notifyFormAnswered, notifyIncomingMessage, resolvePushRecipients } from './push-notify.js';
+import { APP_PUSH_KINDS } from '@line-crm/db';
+import { describeFormAnswered, describeFriendAdded, describeMessageForPush, notifyFormAnswered, notifyFriendAdded, notifyIncomingMessage, resolvePushRecipients } from './push-notify.js';
 import { resetApnsJwtCache } from './apns.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
@@ -174,5 +175,31 @@ describe('通知の種類(新着メッセージ / フォームの回答)を、�
   it('フォーム名が長い・空のときの本文', () => {
     expect(describeFormAnswered('あ'.repeat(50))).toBe(`フォーム「${'あ'.repeat(40)}…」に回答がありました`);
     expect(describeFormAnswered('  ')).toBe('フォームに回答がありました');
+  });
+});
+
+describe('友だち追加の通知', () => {
+  it('友だち名・公式アカウント名・chatId を付けて送る。「友だち追加」を止めた端末には送らない', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner'); session('o', 'OK'); session('o', 'MUTED'); session('o', 'ONLY-MSG');
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["friend_added"]' WHERE apns_token = 'MUTED'`).run();
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["message","form_answered"]' WHERE apns_token = 'ONLY-MSG'`).run();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    await notifyFriendAdded(await env(), db, { friendId: 'fr1', accountId: 'A', returning: false }, { fetchImpl });
+    const urls = fetchImpl.mock.calls.map((c) => (c as [string])[0]).sort();
+    expect(urls).toEqual(['https://api.push.apple.com/3/device/OK', 'https://api.push.apple.com/3/device/ONLY-MSG']);
+    const [, init] = fetchImpl.mock.calls[0] as [string, Init];
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      aps: { alert: { title: '山田太郎', subtitle: 'A', body: '友だち追加されました' } },
+      chatId: 'chat1',
+      accountId: 'A',
+    });
+  });
+  it('再追加(ブロック解除など)は、本文で分かる', () => {
+    expect(describeFriendAdded(false)).toBe('友だち追加されました');
+    expect(describeFriendAdded(true)).toBe('友だち追加されました(再追加・ブロック解除)');
+  });
+  it('設定画面に出す通知の種類に「友だち追加」がある', () => {
+    expect(APP_PUSH_KINDS.map((k) => k.key)).toContain('friend_added');
   });
 });
