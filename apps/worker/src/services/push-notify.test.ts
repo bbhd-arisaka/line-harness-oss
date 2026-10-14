@@ -197,9 +197,31 @@ describe('友だち追加の通知', () => {
   });
   it('再追加(ブロック解除など)は、本文で分かる', () => {
     expect(describeFriendAdded(false)).toBe('友だち追加されました');
-    expect(describeFriendAdded(true)).toBe('友だち追加されました(再追加・ブロック解除)');
+    expect(describeFriendAdded(true)).toBe('友だちに戻りました(ブロック解除・再追加)');
   });
-  it('設定画面に出す通知の種類に「友だち追加」がある', () => {
-    expect(APP_PUSH_KINDS.map((k) => k.key)).toContain('friend_added');
+  it('設定画面に出す通知の種類に「友だち追加」「友だち再追加」がある。再追加だけ初期オフ', () => {
+    expect(APP_PUSH_KINDS.map((k) => k.key)).toEqual(expect.arrayContaining(['friend_added', 'friend_readded']));
+    expect(APP_PUSH_KINDS.filter((k) => !k.defaultOn).map((k) => k.key)).toEqual(['friend_readded']);
+  });
+  it('再追加(ブロック解除)は初期オフ: オンにした端末にだけ送る。はじめての追加の設定には影響しない', async () => {
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner'); session('o', 'DEFAULT'); session('o', 'ENABLED'); session('o', 'ENABLED-BUT-NO-NEW');
+    sqlite.prepare(`UPDATE app_sessions SET enabled_push_kinds = '["friend_readded"]' WHERE apns_token IN ('ENABLED','ENABLED-BUT-NO-NEW')`).run();
+    sqlite.prepare(`UPDATE app_sessions SET muted_push_kinds = '["friend_added"]' WHERE apns_token = 'ENABLED-BUT-NO-NEW'`).run();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    await notifyFriendAdded(await env(), db, { friendId: 'fr1', accountId: 'A', returning: true }, { fetchImpl });
+    expect(fetchImpl.mock.calls.map((c) => (c as [string])[0]).sort()).toEqual([
+      'https://api.push.apple.com/3/device/ENABLED',
+      'https://api.push.apple.com/3/device/ENABLED-BUT-NO-NEW',
+    ]);
+    const [, init] = fetchImpl.mock.calls[0] as [string, Init];
+    expect(JSON.parse(init.body as string)).toMatchObject({ aps: { alert: { body: '友だちに戻りました(ブロック解除・再追加)' } } });
+    // はじめての追加は、初期どおり(DEFAULT と ENABLED に届く。止めた端末には届かない)
+    fetchImpl.mockClear();
+    await notifyFriendAdded(await env(), db, { friendId: 'fr1', accountId: 'A', returning: false }, { fetchImpl });
+    expect(fetchImpl.mock.calls.map((c) => (c as [string])[0]).sort()).toEqual([
+      'https://api.push.apple.com/3/device/DEFAULT',
+      'https://api.push.apple.com/3/device/ENABLED',
+    ]);
   });
 });

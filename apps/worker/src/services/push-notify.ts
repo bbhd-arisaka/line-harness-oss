@@ -1,4 +1,4 @@
-import { getStaffAllowedAccountIds, parseMutedAccountIds, parseMutedPushKinds } from '@line-crm/db';
+import { effectiveMutedPushKinds, getStaffAllowedAccountIds, parseMutedAccountIds } from '@line-crm/db';
 import type { AppPushKind } from '@line-crm/db';
 import { clearInvalidApnsToken, getApnsConfig, sendApnsAlert } from './apns.js';
 import type { ApnsEnv, ApnsSendOptions } from './apns.js';
@@ -46,6 +46,7 @@ interface SessionRow {
   apns_token: string;
   muted_account_ids: string | null;
   muted_push_kinds: string | null;
+  enabled_push_kinds: string | null;
   expires_at: string;
   staff_id: string;
   role: string | null;
@@ -60,7 +61,7 @@ export async function resolvePushRecipients(
 ): Promise<string[]> {
   const rows = await db
     .prepare(
-      `SELECT s.apns_token, s.muted_account_ids, s.muted_push_kinds, s.expires_at, s.staff_id, m.role
+      `SELECT s.apns_token, s.muted_account_ids, s.muted_push_kinds, s.enabled_push_kinds, s.expires_at, s.staff_id, m.role
          FROM app_sessions s INNER JOIN staff_members m ON m.id = s.staff_id
         WHERE s.revoked_at IS NULL AND s.apns_token IS NOT NULL AND s.apns_token != ''
           AND m.is_active = 1
@@ -91,8 +92,8 @@ export async function resolvePushRecipients(
     if (Date.parse(row.expires_at) <= now) continue;
     // この端末が、この公式アカウントの通知を止めている
     if (accountId !== null && parseMutedAccountIds(row.muted_account_ids).includes(accountId)) continue;
-    // この端末が、この種類(メッセージ・フォームの回答など)の通知を止めている
-    if (parseMutedPushKinds(row.muted_push_kinds).includes(kind)) continue;
+    // この端末が、この種類(メッセージ・フォームの回答など)の通知を止めている(初期オフの種類は、オンにした端末だけ送る)
+    if (effectiveMutedPushKinds(row.muted_push_kinds, row.enabled_push_kinds).includes(kind)) continue;
     if (seen.has(row.apns_token)) continue;
     if (!(await canSee(row.staff_id, row.role))) continue;
     seen.add(row.apns_token);
@@ -195,10 +196,10 @@ export interface FriendAddedNotice {
 
 /** 友だち追加の本文(通知に出す1行) */
 export function describeFriendAdded(returning: boolean): string {
-  return returning ? '友だち追加されました(再追加・ブロック解除)' : '友だち追加されました';
+  return returning ? '友だちに戻りました(ブロック解除・再追加)' : '友だち追加されました';
 }
 
-/** お客様が友だち追加したとき、アプリの端末に通知する(「友だち追加」を止めている端末には送らない) */
+/** お客様が友だち追加したとき、アプリの端末に通知する。はじめての追加は「友だち追加」、再追加・ブロック解除は「友だち再追加」(初期オフ)の設定に従う */
 export async function notifyFriendAdded(
   env: ApnsEnv,
   db: D1Database,
@@ -208,7 +209,7 @@ export async function notifyFriendAdded(
   await sendPush(
     env,
     db,
-    { kind: 'friend_added', friendId: notice.friendId, accountId: notice.accountId, friendName: notice.friendName, body: describeFriendAdded(notice.returning) },
+    { kind: notice.returning ? 'friend_readded' : 'friend_added', friendId: notice.friendId, accountId: notice.accountId, friendName: notice.friendName, body: describeFriendAdded(notice.returning) },
     options,
   );
 }

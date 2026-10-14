@@ -34,13 +34,26 @@ function setup() {
 }
 
 describe('/api/app/push-settings(アプリの設定画面だけで完結する通知設定)', () => {
-  it('最初は何も止めていない。通知の種類の一覧(新着メッセージ・フォームの回答・友だち追加)も返す', async () => {
+  it('最初は、初期オフの「友だち再追加」以外は止めていない。通知の種類の一覧も返す', async () => {
     const { call } = setup();
     const r = await call('GET');
     expect(r.status).toBe(200);
-    expect(r.json.data).toMatchObject({ mutedAccountIds: [], mutedKinds: [] });
-    expect(r.json.data?.kinds.map((k) => k.key)).toEqual(['message', 'form_answered', 'friend_added']);
-    expect(r.json.data?.kinds.map((k) => k.label)).toEqual(['新着メッセージ', 'フォームの回答', '友だち追加']);
+    expect(r.json.data).toMatchObject({ mutedAccountIds: [], mutedKinds: ['friend_readded'] });
+    expect(r.json.data?.kinds.map((k) => k.key)).toEqual(['message', 'form_answered', 'friend_added', 'friend_readded']);
+    expect(r.json.data?.kinds.map((k) => k.label)).toEqual(['新着メッセージ', 'フォームの回答', '友だち追加', '友だち再追加']);
+  });
+  it('友だち再追加は、止めている種類の一覧から外すとオンになり、入れるとオフに戻る(古いアプリの送り方のまま)', async () => {
+    const { call } = setup();
+    const on = await call('PUT', { mutedKinds: [] });
+    expect(on.json.data?.mutedKinds).toEqual([]);
+    const other = await call('PUT', { mutedKinds: ['message'] });
+    expect(other.json.data?.mutedKinds).toEqual(['message']);
+    const off = await call('PUT', { mutedKinds: ['message', 'friend_readded'] });
+    expect(off.json.data?.mutedKinds.sort()).toEqual(['friend_readded', 'message']);
+    // 公式アカウントだけ送っても、種類の設定(再追加のオン・オフも)は変わらない
+    await call('PUT', { mutedKinds: [] });
+    const acc = await call('PUT', { mutedAccountIds: ['A'] });
+    expect(acc.json.data?.mutedKinds).toEqual([]);
   });
   it('止める種類だけを保存できる。公式アカウントの設定は変わらない(古いアプリとの互換)', async () => {
     const { call } = setup();

@@ -116,12 +116,27 @@ export function parseMutedAccountIds(raw: string | null): string[] {
 
 /** アプリの通知で、「何を知らせるか」の種類。設定はアプリの設定画面だけで完結する(端末ごと) */
 export const APP_PUSH_KINDS = [
-  { key: 'message', label: '新着メッセージ', description: 'お客様からLINEが届いたとき' },
-  { key: 'form_answered', label: 'フォームの回答', description: 'お客様がフォームに回答したとき' },
-  { key: 'friend_added', label: '友だち追加', description: 'お客様が友だち追加したとき(ブロック解除を含む)' },
+  { key: 'message', label: '新着メッセージ', description: 'お客様からLINEが届いたとき', defaultOn: true },
+  { key: 'form_answered', label: 'フォームの回答', description: 'お客様がフォームに回答したとき', defaultOn: true },
+  { key: 'friend_added', label: '友だち追加', description: 'お客様がはじめて友だち追加したとき', defaultOn: true },
+  { key: 'friend_readded', label: '友だち再追加', description: 'ブロックを解除して、お客様が友だちに戻ったとき', defaultOn: false },
 ] as const;
 export type AppPushKind = (typeof APP_PUSH_KINDS)[number]['key'];
 export const isAppPushKind = (x: unknown): x is AppPushKind => APP_PUSH_KINDS.some((k) => k.key === x);
+/** 初期はオフの種類(端末ごとにオンにしたものだけ通知する) */
+export const DEFAULT_OFF_PUSH_KINDS: AppPushKind[] = APP_PUSH_KINDS.filter((k) => !k.defaultOn).map((k) => k.key);
+
+/**
+ * この端末で、実際に止めている種類。
+ * 「止めた」と保存された種類に、初期オフの種類のうち「オンにした」と保存されていないものを足す。
+ * (古いアプリは、この一覧だけを見て「止めている=オフ」と表示するので、初期オフの種類は最初からオフに見える)
+ */
+export function effectiveMutedPushKinds(mutedRaw: string | null, enabledRaw: string | null): AppPushKind[] {
+  const muted = parseMutedPushKinds(mutedRaw);
+  const enabled = parseMutedPushKinds(enabledRaw); // 同じ形式(種類の JSON 配列)
+  const off = DEFAULT_OFF_PUSH_KINDS.filter((k) => !enabled.includes(k));
+  return [...new Set([...muted, ...off])];
+}
 
 /** 保存された JSON から、止めている種類を取り出す(知らない種類は捨てる) */
 export function parseMutedPushKinds(raw: string | null): AppPushKind[] {
@@ -135,13 +150,25 @@ export function parseMutedPushKinds(raw: string | null): AppPushKind[] {
 }
 
 export async function getAppSessionMutedKinds(db: D1Database, sessionId: string): Promise<AppPushKind[]> {
-  const r = await db.prepare('SELECT muted_push_kinds FROM app_sessions WHERE id = ?').bind(sessionId).first<{ muted_push_kinds: string | null }>();
-  return parseMutedPushKinds(r?.muted_push_kinds ?? null);
+  const r = await db
+    .prepare('SELECT muted_push_kinds, enabled_push_kinds FROM app_sessions WHERE id = ?')
+    .bind(sessionId)
+    .first<{ muted_push_kinds: string | null; enabled_push_kinds: string | null }>();
+  return effectiveMutedPushKinds(r?.muted_push_kinds ?? null, r?.enabled_push_kinds ?? null);
 }
 
+/**
+ * 「止める種類」の全体を保存する。初期オフの種類は、一覧に入っていなければ「オンにした」と覚える
+ * (アプリは、止めている種類の全体を送ってくる)。
+ */
 export async function setAppSessionMutedKinds(db: D1Database, sessionId: string, kinds: string[]): Promise<void> {
   const clean = [...new Set(kinds.filter(isAppPushKind))];
-  await db.prepare('UPDATE app_sessions SET muted_push_kinds = ? WHERE id = ?').bind(clean.length ? JSON.stringify(clean) : null, sessionId).run();
+  const muted = clean.filter((k) => !DEFAULT_OFF_PUSH_KINDS.includes(k));
+  const enabled = DEFAULT_OFF_PUSH_KINDS.filter((k) => !clean.includes(k));
+  await db
+    .prepare('UPDATE app_sessions SET muted_push_kinds = ?, enabled_push_kinds = ? WHERE id = ?')
+    .bind(muted.length ? JSON.stringify(muted) : null, enabled.length ? JSON.stringify(enabled) : null, sessionId)
+    .run();
 }
 
 export async function listAppSessionsForStaff(db: D1Database, staffId: string): Promise<AppSessionRow[]> {
