@@ -28,6 +28,8 @@ export interface Broadcast {
   last_error?: string | null;
   /** 2通目以降のメッセージ(最大4通)の JSON 配列。NULL = 1通だけ。形は services/broadcast-messages.ts。 */
   extra_messages?: string | null;
+  /** 条件で絞り込む配信の条件(JSON)。予約配信は、送る時刻にこの条件で送る */
+  segment_conditions?: string | null;
 }
 
 export async function getBroadcasts(db: D1Database, accountId?: string): Promise<Broadcast[]> {
@@ -96,6 +98,8 @@ export interface CreateBroadcastInput {
   altText?: string | null;
   /** 2通目以降のメッセージ(JSON 文字列)。1通だけなら省略 */
   extraMessages?: string | null;
+  /** 条件で絞り込む配信の条件(JSON 文字列)。予約配信で、送る時刻に使う。省略=絞り込みなし */
+  segmentConditions?: string | null;
 }
 
 export async function createBroadcast(
@@ -110,8 +114,8 @@ export async function createBroadcast(
   await db
     .prepare(
       `INSERT INTO broadcasts
-         (id, title, message_type, message_content, target_type, target_tag_id, status, scheduled_at, sent_at, total_count, success_count, account_ids, dedup_priority, track_links, line_account_id, alt_text, extra_messages, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, title, message_type, message_content, target_type, target_tag_id, status, scheduled_at, sent_at, total_count, success_count, account_ids, dedup_priority, track_links, line_account_id, alt_text, extra_messages, segment_conditions, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -128,6 +132,7 @@ export async function createBroadcast(
       input.lineAccountId ?? null,
       input.altText ?? null,
       input.extraMessages ?? null,
+      input.segmentConditions ?? null,
       now,
     )
     .run();
@@ -147,6 +152,7 @@ export type UpdateBroadcastInput = Partial<
     | 'scheduled_at'
     | 'track_links'
     | 'extra_messages'
+    | 'segment_conditions'
   >
 >;
 
@@ -193,6 +199,10 @@ export async function updateBroadcast(
   if (updates.extra_messages !== undefined) {
     fields.push('extra_messages = ?');
     values.push(updates.extra_messages);
+  }
+  if (updates.segment_conditions !== undefined) {
+    fields.push('segment_conditions = ?');
+    values.push(updates.segment_conditions);
   }
 
   if (fields.length > 0) {

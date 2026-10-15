@@ -4,13 +4,19 @@ import { useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth, useRestoreSession } from '../src/state/session';
 import { LoadingView } from '../src/components/ui';
+import { UpdateRequiredScreen, useCheckUpdateAtLaunch, useUpdateRequired } from '../src/components/update-required';
 import { contentMaxWidth, isSplitLayout } from '../src/lib/layout';
 import { useColors } from '../src/theme/theme';
 
 function Navigator() {
   const auth = useAuth();
   const c = useColors();
+  const update = useUpdateRequired();
   useRestoreSession();
+  useCheckUpdateAtLaunch();
+
+  // 古いアプリは、更新の案内だけを出す(ログイン済みでも、ほかの画面には行かせない)
+  if (update.required) return <UpdateRequiredScreen storeUrl={update.storeUrl} />;
 
   if (auth.status === 'loading') {
     return (

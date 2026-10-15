@@ -2,7 +2,9 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { createApiClient } from '../lib/api';
+import { appVersionHeaders, markUpdateRequired } from '../lib/app-update';
 import { createAuthStore, type KeyValueStorage } from '../lib/auth';
 
 /** 実機: Keychain(expo-secure-store)。Web での画面確認用だけ localStorage。 */
@@ -42,6 +44,9 @@ export const api = createApiClient({
   onUnauthorized: () => {
     void authStore.handleUnauthorized();
   },
+  // アプリの版を、毎回サーバーに伝える(古いアプリだけを、更新の案内に切り替えるため)
+  defaultHeaders: appVersionHeaders(Constants.expoConfig?.version, Constants.nativeBuildVersion),
+  onUpdateRequired: (storeUrl) => markUpdateRequired(storeUrl),
 });
 
 export const authStore = createAuthStore({

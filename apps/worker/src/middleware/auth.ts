@@ -1,6 +1,8 @@
 import type { Context, Next } from 'hono';
 import { getStaffByApiKey, getStaffByAppToken } from '@line-crm/db';
 
+import { APP_STORE_URL, evaluateUpdateGate, UPDATE_REQUIRED_MESSAGE } from '../services/app-update-gate.js';
+
 /** iOSアプリのトークンの先頭(packages/db の APP_TOKEN_PREFIX と同じ値) */
 const APP_TOKEN_PREFIX = 'lhapp_';
 import type { Env } from '../index.js';
@@ -208,6 +210,15 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
       /^\/api\/forms\/[^/]+\/upload$/.test(path));
   if (isPublicFormAction) return next();
 
+  // 【強制アップデート】古いアプリ(ログイン・アプリ用トークンの通信)は、App Store に新しい版が並んでいるときだけ止める。
+  // 止めた古いアプリは、この日本語の文言を画面に出す(古いアプリは、サーバーのエラー文をそのまま表示するため)。
+  if (path === '/api/app/login' || (bearerToken(c) ?? '').startsWith(APP_TOKEN_PREFIX)) {
+    const gate = await evaluateUpdateGate(c.req.raw.headers);
+    if (gate.required) {
+      return c.json({ success: false, error: UPDATE_REQUIRED_MESSAGE, code: 'app_update_required', storeUrl: APP_STORE_URL }, 426);
+    }
+  }
+
   if (
     path === '/webhook' ||
     path === '/docs' ||
@@ -230,6 +241,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path === '/api/auth/login' ||
     // iOSアプリのログイン(メール・パスワード。route 側で総当たり対策あり)
     path === '/api/app/login' ||
+    // アプリが、起動のときに「更新が必要か」を確かめる(ログイン前・秘密は含まない)
+    path === '/api/app/config' ||
     // ログイン画面が、beyond admin のログインを案内するための設定(秘密は含まない)
     path === '/api/auth/config' ||
     path === '/api/auth/logout' ||

@@ -100,6 +100,8 @@ type CreateBroadcastBody = {
   messageContent: string;
   /** 1〜5通。指定すると、messageType / messageContent / altText の代わりになる(古いクライアントは従来どおり1通) */
   messages?: BroadcastMessageInput[];
+  /** 条件で絞り込む配信の条件(予約配信で使う。送る時刻に、この条件に合う人へ送る) */
+  segmentConditions?: SegmentCondition | null;
   targetType: BroadcastTargetType;
   targetTagId?: string | null;
   scheduledAt?: string | null;
@@ -110,13 +112,24 @@ type CreateBroadcastBody = {
   trackLinks?: boolean;
 };
 
-function sameCreateRequest(existing: DbBroadcast, body: CreateBroadcastBody, extraJson: string | null = null): boolean {
+/** 絞り込み条件の形の確認。問題がなければ、保存用の JSON 文字列(条件なしは null)を返す */
+function normalizeSegmentConditions(input: unknown): { ok: true; json: string | null } | { ok: false; error: string } {
+  if (input === undefined || input === null) return { ok: true, json: null };
+  const c = input as { operator?: unknown; rules?: unknown };
+  if ((c.operator !== 'AND' && c.operator !== 'OR') || !Array.isArray(c.rules) || c.rules.length === 0 || c.rules.length > 20) {
+    return { ok: false, error: '絞り込み条件の形が正しくありません' };
+  }
+  return { ok: true, json: JSON.stringify(input) };
+}
+
+function sameCreateRequest(existing: DbBroadcast, body: CreateBroadcastBody, extraJson: string | null = null, segmentJson: string | null = null): boolean {
   const existingAccountIds = parseJsonArray(existing.account_ids) ?? [];
   const existingPriority = parseJsonArray(existing.dedup_priority) ?? [];
   return existing.title === body.title
     && existing.message_type === body.messageType
     && existing.message_content === body.messageContent
     && (existing.extra_messages ?? null) === extraJson
+    && ((existing as unknown as Record<string, unknown>).segment_conditions ?? null) === segmentJson
     && existing.target_type === body.targetType
     && existing.target_tag_id === (body.targetTagId ?? null)
     && existing.scheduled_at === (body.scheduledAt ?? null)
@@ -391,6 +404,13 @@ broadcasts.post('/api/broadcasts', async (c) => {
       );
     }
 
+    // 条件で絞り込む予約配信(アプリ): 条件を保存しておき、送る時刻に、その条件に合う人へ送る
+    const segment = normalizeSegmentConditions(body.segmentConditions);
+    if (!segment.ok) return c.json({ success: false, error: segment.error }, 400);
+    if (segment.json && body.targetType !== 'all') {
+      return c.json({ success: false, error: '絞り込み条件は、対象が「全員」の配信にだけ付けられます' }, 400);
+    }
+
     const variableError = unsupportedVariablesError(body.messageContent);
     if (variableError) {
       return c.json({ success: false, error: variableError }, 400);
@@ -433,7 +453,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
     if (idempotencyKey) {
       const existing = await getBroadcastById(c.env.DB, idempotencyKey);
       if (existing) {
-        if (!sameCreateRequest(existing, body, extraJson)) {
+        if (!sameCreateRequest(existing, body, extraJson, segment.json)) {
           return c.json({ success: false, error: 'Idempotency-Key was already used with a different request' }, 409);
         }
         c.header('Idempotency-Replayed', 'true');
@@ -464,6 +484,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
         lineAccountId: body.lineAccountId ?? null,
         altText: body.altText ?? null,
         extraMessages: extraJson,
+        segmentConditions: segment.json,
       });
     } catch (createError) {
       // Concurrent retries may both pass the SELECT above. The primary key makes
@@ -472,7 +493,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
         ? await getBroadcastById(c.env.DB, idempotencyKey)
         : null;
       if (!existing) throw createError;
-      if (!sameCreateRequest(existing, body, extraJson)) {
+      if (!sameCreateRequest(existing, body, extraJson, segment.json)) {
         return c.json({ success: false, error: 'Idempotency-Key was already used with a different request' }, 409);
       }
       c.header('Idempotency-Replayed', 'true');
@@ -515,6 +536,8 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       messageContent?: string;
       /** 1〜5通。指定すると、messageType / messageContent の代わりに全部を置き換える */
       messages?: BroadcastMessageInput[];
+      /** 予約配信の絞り込み条件(null で外す) */
+      segmentConditions?: SegmentCondition | null;
       targetType?: BroadcastTargetType;
       targetTagId?: string | null;
       scheduledAt?: string | null;
@@ -536,6 +559,13 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       }
     }
 
+    let segmentUpdate: string | null | undefined;
+    if (body.segmentConditions !== undefined) {
+      const segment = normalizeSegmentConditions(body.segmentConditions);
+      if (!segment.ok) return c.json({ success: false, error: segment.error }, 400);
+      segmentUpdate = segment.json;
+    }
+
     // Keep status in sync with scheduledAt changes
     let statusUpdate: 'draft' | 'scheduled' | undefined;
     if (body.scheduledAt !== undefined) {
@@ -547,6 +577,7 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       message_type: body.messageType,
       message_content: body.messageContent,
       ...(extraUpdate !== undefined ? { extra_messages: extraUpdate } : {}),
+      ...(segmentUpdate !== undefined ? { segment_conditions: segmentUpdate } : {}),
       target_type: body.targetType,
       target_tag_id: body.targetTagId,
       scheduled_at: body.scheduledAt,

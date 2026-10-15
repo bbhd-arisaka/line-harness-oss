@@ -5,25 +5,39 @@ import { api } from '../state/services';
 import { pickAndUploadImage } from '../state/image-upload';
 import { Button } from './ui';
 import { PickModal, type PickItem } from './pick-modal';
-import { TaggedText } from './tagged-text';
 import {
   formTag,
-  insertAtSelection,
+  insertCodeIntoParts,
   MAX_BROADCAST_MESSAGES,
   MAX_MESSAGE_LENGTH,
   NAME_TAG,
   newDraftMessage,
+  removeTagPart,
+  setPartText,
+  toEditorParts,
   type DraftKind,
   type DraftMessage,
+  type EditorPart,
 } from '../lib/broadcast';
 import { describeError } from '../lib/errors';
 import type { FormOption } from '../lib/types';
 import { MIN_TAP, useColors } from '../theme/theme';
 
+/** ボックス(タグ)の色。Web版と同じ系統: 名前=水色、フォーム=青、そのほか=紫 */
+const CHIP = {
+  name: { fg: '#075985', bg: '#e0f2fe', border: '#7dd3fc' },
+  form: { fg: '#1d5f92', bg: '#e3f0fb', border: '#93c5fd' },
+  other: { fg: '#5b21b6', bg: '#ede9fe', border: '#c4b5fd' },
+} as const;
+
 /**
  * 一斉配信のメッセージを、最大5通まで並べて作る。上から順に届く。
- * 1通ごとに、テキスト(名前・回答フォームのリンクを入れられる)か画像(写真アプリから選ぶ)を選べ、
+ * 1通ごとに、テキスト(名前・回答フォームを、色付きのボックスで入れられる)か画像(写真アプリから選ぶ。✕で消せる)を選べ、
  * ↑↓で順番を入れ替え、削除できる。
+ *
+ * 【タグは、{{…}} の文字のまま見せない】(beyondシリーズ共通の決まり)
+ * 入力欄は「文字ブロック → ボックス → 文字ブロック …」の並びで、ボックスの✕で消す。
+ * 保存・送信する本文は、これまでどおり、つなげたタグコードつきの文字列。
  */
 export function MessageListEditor({
   messages,
@@ -40,9 +54,8 @@ export function MessageListEditor({
   const [pickFor, setPickFor] = useState<string | null>(null); // フォームを選んでいる最中のメッセージの key
   const [uploading, setUploading] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // 差し込んだあとのカーソル位置を、入力欄に伝える(伝えたら、すぐ手放す)
-  const [forcedSelection, setForcedSelection] = useState<{ key: string; start: number; end: number } | null>(null);
-  const [selections, setSelections] = useState<Record<string, { start: number; end: number }>>({});
+  // メッセージごとの、最後に触った文字ブロックとカーソル位置(ボックスを入れる位置)
+  const [focus, setFocus] = useState<Record<string, { partIndex: number; selection: { start: number; end: number } }>>({});
 
   const needForms = useMemo(() => messages.some((m) => m.kind === 'text' && m.text.includes('{{form_url:')), [messages]);
   const loadForms = useCallback(async () => {
@@ -55,7 +68,7 @@ export function MessageListEditor({
       setFormsError(describeError(e, 'フォームの一覧を読み込めませんでした'));
     }
   }, [forms]);
-  // 本文にフォームのタグがあるときは、枠に出す名前のために、フォーム一覧を読む
+  // 本文にフォームのボックスがあるときは、ボックスに出す名前のために、フォーム一覧を読む
   useEffect(() => {
     if (needForms) queueMicrotask(() => void loadForms());
   }, [needForms, loadForms]);
@@ -74,10 +87,7 @@ export function MessageListEditor({
   const remove = (key: string) => onChange(messages.filter((m) => m.key !== key));
 
   function insertCode(m: DraftMessage, code: string) {
-    const r = insertAtSelection(m.text, code, selections[m.key] ?? null);
-    patch(m.key, { text: r.text });
-    setForcedSelection({ key: m.key, start: r.cursor, end: r.cursor });
-    setSelections((prev) => ({ ...prev, [m.key]: { start: r.cursor, end: r.cursor } }));
+    patch(m.key, { text: insertCodeIntoParts(toEditorParts(m.text), code, focus[m.key] ?? null) });
   }
 
   async function choosePhoto(m: DraftMessage) {
@@ -131,28 +141,19 @@ export function MessageListEditor({
 
           {m.kind === 'text' ? (
             <View style={{ marginTop: 10 }}>
-              <TextInput
-                value={m.text}
-                onChangeText={(t) => {
-                  setForcedSelection(null);
-                  patch(m.key, { text: t });
-                }}
-                onSelectionChange={(e) => {
-                  setSelections((prev) => ({ ...prev, [m.key]: e.nativeEvent.selection }));
-                  setForcedSelection((f) => (f?.key === m.key ? null : f));
-                }}
-                selection={forcedSelection?.key === m.key ? { start: forcedSelection.start, end: forcedSelection.end } : undefined}
-                editable={!disabled}
-                placeholder="送るメッセージを入力"
-                placeholderTextColor={c.textMuted}
-                multiline
-                maxLength={MAX_MESSAGE_LENGTH}
-                style={[styles.textArea, { color: c.text, borderColor: c.border }]}
-                accessibilityLabel={`${index + 1}通目のメッセージ`}
+              <TextComposer
+                parts={toEditorParts(m.text)}
+                formNames={formNames}
+                disabled={disabled}
+                placeholderWhenEmpty={m.text === ''}
+                label={`${index + 1}通目のメッセージ`}
+                onChangePart={(i, t) => patch(m.key, { text: setPartText(toEditorParts(m.text), i, t) })}
+                onRemoveTag={(i) => patch(m.key, { text: removeTagPart(toEditorParts(m.text), i) })}
+                onFocusPart={(i, selection) => setFocus((prev) => ({ ...prev, [m.key]: { partIndex: i, selection } }))}
               />
               <View style={styles.insertRow}>
-                <Pressable accessibilityRole="button" disabled={disabled} onPress={() => insertCode(m, NAME_TAG)} style={[styles.insertBtn, { borderColor: '#7dd3fc', backgroundColor: '#e0f2fe' }]}>
-                  <Text style={{ color: '#075985', fontWeight: '700', fontSize: 13 }}>＋ 名前を入れる</Text>
+                <Pressable accessibilityRole="button" disabled={disabled} onPress={() => insertCode(m, NAME_TAG)} style={[styles.insertBtn, { borderColor: CHIP.name.border, backgroundColor: CHIP.name.bg }]}>
+                  <Text style={{ color: CHIP.name.fg, fontWeight: '700', fontSize: 13 }}>＋ 名前を入れる</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -161,24 +162,33 @@ export function MessageListEditor({
                     setPickFor(m.key);
                     void loadForms();
                   }}
-                  style={[styles.insertBtn, { borderColor: '#93c5fd', backgroundColor: '#e3f0fb' }]}
+                  style={[styles.insertBtn, { borderColor: CHIP.form.border, backgroundColor: CHIP.form.bg }]}
                 >
-                  <Text style={{ color: '#1d5f92', fontWeight: '700', fontSize: 13 }}>＋ 回答フォームを入れる</Text>
+                  <Text style={{ color: CHIP.form.fg, fontWeight: '700', fontSize: 13 }}>＋ 回答フォームを入れる</Text>
                 </Pressable>
               </View>
-              {m.text.includes('{{') ? (
-                <View style={[styles.preview, { backgroundColor: c.background, borderColor: c.border }]}>
-                  <Text style={{ color: c.textMuted, fontSize: 11, marginBottom: 4 }}>表示イメージ(送るときは、友だちの名前・フォームのリンクに変わります)</Text>
-                  <TaggedText text={m.text} formNames={formNames} style={{ color: c.text, fontSize: 15, lineHeight: 22 }} />
-                </View>
-              ) : null}
               <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'right', marginTop: 4 }}>
                 {Array.from(m.text).length.toLocaleString('ja-JP')} / {MAX_MESSAGE_LENGTH.toLocaleString('ja-JP')}
               </Text>
             </View>
           ) : (
             <View style={{ marginTop: 10, gap: 8 }}>
-              {m.imageUrl ? <Image source={{ uri: m.imageUrl }} style={[styles.thumb, { backgroundColor: c.border }]} resizeMode="contain" accessibilityLabel={`${index + 1}通目の画像`} /> : null}
+              {m.imageUrl ? (
+                <View>
+                  <Image source={{ uri: m.imageUrl }} style={[styles.thumb, { backgroundColor: c.border }]} resizeMode="contain" accessibilityLabel={`${index + 1}通目の画像`} />
+                  {/* 画像を消す(✕)。消したあとは、また選べる */}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${index + 1}通目の画像を削除`}
+                    disabled={disabled || uploading !== null}
+                    onPress={() => patch(m.key, { imageUrl: null })}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.removeX, { opacity: pressed ? 0.7 : 1 }]}
+                  >
+                    <Ionicons name="close" size={20} color="#ffffff" />
+                  </Pressable>
+                </View>
+              ) : null}
               {uploading === m.key ? (
                 <View style={styles.uploading}>
                   <ActivityIndicator color={c.primary} />
@@ -222,6 +232,66 @@ export function MessageListEditor({
   );
 }
 
+/**
+ * テキスト1通の入力欄: 文字ブロック(入力できる)と、色付きのボックス(✕で消す)を、上から順に並べる。
+ * ボックスは、{{…}} のコードではなく、日本語の名前で見せる(名前・フォーム：○○)。
+ */
+function TextComposer({
+  parts,
+  formNames,
+  disabled,
+  placeholderWhenEmpty,
+  label,
+  onChangePart,
+  onRemoveTag,
+  onFocusPart,
+}: {
+  parts: EditorPart[];
+  formNames: ReadonlyMap<string, string>;
+  disabled: boolean;
+  placeholderWhenEmpty: boolean;
+  label: string;
+  onChangePart: (index: number, text: string) => void;
+  onRemoveTag: (index: number) => void;
+  onFocusPart: (index: number, selection: { start: number; end: number }) => void;
+}) {
+  const c = useColors();
+  return (
+    <View style={[styles.composer, { borderColor: c.border, backgroundColor: c.card }]}>
+      {parts.map((p, i) => {
+        if (p.kind === 'text') {
+          return (
+            <TextInput
+              key={`t${i}`}
+              value={p.text}
+              onChangeText={(t) => onChangePart(i, t)}
+              onFocus={() => onFocusPart(i, { start: p.text.length, end: p.text.length })}
+              onSelectionChange={(e) => onFocusPart(i, e.nativeEvent.selection)}
+              editable={!disabled}
+              placeholder={placeholderWhenEmpty && i === 0 ? '送るメッセージを入力' : undefined}
+              placeholderTextColor={c.textMuted}
+              multiline
+              style={[styles.block, { color: c.text, minHeight: i === 0 ? 96 : 40 }]}
+              accessibilityLabel={`${label}(${i / 2 + 1}つ目の文字欄)`}
+            />
+          );
+        }
+        const tone = p.tag.kind === 'name' ? CHIP.name : p.tag.kind === 'form' ? CHIP.form : CHIP.other;
+        const text =
+          p.tag.kind === 'name' ? '名前' : p.tag.kind === 'form' ? (formNames.get(p.tag.formId) ? `フォーム：${formNames.get(p.tag.formId)}` : 'フォーム') : p.tag.code;
+        return (
+          <View key={`g${i}`} style={[styles.chip, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+            <Text style={{ color: tone.fg, fontSize: 14, fontWeight: '700', flexShrink: 1 }} numberOfLines={1}>{text}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={`${text}を削除`} disabled={disabled} onPress={() => onRemoveTag(i)} hitSlop={10} style={styles.chipX}>
+              <Ionicons name="close" size={18} color={tone.fg} />
+            </Pressable>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function IconButton({ icon, label, onPress, disabled, danger }: { icon: 'arrow-up' | 'arrow-down' | 'trash'; label: string; onPress: () => void; disabled?: boolean; danger?: boolean }) {
   const c = useColors();
   return (
@@ -245,10 +315,13 @@ const styles = StyleSheet.create({
   iconBtn: { width: MIN_TAP - 4, height: MIN_TAP - 4, alignItems: 'center', justifyContent: 'center' },
   segmented: { flexDirection: 'row', gap: 8 },
   segment: { flex: 1, minHeight: 40, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  textArea: { minHeight: 120, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, textAlignVertical: 'top' },
+  composer: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
+  block: { fontSize: 16, paddingVertical: 8, paddingHorizontal: 2, textAlignVertical: 'top' },
+  chip: { alignSelf: 'flex-start', maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 8, paddingLeft: 10, paddingRight: 4, minHeight: 34 },
+  chipX: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   insertRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   insertBtn: { minHeight: 38, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  preview: { marginTop: 8, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10 },
   thumb: { width: '100%', height: 200, borderRadius: 10 },
+  removeX: { position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
   uploading: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: MIN_TAP },
 });

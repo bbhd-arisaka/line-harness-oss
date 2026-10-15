@@ -7,6 +7,7 @@ import { Button, EmptyView, ErrorView, LoadingView } from '../../../src/componen
 import { api } from '../../../src/state/services';
 import { useAccounts, useAuth } from '../../../src/state/session';
 import { describeSavedConditions, broadcastStatusLabel, messageSummary } from '../../../src/lib/broadcast';
+import { formatScheduled } from '../../../src/lib/schedule';
 import { formatListTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
 import type { BroadcastItem } from '../../../src/lib/types';
@@ -121,6 +122,7 @@ export default function BroadcastsScreen() {
                   </Text>
                   <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 4 }}>
                     {broadcastStatusLabel(item.status)}
+                    {item.status === 'scheduled' && item.scheduledAt ? `(${formatScheduled(item.scheduledAt)})` : ''}
                     {item.status === 'sent' || item.status === 'sending' ? ` ・ ${item.successCount.toLocaleString('ja-JP')}/${item.totalCount.toLocaleString('ja-JP')}人` : ''}
                     {narrowed ? ` ・ ${narrowed}` : ''}
                     {` ・ ${formatListTime(item.sentAt ?? item.createdAt)}`}

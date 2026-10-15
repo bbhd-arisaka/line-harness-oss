@@ -149,8 +149,20 @@ export default function ImageUploader({ mode, value, onChange, label }: ImageUpl
         >
           {previewUrl ? (
             <div className="flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previewUrl} alt="" className="h-24 w-24 rounded object-cover ring-1 ring-gray-200" />
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={previewUrl} alt="" className="h-24 w-24 rounded object-cover ring-1 ring-gray-200" />
+                {/* 画像を消す(✕)。消したあとは、また選べる */}
+                <button
+                  type="button"
+                  onClick={() => onChange(null)}
+                  aria-label="画像を削除"
+                  title="画像を削除"
+                  className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-gray-800 text-sm leading-none text-white shadow hover:bg-gray-600"
+                >
+                  ×
+                </button>
+              </div>
               <div className="flex-1 space-y-2">
                 <button
                   type="button"

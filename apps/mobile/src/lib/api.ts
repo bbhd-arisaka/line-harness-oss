@@ -41,6 +41,10 @@ export interface ApiClientOptions {
   getToken: () => string | null;
   /** 認証済みの呼び出しが 401 になったとき(ログイン画面へ戻す) */
   onUnauthorized?: () => void;
+  /** すべての通信に付けるヘッダー(アプリの版。サーバーが、古いアプリかどうかを見分けるのに使う) */
+  defaultHeaders?: Record<string, string>;
+  /** サーバーが「アプリが古い。更新が必要」(HTTP 426)と答えたとき(更新の案内の画面に切り替える) */
+  onUpdateRequired?: (storeUrl?: string) => void;
   fetchImpl?: typeof fetch;
   /** 通信のタイムアウト(ミリ秒)。既定 20 秒 */
   timeoutMs?: number;
@@ -71,7 +75,7 @@ export function createApiClient(options: ApiClientOptions) {
 
   async function request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
     const auth = opts.auth !== false;
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = { Accept: 'application/json', ...(options.defaultHeaders ?? {}) };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
     if (opts.headers) Object.assign(headers, opts.headers);
     if (auth) {
@@ -105,6 +109,10 @@ export function createApiClient(options: ApiClientOptions) {
       json = null;
     }
 
+    if (res.status === 426) {
+      options.onUpdateRequired?.((json as { storeUrl?: string } | null)?.storeUrl);
+      throw new ApiError(json?.error ? toJapaneseError(json.error, 426) : 'アプリが古くなりました。App Storeで最新版に更新してください。', 426);
+    }
     if (res.status === 401 && auth) {
       options.onUnauthorized?.();
       throw new ApiError(json?.error ? toJapaneseError(json.error, 401) : UNAUTHORIZED_MESSAGE, 401);
@@ -118,6 +126,9 @@ export function createApiClient(options: ApiClientOptions) {
 
   return {
     baseUrl,
+
+    /** 起動のときの確認: このアプリは古くて、更新が必要か(ログイン前でも呼べる) */
+    getAppConfig: () => request<{ updateRequired: boolean; storeUrl: string }>('GET', '/api/app/config', { auth: false }),
 
     // ── 認証 ──
     login: (email: string, password: string, deviceName: string) =>
@@ -191,6 +202,11 @@ export function createApiClient(options: ApiClientOptions) {
     /** 画像をアップロードして、配信に使えるURLを得る(JPEG/PNG・base64) */
     uploadImage: (base64: string, mimeType: string, filename?: string) =>
       request<{ url: string; key: string }>('POST', '/api/images', { body: { data: base64, mimeType, filename } }),
+    /** 下書きを、予約配信にする(scheduledAt は日本時間の +09:00 つき)。conditions があれば、送る時刻にその条件に合う人へ送る */
+    scheduleBroadcast: (id: string, body: { scheduledAt: string; conditions: SegmentCondition | null }) =>
+      request<BroadcastItem>('PUT', `/api/broadcasts/${encodeURIComponent(id)}`, {
+        body: { scheduledAt: body.scheduledAt, segmentConditions: body.conditions },
+      }),
     /** 下書きを、いますぐ友だち全員に送る */
     sendBroadcastToAll: (id: string) => request<BroadcastItem>('POST', `/api/broadcasts/${encodeURIComponent(id)}/send`),
     /** 下書きを、条件で絞り込んだ友だちに送る(順番に配信される) */

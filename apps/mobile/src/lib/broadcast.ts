@@ -237,6 +237,13 @@ export function confirmSendMessage(accountName: string, count: number, narrowed:
   return `「${accountName}」の${who}${count.toLocaleString('ja-JP')}人に、${how}いますぐ送ります。送ったあとは取り消せません。`;
 }
 
+/** 予約するときの確認ダイアログの本文。送る人数は「いまの人数」(実際は、予約の時刻に、その時点の対象へ送る) */
+export function confirmScheduleMessage(accountName: string, count: number, narrowed: boolean, whenLabel: string, messageCount = 1): string {
+  const who = narrowed ? '条件に合う' : '友だち全員の';
+  const how = messageCount > 1 ? `${messageCount}通のメッセージを上から順に、` : '';
+  return `「${accountName}」の${who}(いまは${count.toLocaleString('ja-JP')}人)に、${how}${whenLabel}に送るよう予約します。送る人は、予約の時刻の時点の対象になります。予約は、配信の画面から取り消せます。`;
+}
+
 /** UUID v4(作成の二重実行を防ぐ Idempotency-Key 用。サーバーは UUID の形を求める) */
 export function newUuid(random: () => number = Math.random): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
@@ -248,4 +255,67 @@ export function newUuid(random: () => number = Math.random): string {
 /** 同じ内容なら同じキー、内容が変わったら新しいキーにするための、内容の識別 */
 export function draftSignature(parts: { accountId: string; messages: DraftMessage[] }): string {
   return `${parts.accountId}\n${JSON.stringify(toApiMessages(parts.messages))}`;
+}
+
+/* ────────────────── 入力欄の「文字ブロック」と「ボックス」の並び ──────────────────
+ * 入力欄の中でも、{{name}} などのコードは見せない(必ず色付きのボックス。beyondシリーズ共通の決まり)。
+ * React Native の入力欄は、見える文字と中身を変えられないので、本文を「文字ブロック → ボックス → 文字ブロック …」に
+ * 分けて表示する。並びは、必ず「文字ブロックで始まり、文字ブロックで終わる」(間が空でも、入力できるように)。
+ * 保存・送信する本文は、これまでどおり、全部をつなげたタグコードつきの文字列。
+ */
+export type EditorPart =
+  | { kind: 'text'; text: string }
+  | { kind: 'tag'; code: string; tag: Exclude<TagPart, { kind: 'text' }> };
+
+function tagCode(p: Exclude<TagPart, { kind: 'text' }>): string {
+  if (p.kind === 'name') return NAME_TAG;
+  if (p.kind === 'form') return formTag(p.formId);
+  return `{{${p.code}}}`;
+}
+
+/** 本文を、文字ブロックとボックスの並びにする */
+export function toEditorParts(text: string): EditorPart[] {
+  const parts: EditorPart[] = [];
+  for (const p of splitTags(text)) {
+    if (p.kind === 'text') {
+      parts.push({ kind: 'text', text: p.text });
+      continue;
+    }
+    if (parts.length === 0 || parts[parts.length - 1].kind === 'tag') parts.push({ kind: 'text', text: '' });
+    parts.push({ kind: 'tag', code: tagCode(p), tag: p });
+  }
+  if (parts.length === 0 || parts[parts.length - 1].kind === 'tag') parts.push({ kind: 'text', text: '' });
+  return parts;
+}
+
+/** 並びを、本文(タグコードつきの文字列)に戻す */
+export function fromEditorParts(parts: EditorPart[]): string {
+  return parts.map((p) => (p.kind === 'text' ? p.text : p.code)).join('');
+}
+
+/** index 番目の文字ブロックを書き換えた、新しい本文 */
+export function setPartText(parts: EditorPart[], index: number, text: string): string {
+  return fromEditorParts(parts.map((p, i) => (i === index && p.kind === 'text' ? { kind: 'text', text } : p)));
+}
+
+/** index 番目のボックスを消した、新しい本文 */
+export function removeTagPart(parts: EditorPart[], index: number): string {
+  return fromEditorParts(parts.filter((p, i) => !(i === index && p.kind === 'tag')));
+}
+
+/**
+ * タグコードを入れた、新しい本文。
+ * partIndex(最後に触った文字ブロック)のカーソル位置に入れる。分からないときは、本文の最後に足す。
+ */
+export function insertCodeIntoParts(
+  parts: EditorPart[],
+  code: string,
+  focus: { partIndex: number; selection: { start: number; end: number } } | null,
+): string {
+  const target = focus ? parts[focus.partIndex] : undefined;
+  if (focus && target && target.kind === 'text') {
+    const r = insertAtSelection(target.text, code, focus.selection);
+    return setPartText(parts, focus.partIndex, r.text);
+  }
+  return fromEditorParts(parts) + code;
 }

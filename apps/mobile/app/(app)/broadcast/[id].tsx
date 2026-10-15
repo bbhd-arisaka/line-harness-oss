@@ -8,6 +8,7 @@ import { withReadableWidth } from '../../../src/components/readable-width';
 import { TaggedText } from '../../../src/components/tagged-text';
 import { broadcastStatusLabel, describeSavedConditions } from '../../../src/lib/broadcast';
 import { formatDateTime } from '../../../src/lib/format';
+import { formatScheduled } from '../../../src/lib/schedule';
 import { describeError } from '../../../src/lib/errors';
 import type { BroadcastItem } from '../../../src/lib/types';
 import { useColors } from '../../../src/theme/theme';
@@ -67,7 +68,7 @@ function BroadcastDetailScreen() {
 
   async function remove() {
     if (!item) return;
-    const ok = await confirmAsync('この配信を削除しますか?', '下書き・予約の配信だけ削除できます。', '削除');
+    const ok = await confirmAsync(item.status === 'scheduled' ? 'この予約を取り消しますか?' : 'この配信を削除しますか?', item.status === 'scheduled' ? '取り消すと、予約した配信は送られません(この配信は削除されます)。' : '下書き・予約の配信だけ削除できます。', item.status === 'scheduled' ? '予約を取り消す' : '削除');
     if (!ok) return;
     setDeleting(true);
     try {
@@ -95,6 +96,7 @@ function BroadcastDetailScreen() {
         <Text style={{ color: c.text, fontSize: 17, fontWeight: '800' }}>{item.title}</Text>
         <Text style={{ color: item.status === 'sent' ? c.primaryText : c.warning, fontSize: 14, fontWeight: '700', marginTop: 4 }}>
           {broadcastStatusLabel(item.status)}
+          {item.status === 'scheduled' && item.scheduledAt ? `: ${formatScheduled(item.scheduledAt)} に配信します` : ''}
           {item.status === 'sending' ? '(順番に配信しています。この画面を閉じても続きます)' : ''}
         </Text>
         {item.status === 'sending' || item.status === 'sent' ? (
@@ -132,7 +134,7 @@ function BroadcastDetailScreen() {
         </Card>
       ))}
 
-      {deletable ? <Button title="この配信を削除" variant="danger" loading={deleting} onPress={() => void remove()} style={{ marginTop: 8 }} /> : null}
+      {deletable ? <Button title={item.status === 'scheduled' ? '予約を取り消す' : 'この配信を削除'} variant="danger" loading={deleting} onPress={() => void remove()} style={{ marginTop: 8 }} /> : null}
     </ScrollView>
   );
 }

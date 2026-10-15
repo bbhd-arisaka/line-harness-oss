@@ -349,6 +349,7 @@ const KNOWN_GAPS: readonly string[] = [
   // auth (4)
   'GET /api/auth/config',
   'POST /api/app/login',
+  'GET /api/app/config',
   'POST /api/app/logout',
   'PUT /api/app/device',
   'GET /api/app/push-settings',

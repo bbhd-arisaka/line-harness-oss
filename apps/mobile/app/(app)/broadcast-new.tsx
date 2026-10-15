@@ -9,9 +9,11 @@ import { FriendMultiPickModal, type PickedFriend } from '../../src/components/fr
 import { withReadableWidth } from '../../src/components/readable-width';
 import { accountLabel } from '../../src/lib/accounts';
 import { MessageListEditor } from '../../src/components/message-list-editor';
+import { buildDateOptions, buildTimeOptions, defaultSchedule, formatScheduled, isFutureEnough, toScheduledAt } from '../../src/lib/schedule';
 import {
   ALL_FOLLOWING_CONDITION,
   checkMessages,
+  confirmScheduleMessage,
   confirmSendMessage,
   defaultTitle,
   describeRule,
@@ -32,6 +34,7 @@ import type { FriendFieldDefinition, TagItem } from '../../src/lib/types';
 import { MIN_TAP, useColors } from '../../src/theme/theme';
 
 type Picker = { ruleKind: RuleKind } | null;
+type SchedulePicker = 'date' | 'time' | null;
 
 /** テスト送信で一度に選べる人数(サーバー側の上限と同じ) */
 const MAX_TEST_FRIENDS = 10;
@@ -57,6 +60,12 @@ function BroadcastNewScreen() {
   const [fields, setFields] = useState<FriendFieldDefinition[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
   const [busy, setBusy] = useState<'count' | 'test' | 'send' | null>(null);
+  // 送るタイミング: いますぐ / 予約(日本時間)
+  const [when, setWhen] = useState<'now' | 'scheduled'>('now');
+  const [schedule, setSchedule] = useState(() => defaultSchedule(new Date()));
+  const [schedulePicker, setSchedulePicker] = useState<SchedulePicker>(null);
+  const dateOptions = useMemo(() => buildDateOptions(new Date()), []);
+  const timeOptions = useMemo(() => buildTimeOptions(10), []);
   const [testFriends, setTestFriends] = useState<PickedFriend[]>([]);
   const [friendPickerOpen, setFriendPickerOpen] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -191,6 +200,19 @@ function BroadcastNewScreen() {
       if (n === null) return;
       if (n === 0) {
         setNotice({ ok: false, text: '対象が0人です。条件を見直してください。' });
+        return;
+      }
+      if (when === 'scheduled') {
+        const scheduledAt = toScheduledAt(schedule.dateId, schedule.timeId);
+        if (!isFutureEnough(scheduledAt, new Date())) {
+          setNotice({ ok: false, text: '予約の日時は、いまから3分より先にしてください' });
+          return;
+        }
+        const okSchedule = await confirmAsync('この内容で、配信を予約しますか?', confirmScheduleMessage(accountName, n, narrowed, formatScheduled(scheduledAt), messages.length), '予約する');
+        if (!okSchedule) return;
+        const id = await ensureDraft();
+        await api.scheduleBroadcast(id, { scheduledAt, conditions: narrowed ? conditions : null });
+        router.replace({ pathname: '/broadcast/[id]', params: { id } });
         return;
       }
       const ok = await confirmAsync('この内容で、一斉配信しますか?', confirmSendMessage(accountName, n, narrowed, messages.length), '送る');
@@ -331,6 +353,44 @@ function BroadcastNewScreen() {
         </Text>
       ) : null}
 
+      <SectionTitle>送るタイミング</SectionTitle>
+      <Card>
+        <View style={styles.segmented}>
+          {[
+            { v: 'now' as const, label: 'いますぐ' },
+            { v: 'scheduled' as const, label: '日時を指定して予約' },
+          ].map((o) => (
+            <Pressable
+              key={o.v}
+              accessibilityRole="button"
+              accessibilityState={{ selected: when === o.v }}
+              disabled={busyAny}
+              onPress={() => setWhen(o.v)}
+              style={[styles.segment, { borderColor: when === o.v ? c.primary : c.border, backgroundColor: when === o.v ? c.primarySoft : c.card }]}
+            >
+              <Text style={{ color: when === o.v ? c.primaryText : c.text, fontWeight: '700', fontSize: 14 }}>{o.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {when === 'scheduled' ? (
+          <View style={{ marginTop: 12, gap: 8 }}>
+            <View style={styles.segmented}>
+              <Pressable accessibilityRole="button" disabled={busyAny} onPress={() => setSchedulePicker('date')} style={[styles.pickBox, { borderColor: c.border, backgroundColor: c.card }]}>
+                <Text style={{ color: c.textMuted, fontSize: 11 }}>日付</Text>
+                <Text style={{ color: c.text, fontSize: 16, fontWeight: '700' }}>{dateOptions.find((d) => d.id === schedule.dateId)?.label ?? schedule.dateId}</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" disabled={busyAny} onPress={() => setSchedulePicker('time')} style={[styles.pickBox, { borderColor: c.border, backgroundColor: c.card }]}>
+                <Text style={{ color: c.textMuted, fontSize: 11 }}>時刻</Text>
+                <Text style={{ color: c.text, fontSize: 16, fontWeight: '700' }}>{schedule.timeId}</Text>
+              </Pressable>
+            </View>
+            <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19 }}>
+              {formatScheduled(toScheduledAt(schedule.dateId, schedule.timeId))} に配信します(日本時間)。送る人は、その時刻の時点の対象になります。予約は、配信の画面から取り消せます。
+            </Text>
+          </View>
+        ) : null}
+      </Card>
+
       <SectionTitle>テスト送信</SectionTitle>
       <Card>
         <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18 }}>
@@ -356,8 +416,10 @@ function BroadcastNewScreen() {
           disabled={(busyAny && busy !== 'test') || testFriends.length === 0}
           onPress={() => void onTest()}
         />
-        <Button title="いますぐ送る" loading={busy === 'send'} disabled={busyAny && busy !== 'send'} onPress={() => void onSend()} />
-        <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' }}>送る前に、人数の確認が出ます。送ったあとは取り消せません。</Text>
+        <Button title={when === 'scheduled' ? '予約する' : 'いますぐ送る'} loading={busy === 'send'} disabled={busyAny && busy !== 'send'} onPress={() => void onSend()} />
+        <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' }}>
+          {when === 'scheduled' ? '予約する前に、内容の確認が出ます。予約は、配信の画面から取り消せます。' : '送る前に、人数の確認が出ます。送ったあとは取り消せません。'}
+        </Text>
       </View>
 
       <FriendMultiPickModal
@@ -371,6 +433,29 @@ function BroadcastNewScreen() {
           setNotice(null);
         }}
         onClose={() => setFriendPickerOpen(false)}
+      />
+
+      <PickModal
+        visible={schedulePicker === 'date'}
+        title="日付を選ぶ"
+        items={dateOptions.map((d) => ({ id: d.id, label: d.label }))}
+        onPick={(item) => {
+          setSchedule((s) => ({ ...s, dateId: item.id }));
+          setSchedulePicker(null);
+          setNotice(null);
+        }}
+        onClose={() => setSchedulePicker(null)}
+      />
+      <PickModal
+        visible={schedulePicker === 'time'}
+        title="時刻を選ぶ(日本時間)"
+        items={timeOptions.map((t) => ({ id: t.id, label: t.label }))}
+        onPick={(item) => {
+          setSchedule((s) => ({ ...s, timeId: item.id }));
+          setSchedulePicker(null);
+          setNotice(null);
+        }}
+        onClose={() => setSchedulePicker(null)}
       />
 
       <PickModal
@@ -396,5 +481,6 @@ const styles = StyleSheet.create({
   removeBtn: { minHeight: MIN_TAP, minWidth: 52, alignItems: 'center', justifyContent: 'center' },
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   addBtn: { minHeight: 40, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  pickBox: { flex: 1, minHeight: MIN_TAP + 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, justifyContent: 'center' },
   countBox: { marginTop: 14, borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12 },
 });

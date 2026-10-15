@@ -6,12 +6,18 @@ import {
   findUnsupportedTag,
   formTag,
   insertAtSelection,
+  fromEditorParts,
+  insertCodeIntoParts,
+  removeTagPart,
+  setPartText,
+  toEditorParts,
   MAX_BROADCAST_MESSAGES,
   messageSummary,
   newDraftMessage,
   splitTags,
   toApiMessages,
   type DraftMessage,
+  confirmScheduleMessage,
   confirmSendMessage,
   defaultTitle,
   describeRule,
@@ -74,6 +80,12 @@ describe('メッセージ・題名・確認', () => {
     expect(defaultTitle('\n  秋のご案内です\n2行目', d)).toBe('秋のご案内です(10/15)');
     expect(defaultTitle('あ'.repeat(30), d)).toBe(`${'あ'.repeat(20)}(10/15)`);
     expect(defaultTitle('   ', d)).toBe('一斉配信(10/15)');
+  });
+  it('予約の確認文: いつ送るか・いまの人数・時刻の時点の対象になること・取り消せること', () => {
+    expect(confirmScheduleMessage('土岐店', 120, false, '10月16日(金) 09:00', 2)).toBe(
+      '「土岐店」の友だち全員の(いまは120人)に、2通のメッセージを上から順に、10月16日(金) 09:00に送るよう予約します。送る人は、予約の時刻の時点の対象になります。予約は、配信の画面から取り消せます。',
+    );
+    expect(confirmScheduleMessage('土岐店', 5, true, '10月16日(金) 09:00')).toContain('条件に合う(いまは5人)');
   });
   it('メッセージが2通以上のときは、確認文に通数と「上から順」を入れる', () => {
     expect(confirmSendMessage('土岐店', 5, true, 3)).toBe('「土岐店」の条件に合う5人に、3通のメッセージを上から順に、いますぐ送ります。送ったあとは取り消せません。');
@@ -162,3 +174,44 @@ describe('配信するメッセージ(最大5通)', () => {
     expect(messageSummary({ type: 'text', content: 'こんにちは\n  世界' })).toBe('こんにちは 世界');
   });
 });
+
+// 入力欄の中でも、タグは色付きのボックス(コードは見せない)。本文は「文字ブロック→ボックス→文字ブロック…」に分ける
+describe('入力欄の文字ブロックとボックス', () => {
+  const code = `こんにちは{{name}}さん
+回答は${formTag('f-1')}`;
+  it('文字ブロックで始まり、文字ブロックで終わる。ボックスの間・端が空でも、文字ブロックを置く', () => {
+    const parts = toEditorParts(code);
+    expect(parts.map((p) => p.kind)).toEqual(['text', 'tag', 'text', 'tag', 'text']);
+    expect(toEditorParts('{{name}}{{name}}').map((p) => p.kind)).toEqual(['text', 'tag', 'text', 'tag', 'text']);
+    expect(toEditorParts('')).toEqual([{ kind: 'text', text: '' }]);
+    expect(toEditorParts('ただの文')).toEqual([{ kind: 'text', text: 'ただの文' }]);
+  });
+  it('つなげると、元の本文に戻る(保存される形は変わらない)', () => {
+    expect(fromEditorParts(toEditorParts(code))).toBe(code);
+    expect(fromEditorParts(toEditorParts('{{name}}{{name}}'))).toBe('{{name}}{{name}}');
+    expect(fromEditorParts(toEditorParts('a{{foo}}b'))).toBe('a{{foo}}b');
+  });
+  it('ボックスの種類(名前・フォーム・その他)が分かる', () => {
+    const tags = toEditorParts(`{{name}}${formTag('abc')}{{foo}}`).filter((p) => p.kind === 'tag');
+    expect(tags.map((p) => (p.kind === 'tag' ? p.tag.kind : ''))).toEqual(['name', 'form', 'other']);
+  });
+  it('文字ブロックを書き換える・ボックスを消す', () => {
+    const parts = toEditorParts(code);
+    expect(setPartText(parts, 0, 'やあ')).toBe(`やあ{{name}}さん
+回答は${formTag('f-1')}`);
+    expect(setPartText(parts, 1, 'x')).toBe(code); // ボックスの番号を指しても、文字は書き換わらない
+    expect(removeTagPart(parts, 1)).toBe(`こんにちはさん
+回答は${formTag('f-1')}`);
+    expect(removeTagPart(parts, 0)).toBe(code);
+  });
+  it('ボックスを入れる: カーソルのある文字ブロックの、その位置に。分からないときは最後に', () => {
+    const parts = toEditorParts('こんにちは');
+    expect(insertCodeIntoParts(parts, NAME_TAG_FOR_TEST, { partIndex: 0, selection: { start: 2, end: 2 } })).toBe('こん{{name}}にちは');
+    expect(insertCodeIntoParts(parts, NAME_TAG_FOR_TEST, null)).toBe('こんにちは{{name}}');
+    expect(insertCodeIntoParts(toEditorParts('a{{name}}b'), formTag('x'), { partIndex: 2, selection: { start: 1, end: 1 } })).toBe(`a{{name}}b${formTag('x')}`);
+    // 指した番号がボックスのとき・範囲外のときは、最後に足す
+    expect(insertCodeIntoParts(toEditorParts('a{{name}}b'), 'Z', { partIndex: 1, selection: { start: 0, end: 0 } })).toBe('a{{name}}bZ');
+    expect(insertCodeIntoParts(toEditorParts('a'), 'Z', { partIndex: 9, selection: { start: 0, end: 0 } })).toBe('aZ');
+  });
+});
+const NAME_TAG_FOR_TEST = '{{name}}';

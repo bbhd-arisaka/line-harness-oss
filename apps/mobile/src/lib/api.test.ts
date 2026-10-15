@@ -191,3 +191,30 @@ describe('端末', () => {
     expect(JSON.parse(lastCall(fetchImpl).init.body as string)).toEqual({ apnsToken: null });
   });
 });
+
+describe('アプリの版の伝達と、強制アップデート(426)', () => {
+  it('すべての通信に、アプリの版のヘッダーを付ける', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ success: true, data: [] }));
+    const api = createApiClient({ baseUrl: 'https://example.test', getToken: () => 't', defaultHeaders: { 'X-App-Version': '1.1.2', 'X-App-Build': '13' }, fetchImpl: fetchImpl as unknown as typeof fetch });
+    await api.listTags();
+    expect(lastCall(fetchImpl).headers['X-App-Version']).toBe('1.1.2');
+    expect(lastCall(fetchImpl).headers['X-App-Build']).toBe('13');
+    expect(lastCall(fetchImpl).headers.Authorization).toBe('Bearer t');
+  });
+  it('サーバーが 426 と答えたら、更新の案内に切り替える(ログアウトはしない)', async () => {
+    const onUpdateRequired = vi.fn();
+    const onUnauthorized = vi.fn();
+    const fetchImpl = vi.fn(async () => jsonResponse({ success: false, error: 'アプリが古くなりました。App Storeで更新してください。', storeUrl: 'https://apps.apple.com/jp/app/beyond-line/id6820799381' }, 426));
+    const api = createApiClient({ baseUrl: 'https://example.test', getToken: () => 't', onUpdateRequired, onUnauthorized, fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(api.listTags()).rejects.toMatchObject({ status: 426 });
+    expect(onUpdateRequired).toHaveBeenCalledWith('https://apps.apple.com/jp/app/beyond-line/id6820799381');
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+  it('起動時の確認は、ログイン前(トークンなし)で呼ぶ', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ success: true, data: { updateRequired: true, storeUrl: 'https://apps.apple.com/jp/app/x' } }));
+    const api = createApiClient({ baseUrl: 'https://example.test', getToken: () => 't', fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(await api.getAppConfig()).toMatchObject({ updateRequired: true });
+    expect(lastCall(fetchImpl).headers.Authorization).toBeUndefined();
+    expect(lastCall(fetchImpl).url).toBe('https://example.test/api/app/config');
+  });
+});

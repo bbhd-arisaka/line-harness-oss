@@ -537,11 +537,13 @@ export async function processScheduledBroadcasts(
         let estimate: number | null;
         if (broadcast.target_type === 'multi-account-dedup') {
           estimate = await (await import('./dedup-broadcast.js')).projectedDedupAudience(db, broadcast);
-        } else if (hasRecipientVariables(broadcast.message_content)) {
+        } else if (broadcastHasRecipientVariables(broadcast)) {
           estimate = await personalizedAudienceCount(db, broadcast);
         } else {
           estimate = await estimateSendAudience(db, broadcast);
         }
+        // LINE は1通ごとに数える。メッセージが複数のときは、人数に通数をかける
+        if (estimate !== null) estimate *= 1 + parseExtraMessages(broadcast.extra_messages).length;
         if (wouldExceedMonthlyQuota(usage, estimate)) continue;
       }
     }
@@ -553,6 +555,13 @@ export async function processScheduledBroadcasts(
         .bind(broadcast.id)
         .run();
       if (!lockResult.meta.changes || lockResult.meta.changes === 0) continue;
+
+      // 条件で絞り込む予約配信(アプリ): 送る時刻になったら、手動の「条件で送る」と同じ順番待ち(キュー)に載せる。
+      // キューの処理(processQueuedBroadcasts)が、保存してある条件に合う人へ送る。
+      if ((broadcast as unknown as Record<string, unknown>).segment_conditions) {
+        await db.prepare(`UPDATE broadcasts SET batch_offset = 0 WHERE id = ? AND status = 'sending'`).bind(broadcast.id).run();
+        continue;
+      }
 
       await processBroadcastSend(db, lineClient, broadcast.id, workerUrl);
     } catch (err) {

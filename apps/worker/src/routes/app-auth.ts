@@ -19,6 +19,7 @@ import {
   setAppSessionMutedKinds,
 } from '@line-crm/db';
 import { verifyAdminCredentials } from '../services/app-auth.js';
+import { APP_STORE_URL, evaluateUpdateGate } from '../services/app-update-gate.js';
 import { isTenantPermitted, resolveExternalStaff } from '../services/external-auth.js';
 import type { Env } from '../index.js';
 
@@ -74,6 +75,21 @@ appAuth.post('/api/app/login', async (c) => {
       token: session.token,
       expiresAt: session.expiresAt,
       staff: { id: staff.id, name: staff.name, email: staff.email, role: staff.role },
+    },
+  });
+});
+
+// アプリが、起動のときに「更新が必要か」を確かめる(ログイン前・認証なし・秘密は含まない)。
+// 必要なら、アプリは、更新の案内の画面だけを出す。App Store に新しい版が並んでいないときは、必要なしを返す
+appAuth.get('/api/app/config', async (c) => {
+  const gate = await evaluateUpdateGate(c.req.raw.headers);
+  return c.json({
+    success: true,
+    data: {
+      updateRequired: gate.required,
+      minVersion: gate.minVersion,
+      storeVersion: gate.storeVersion,
+      storeUrl: APP_STORE_URL,
     },
   });
 });
