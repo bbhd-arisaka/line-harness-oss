@@ -28,6 +28,15 @@ import { buildAnswerItems } from '../services/form-answer-items.js';
 
 const chats = new Hono<Env>();
 
+/**
+ * 【一斉配信の記録は、トークの並び順・一覧の表示・新着の合図の対象にしない】
+ * 一斉配信すると、配信先の全員に「いま送った」記録(messages_log)が1件ずつ入る。
+ * これを並び順に使うと、全員が同じ時刻で一斉に先頭へ動き、個別トークの順番が一気にバラバラになる(ユーザー指摘・2026-10-15)。
+ * 配信の記録は、個別トークの履歴(トーク画面)には今までどおり出る。除外するのは「一覧の並び順・最後のメッセージの表示・新着の確認」だけ。
+ * 一斉配信の行 = broadcast_id がある、または source='broadcast'(テスト送信は delivery_type='test' で別に除外している)。
+ */
+const NOT_BROADCAST_LOG = `(broadcast_id IS NULL AND COALESCE(source, '') != 'broadcast')`;
+
 function clampLoadingSeconds(value: number | undefined): number {
   const n = Number.isFinite(value) ? Math.floor(value as number) : 5;
   return Math.min(60, Math.max(5, n));
@@ -87,7 +96,7 @@ async function resolveOrCreateChat(db: D1Database, id: string): Promise<ChatLike
 
   const lastMsg = await db
     .prepare(
-      `SELECT MAX(created_at) AS last FROM messages_log WHERE friend_id = ? AND (delivery_type IS NULL OR delivery_type != 'test')`,
+      `SELECT MAX(created_at) AS last FROM messages_log WHERE friend_id = ? AND (delivery_type IS NULL OR delivery_type != 'test') AND ${NOT_BROADCAST_LOG}`,
     )
     .bind(friend.id)
     .first<{ last: string | null }>();
@@ -289,6 +298,7 @@ chats.get('/api/chats', async (c) => {
         SELECT friend_id, MAX(created_at) AS last_message_at
         FROM messages_log
         WHERE (delivery_type IS NULL OR delivery_type != 'test')
+          AND ${NOT_BROADCAST_LOG}
           AND ${accountFilterSql}
         GROUP BY friend_id
       ),
@@ -323,6 +333,7 @@ chats.get('/api/chats', async (c) => {
           MAX(created_at) AS created_at
         FROM messages_log
         WHERE (delivery_type IS NULL OR delivery_type != 'test')
+          AND ${NOT_BROADCAST_LOG}
           AND friend_id IN (SELECT friend_id FROM page)
         GROUP BY friend_id
       ),
@@ -427,7 +438,8 @@ chats.get('/api/chats', async (c) => {
 // 「/api/chats/:id」より先に登録すること。
 chats.get('/api/chats/pulse', async (c) => {
   try {
-    const row = await c.env.DB.prepare('SELECT MAX(created_at) AS latest FROM messages_log').first<{ latest: string | null }>();
+    // 一斉配信の記録は数えない(配信中に、全員の一覧が何度も取り直されるのを防ぐ)
+    const row = await c.env.DB.prepare(`SELECT MAX(created_at) AS latest FROM messages_log WHERE ${NOT_BROADCAST_LOG}`).first<{ latest: string | null }>();
     return c.json({ success: true, data: { latest: row?.latest ?? null } });
   } catch (err) {
     console.error('GET /api/chats/pulse error:', err);
