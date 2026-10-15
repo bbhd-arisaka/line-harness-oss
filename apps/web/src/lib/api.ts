@@ -669,6 +669,8 @@ export const api = {
         data?: {
           count: number;
           perAccount?: Array<{ accountId: string; sendCount: number }>;
+          /** 本名の差し込みを使う配信で、本名が未登録(LINE名が入る)の人の数 */
+          missingRealName?: number;
         };
         error?: string;
       }>(`/api/broadcasts/${id}/preview-count`),

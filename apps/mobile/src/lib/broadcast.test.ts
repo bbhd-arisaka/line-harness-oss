@@ -6,11 +6,6 @@ import {
   findUnsupportedTag,
   formTag,
   insertAtSelection,
-  fromEditorParts,
-  insertCodeIntoParts,
-  removeTagPart,
-  setPartText,
-  toEditorParts,
   MAX_BROADCAST_MESSAGES,
   messageSummary,
   newDraftMessage,
@@ -19,6 +14,8 @@ import {
   type DraftMessage,
   confirmScheduleMessage,
   confirmSendMessage,
+  missingRealNameNote,
+  usesRealName,
   defaultTitle,
   describeRule,
   describeSavedConditions,
@@ -175,43 +172,28 @@ describe('配信するメッセージ(最大5通)', () => {
   });
 });
 
-// 入力欄の中でも、タグは色付きのボックス(コードは見せない)。本文は「文字ブロック→ボックス→文字ブロック…」に分ける
-describe('入力欄の文字ブロックとボックス', () => {
-  const code = `こんにちは{{name}}さん
-回答は${formTag('f-1')}`;
-  it('文字ブロックで始まり、文字ブロックで終わる。ボックスの間・端が空でも、文字ブロックを置く', () => {
-    const parts = toEditorParts(code);
-    expect(parts.map((p) => p.kind)).toEqual(['text', 'tag', 'text', 'tag', 'text']);
-    expect(toEditorParts('{{name}}{{name}}').map((p) => p.kind)).toEqual(['text', 'tag', 'text', 'tag', 'text']);
-    expect(toEditorParts('')).toEqual([{ kind: 'text', text: '' }]);
-    expect(toEditorParts('ただの文')).toEqual([{ kind: 'text', text: 'ただの文' }]);
+describe('LINE名と本名のタグ', () => {
+  it('どちらも使える差し込み語。それ以外は止める', () => {
+    expect(findUnsupportedTag('{{name}} {{real_name}} {{liff_id}}')).toBeNull();
+    expect(findUnsupportedTag('{{nickname}}')).toBe('{{nickname}}');
   });
-  it('つなげると、元の本文に戻る(保存される形は変わらない)', () => {
-    expect(fromEditorParts(toEditorParts(code))).toBe(code);
-    expect(fromEditorParts(toEditorParts('{{name}}{{name}}'))).toBe('{{name}}{{name}}');
-    expect(fromEditorParts(toEditorParts('a{{foo}}b'))).toBe('a{{foo}}b');
-  });
-  it('ボックスの種類(名前・フォーム・その他)が分かる', () => {
-    const tags = toEditorParts(`{{name}}${formTag('abc')}{{foo}}`).filter((p) => p.kind === 'tag');
-    expect(tags.map((p) => (p.kind === 'tag' ? p.tag.kind : ''))).toEqual(['name', 'form', 'other']);
-  });
-  it('文字ブロックを書き換える・ボックスを消す', () => {
-    const parts = toEditorParts(code);
-    expect(setPartText(parts, 0, 'やあ')).toBe(`やあ{{name}}さん
-回答は${formTag('f-1')}`);
-    expect(setPartText(parts, 1, 'x')).toBe(code); // ボックスの番号を指しても、文字は書き換わらない
-    expect(removeTagPart(parts, 1)).toBe(`こんにちはさん
-回答は${formTag('f-1')}`);
-    expect(removeTagPart(parts, 0)).toBe(code);
-  });
-  it('ボックスを入れる: カーソルのある文字ブロックの、その位置に。分からないときは最後に', () => {
-    const parts = toEditorParts('こんにちは');
-    expect(insertCodeIntoParts(parts, NAME_TAG_FOR_TEST, { partIndex: 0, selection: { start: 2, end: 2 } })).toBe('こん{{name}}にちは');
-    expect(insertCodeIntoParts(parts, NAME_TAG_FOR_TEST, null)).toBe('こんにちは{{name}}');
-    expect(insertCodeIntoParts(toEditorParts('a{{name}}b'), formTag('x'), { partIndex: 2, selection: { start: 1, end: 1 } })).toBe(`a{{name}}b${formTag('x')}`);
-    // 指した番号がボックスのとき・範囲外のときは、最後に足す
-    expect(insertCodeIntoParts(toEditorParts('a{{name}}b'), 'Z', { partIndex: 1, selection: { start: 0, end: 0 } })).toBe('a{{name}}bZ');
-    expect(insertCodeIntoParts(toEditorParts('a'), 'Z', { partIndex: 9, selection: { start: 0, end: 0 } })).toBe('aZ');
+  it('本文を分けるとき、本名は名前とは別の種類', () => {
+    expect(splitTags('{{name}}と{{real_name}}')).toEqual([{ kind: 'name' }, { kind: 'text', text: 'と' }, { kind: 'realName' }]);
   });
 });
-const NAME_TAG_FOR_TEST = '{{name}}';
+
+describe('本名の差し込みの確認', () => {
+  it('本名が未登録の人がいるときだけ、確認に一文を添える', () => {
+    expect(missingRealNameNote(0)).toBe('');
+    expect(missingRealNameNote(12)).toBe('本名が未登録の12人には、本名の代わりにLINE名が入ります。');
+    expect(confirmSendMessage('土岐店', 100, false, 1, 3)).toContain('本名が未登録の3人には');
+    expect(confirmSendMessage('土岐店', 100, false, 1, 0)).not.toContain('本名');
+    expect(confirmScheduleMessage('土岐店', 100, false, '10月16日(金) 09:00', 1, 3)).toContain('本名が未登録の3人には');
+  });
+  it('本名を使っているテキストだけを見つける', () => {
+    const m = (text: string): DraftMessage => ({ ...newDraftMessage('text', 'k'), text });
+    expect(usesRealName([m('こんにちは{{real_name}}様')])).toBe(true);
+    expect(usesRealName([m('こんにちは{{name}}さん'), m('本名なし')])).toBe(false);
+    expect(usesRealName([{ ...newDraftMessage('image', 'i'), imageUrl: 'https://x/a.jpg' }])).toBe(false);
+  });
+});

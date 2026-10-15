@@ -81,13 +81,23 @@ export function MessageBodyField({
               ＋ 回答フォームを挿入
             </button>
             {allowNameTag ? (
-              <button
-                type="button"
-                onClick={() => editorRef.current?.insertTag('{{name}}')}
-                className="rounded px-2 py-1 text-xs text-sky-700 hover:bg-sky-50"
-              >
-                ＋ 名前を挿入
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => editorRef.current?.insertTag('{{name}}')}
+                  className="rounded px-2 py-1 text-xs text-sky-700 hover:bg-sky-50"
+                >
+                  ＋ LINE名を挿入
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editorRef.current?.insertTag('{{real_name}}')}
+                  className="rounded px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
+                  title="友だち情報の本名。未登録の人には、LINE名が入ります"
+                >
+                  ＋ 本名を挿入
+                </button>
+              </>
             ) : null}
           </div>
           <span className="text-[11px] text-gray-400">送信時に、送信アカウント用のフォームリンクに変換されます</span>

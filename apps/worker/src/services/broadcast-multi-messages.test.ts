@@ -157,3 +157,35 @@ describe('一覧(トーク)の並び順', () => {
     expect(rows.map((x) => x.content)).toEqual(['甲', '乙']);
   });
 });
+
+// 名前は2種類: {{name}}=LINE名、{{real_name}}=本名(2026-10-15)。本名が未登録の人には、LINE名を入れる
+describe('LINE名と本名の差し込み', () => {
+  it('本名がある人には本名、未登録の人にはLINE名を入れて、1人ずつ送る', async () => {
+    const s = setup(); s.friend(1, 'さくら'); s.friend(2, 'hana_55');
+    s.sqlite.prepare("UPDATE friends SET real_name = '山田 花子' WHERE id = 'f1'").run();
+    const r = await s.create({ messages: [{ type: 'text', content: '{{real_name}}様' }, { type: 'text', content: 'LINE名は{{name}}です' }] });
+    expect((await s.send(r.json.data!.id)).status).toBe(202);
+    await processQueuedBroadcasts(s.db, new LineClient('test-default'));
+    const byUser = new Map(s.push.mock.calls.map((c) => [c[0] as string, s.texts(c[1] as Message[])]));
+    expect(byUser.get('U1')).toEqual(['山田 花子様', 'LINE名はさくらです']);
+    expect(byUser.get('U2')).toEqual(['hana_55様', 'LINE名はhana_55です']);
+  });
+  it('本名の差し込みは、作成のときに「使える差し込み語」として通る', async () => {
+    const s = setup();
+    expect((await s.create({ messages: [{ type: 'text', content: '{{real_name}}様' }] })).status).toBe(201);
+    expect((await s.create({ messages: [{ type: 'text', content: '{{nickname}}' }] })).status).toBe(400);
+  });
+  it('送る前の確認用: 本名が未登録の人の数を返す(条件で絞り込んだ分・全員の分)', async () => {
+    const s = setup(); s.friend(1, 'a'); s.friend(2, 'b'); s.friend(3, 'c');
+    s.sqlite.prepare("UPDATE friends SET real_name = '本名' WHERE id = 'f1'").run();
+    s.sqlite.prepare("UPDATE friends SET real_name = '  ' WHERE id = 'f2'").run();
+    const count = await s.app.request('/api/segments/count', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conditions: { operator: 'AND', rules: [{ type: 'tag_exists', value: 'tag' }] }, accountId: 'a', followingOnly: true, countMissingRealName: true }) }, { DB: s.db });
+    expect(((await count.json()) as { data: { count: number; missingRealName: number } }).data).toEqual({ count: 3, missingRealName: 2 });
+    const r = await s.create({ messages: [{ type: 'text', content: '{{real_name}}様' }] });
+    const pv = await s.app.request(`/api/broadcasts/${r.json.data!.id}/preview-count`, {}, { DB: s.db });
+    expect(((await pv.json()) as { data: { count: number; missingRealName: number } }).data).toMatchObject({ count: 3, missingRealName: 2 });
+    const plain = await s.create({ messages: [{ type: 'text', content: '本名なし' }] });
+    const pv2 = await s.app.request(`/api/broadcasts/${plain.json.data!.id}/preview-count`, {}, { DB: s.db });
+    expect(((await pv2.json()) as { data: Record<string, unknown> }).data).not.toHaveProperty('missingRealName');
+  });
+});

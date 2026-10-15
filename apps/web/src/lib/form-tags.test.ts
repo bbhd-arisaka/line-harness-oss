@@ -51,7 +51,8 @@ describe('splitTags', () => {
 
 describe('variableLabel', () => {
   it('よく使う語は日本語名にする', () => {
-    expect(variableLabel('name')).toBe('名前')
+    expect(variableLabel('name')).toBe('LINE名')
+    expect(variableLabel('real_name')).toBe('本名')
     expect(variableLabel('reserve.datetime')).toBe('予約日時')
   })
 

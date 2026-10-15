@@ -1,7 +1,8 @@
 // Broadcast template variables are expanded by L Harness before calling
 // the Messaging API. LINE's official textV2.substitution supports mentions
 // and LINE emoji only; it does not provide arbitrary recipient-name strings.
-export const SUPPORTED_BROADCAST_VARIABLES = new Set(['name', 'liff_id']);
+// name = LINE名(友だちの表示名)、real_name = 本名(友だち情報の「本名」。未登録の人には LINE名を入れる)
+export const SUPPORTED_BROADCAST_VARIABLES = new Set(['name', 'real_name', 'liff_id']);
 
 const BROADCAST_VARIABLE_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
@@ -23,12 +24,21 @@ export function getUnsupportedBroadcastVariables(content: string): string[] {
 }
 
 export function hasRecipientVariables(content: string): boolean {
-  return getBroadcastVariables(content).includes('name');
+  const vars = getBroadcastVariables(content);
+  return vars.includes('name') || vars.includes('real_name');
+}
+
+/** 本名の差し込みを使っているか(使うときは、本名が未登録の人の数を、送る前に知らせる) */
+export function usesRealName(content: string): boolean {
+  return getBroadcastVariables(content).includes('real_name');
 }
 
 export interface BroadcastRenderContext {
   liffId?: string | null;
+  /** LINE名 */
   displayName?: string | null;
+  /** 本名(未登録なら、{{real_name}} には LINE名を入れる) */
+  realName?: string | null;
 }
 
 export function renderMessageContent(
@@ -42,6 +52,8 @@ export function renderMessageContent(
   let result = content;
   if (context.liffId) result = result.replace(/\{\{\s*liff_id\s*\}\}/g, context.liffId);
   if (context.displayName) result = result.replace(/\{\{\s*name\s*\}\}/g, context.displayName);
+  const real = context.realName?.trim() || context.displayName;
+  if (real) result = result.replace(/\{\{\s*real_name\s*\}\}/g, real);
   return result;
 }
 

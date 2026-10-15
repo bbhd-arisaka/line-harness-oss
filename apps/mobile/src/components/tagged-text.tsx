@@ -25,7 +25,8 @@ export function TaggedText({
     <Text style={style}>
       {splitTags(text).map((p, i) => {
         if (p.kind === 'text') return <Text key={i}>{p.text}</Text>;
-        if (p.kind === 'name') return <Text key={i} style={[styles.chip, { color: '#075985', backgroundColor: '#e0f2fe' }]}> 名前 </Text>;
+        if (p.kind === 'name') return <Text key={i} style={[styles.chip, { color: '#075985', backgroundColor: '#e0f2fe' }]}>{'\u00A0LINE名\u00A0'}</Text>;
+        if (p.kind === 'realName') return <Text key={i} style={[styles.chip, { color: '#065f46', backgroundColor: '#d1fae5' }]}>{'\u00A0本名\u00A0'}</Text>;
         if (p.kind === 'form') {
           const name = formNames?.get(p.formId);
           return (

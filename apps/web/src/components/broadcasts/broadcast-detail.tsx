@@ -38,6 +38,8 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
   const [sending, setSending] = useState(false)
   const [insight, setInsight] = useState<BroadcastInsight | null>(null)
   const [targetCount, setTargetCount] = useState<number | null>(null)
+  // 本名の差し込みを使う配信で、本名が未登録(LINE名が入る)の人の数
+  const [missingRealName, setMissingRealName] = useState(0)
   const [perAccountBreakdown, setPerAccountBreakdown] = useState<Array<{ accountId: string; sendCount: number }> | null>(null)
   const [perAccountStats, setPerAccountStats] = useState<Array<{
     accountId: string;
@@ -58,6 +60,7 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
     setPerAccountStats(null)
     setInsight(null)
     setTargetCount(null)
+    setMissingRealName(0)
     try {
       const [res, tagsRes] = await Promise.all([
         api.broadcasts.get(id),
@@ -76,6 +79,7 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
             if (requestId !== latestIdRef.current) return
             if (r.success && r.data) {
               setTargetCount(r.data.count)
+              setMissingRealName(r.data.missingRealName ?? 0)
               if (r.data.perAccount) setPerAccountBreakdown(r.data.perAccount)
             }
           }).catch(() => {/* ignore — fall back to 0 */})
@@ -499,6 +503,7 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
         <SendConfirmDialog
           title={broadcast.title}
           targetCount={targetCount ?? broadcast.totalCount}
+          missingRealName={missingRealName}
           accountName={selectedAccount?.displayName ?? selectedAccount?.name ?? '-'}
           isMultiAccount={broadcast.targetType === 'multi-account-dedup'}
           perAccount={

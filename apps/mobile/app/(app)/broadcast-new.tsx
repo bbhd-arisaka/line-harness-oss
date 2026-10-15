@@ -23,6 +23,7 @@ import {
   newDraftMessage,
   newUuid,
   RULE_KIND_LABEL,
+  usesRealName,
   toApiMessages,
   toSegmentConditions,
   type DraftMessage,
@@ -137,9 +138,12 @@ function BroadcastNewScreen() {
     return null;
   }
 
+  // 本名の差し込みを使うとき: 本名が未登録で、LINE名が入る人の数(送る前の確認に出す)
+  const missingRealName = useRef(0);
   async function countAudience(): Promise<number | null> {
     if (!accountId) return null;
-    const r = await api.countSegment(accountId, conditions ?? ALL_FOLLOWING_CONDITION);
+    const r = await api.countSegment(accountId, conditions ?? ALL_FOLLOWING_CONDITION, { countMissingRealName: usesRealName(messages) });
+    missingRealName.current = r.missingRealName ?? 0;
     setCount(r.count);
     return r.count;
   }
@@ -208,14 +212,14 @@ function BroadcastNewScreen() {
           setNotice({ ok: false, text: '予約の日時は、いまから3分より先にしてください' });
           return;
         }
-        const okSchedule = await confirmAsync('この内容で、配信を予約しますか?', confirmScheduleMessage(accountName, n, narrowed, formatScheduled(scheduledAt), messages.length), '予約する');
+        const okSchedule = await confirmAsync('この内容で、配信を予約しますか?', confirmScheduleMessage(accountName, n, narrowed, formatScheduled(scheduledAt), messages.length, missingRealName.current), '予約する');
         if (!okSchedule) return;
         const id = await ensureDraft();
         await api.scheduleBroadcast(id, { scheduledAt, conditions: narrowed ? conditions : null });
         router.replace({ pathname: '/broadcast/[id]', params: { id } });
         return;
       }
-      const ok = await confirmAsync('この内容で、一斉配信しますか?', confirmSendMessage(accountName, n, narrowed, messages.length), '送る');
+      const ok = await confirmAsync('この内容で、一斉配信しますか?', confirmSendMessage(accountName, n, narrowed, messages.length, missingRealName.current), '送る');
       if (!ok) return;
       const id = await ensureDraft();
       if (narrowed && conditions) await api.sendBroadcastToSegment(id, conditions);

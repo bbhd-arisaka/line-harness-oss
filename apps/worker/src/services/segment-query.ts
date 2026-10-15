@@ -95,7 +95,7 @@ export function buildSegmentQuery(condition: SegmentCondition): { sql: string; b
   const where = clauses.length > 0 ? clauses.join(separator) : '1=1'
   // Callers prepend account/following constraints. Keep the complete segment
   // grouped so `account AND (left OR right)` cannot become `(account AND left) OR right`.
-  const sql = `SELECT f.id, f.line_user_id, f.display_name FROM friends f WHERE (${where}) ORDER BY f.created_at ASC, f.id ASC`
+  const sql = `SELECT f.id, f.line_user_id, f.display_name, f.real_name FROM friends f WHERE (${where}) ORDER BY f.created_at ASC, f.id ASC`
 
   return { sql, bindings }
 }

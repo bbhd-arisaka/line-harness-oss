@@ -751,7 +751,7 @@ async function processQueuedBroadcastBatches(
 
   // 対象ユーザーリストを取得（アカウントで絞り込む）
   const accountId = raw.line_account_id as string | null;
-  let friends: Array<{ id: string; line_user_id: string; display_name: string | null }>;
+  let friends: Array<{ id: string; line_user_id: string; display_name: string | null; real_name?: string | null }>;
   if (segmentConditionsStr) {
     const { buildSegmentQuery } = await import('./segment-query.js');
     const condition = JSON.parse(segmentConditionsStr);
@@ -771,6 +771,7 @@ async function processQueuedBroadcastBatches(
       id: string;
       line_user_id: string;
       display_name: string | null;
+      real_name: string | null;
     }>();
     friends = result.results ?? [];
   } else if (broadcast.target_tag_id) {
@@ -780,6 +781,7 @@ async function processQueuedBroadcastBatches(
       id: f.id,
       line_user_id: f.line_user_id,
       display_name: f.display_name,
+      real_name: f.real_name ?? null,
     }));
   } else {
     // target_type='all' でキューに入ることはないが、念のため
@@ -891,11 +893,12 @@ async function processQueuedBroadcastBatches(
         try {
           const renderedContent = renderBroadcastMessageContent(finalType, finalContent, {
             displayName: friend.display_name,
+            realName: friend.real_name,
           });
           assertNoUnresolvedBroadcastVariables(renderedContent);
           const personalizedMessage = buildMessage(finalType, renderedContent, altText || undefined);
           // 2通目以降も、この友だちの名前を入れて作る(上から順に、1リクエストで送る)
-          const personalizedExtra = renderMessageItems(extraItems, { displayName: friend.display_name }, buildMessage);
+          const personalizedExtra = renderMessageItems(extraItems, { displayName: friend.display_name, realName: friend.real_name }, buildMessage);
           const retryKey = await createBroadcastRetryKey(
             broadcast.id,
             'personalized-push',

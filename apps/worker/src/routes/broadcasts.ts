@@ -25,7 +25,9 @@ import {
 } from '../services/quota.js';
 import { computeDedupBroadcastPreview } from '../services/dedup-broadcast.js';
 import { processSegmentSend } from '../services/segment-send.js';
+import { usesRealName } from '../services/render-message.js';
 import {
+  allBroadcastContents,
   allBroadcastMessages,
   broadcastHasRecipientVariables,
   broadcastMessageCount,
@@ -268,7 +270,35 @@ broadcasts.get('/api/broadcasts/:id/preview-count', async (c) => {
       count = row?.cnt ?? 0;
     }
 
-    return c.json({ success: true, data: { count, perAccount } });
+    // 本名の差し込みを使う配信: 本名が未登録で、LINE名が入る人の数(全員・タグ・条件つき)
+    let missingRealName: number | undefined;
+    if (allBroadcastContents(broadcast).some((t) => usesRealName(t)) && broadcast.target_type !== 'multi-account-dedup') {
+      const accountId = (raw.line_account_id as string | null) || null;
+      const where: string[] = ['f.is_following = 1', "(f.real_name IS NULL OR trim(f.real_name) = '')"];
+      const binds: unknown[] = [];
+      if (accountId) { where.push('f.line_account_id = ?'); binds.push(accountId); }
+      let from = 'friends f';
+      if (broadcast.target_type === 'tag' && broadcast.target_tag_id) {
+        from = 'friends f INNER JOIN friend_tags ft ON ft.friend_id = f.id';
+        where.push('ft.tag_id = ?');
+        binds.push(broadcast.target_tag_id);
+      }
+      const segRaw = parseJsonObject(raw.segment_conditions);
+      if (segRaw) {
+        const { buildSegmentQuery } = await import('../services/segment-query.js');
+        const { sql, bindings } = buildSegmentQuery(segRaw as unknown as SegmentCondition);
+        from = `(${sql}) f`;
+        where.length = 0;
+        binds.length = 0;
+        binds.push(...bindings);
+        where.push("(f.real_name IS NULL OR trim(f.real_name) = '')");
+        if (accountId) { from = `(${sql.replace('WHERE', 'WHERE f.line_account_id = ? AND')}) f`; binds.unshift(accountId); }
+      }
+      const miss = await c.env.DB.prepare(`SELECT COUNT(*) AS cnt FROM ${from} WHERE ${where.join(' AND ')}`).bind(...binds).first<{ cnt: number }>();
+      missingRealName = miss?.cnt ?? 0;
+    }
+
+    return c.json({ success: true, data: { count, perAccount, ...(missingRealName !== undefined ? { missingRealName } : {}) } });
   } catch (err) {
     console.error('GET /api/broadcasts/:id/preview-count error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -1271,13 +1301,13 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
       return c.json({ success: false, error: `テスト送信の宛先は${MAX_TEST_SEND_RECIPIENTS}人までです` }, 400);
     }
 
-    let friends: { results: Array<{ id: string; line_user_id: string; display_name: string | null }> };
+    let friends: { results: Array<{ id: string; line_user_id: string; display_name: string | null; real_name: string | null }> };
     if (picked && picked.length > 0) {
       // この公式アカウントの友だち(ブロック中でない人)だけ。他のアカウントの人には送らない
       const placeholders = picked.map(() => '?').join(',');
       friends = await c.env.DB.prepare(
-        `SELECT id, line_user_id, display_name FROM friends WHERE id IN (${placeholders}) AND line_account_id = ? AND is_following = 1`
-      ).bind(...picked, accountId).all<{ id: string; line_user_id: string; display_name: string | null }>();
+        `SELECT id, line_user_id, display_name, real_name FROM friends WHERE id IN (${placeholders}) AND line_account_id = ? AND is_following = 1`
+      ).bind(...picked, accountId).all<{ id: string; line_user_id: string; display_name: string | null; real_name: string | null }>();
       if (friends.results.length === 0) return c.json({ success: false, error: '選んだ友だちには送れません(この公式アカウントの友だちではないか、ブロックされています)' }, 400);
     } else {
       const setting = await c.env.DB.prepare(
@@ -1290,8 +1320,8 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
 
       const placeholders = friendIds.map(() => '?').join(',');
       friends = await c.env.DB.prepare(
-        `SELECT id, line_user_id, display_name FROM friends WHERE id IN (${placeholders})`
-      ).bind(...friendIds).all<{ id: string; line_user_id: string; display_name: string | null }>();
+        `SELECT id, line_user_id, display_name, real_name FROM friends WHERE id IN (${placeholders})`
+      ).bind(...friendIds).all<{ id: string; line_user_id: string; display_name: string | null; real_name: string | null }>();
     }
 
     const account = await getLineAccountById(c.env.DB, accountId);
@@ -1325,7 +1355,7 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
     for (const friend of friends.results) {
       try {
         const rendered = preparedTest.map((m, i) => {
-          const content = renderBroadcastMessageContent(m.type, m.content, { liffId, displayName: friend.display_name });
+          const content = renderBroadcastMessageContent(m.type, m.content, { liffId, displayName: friend.display_name, realName: friend.real_name });
           assertNoUnresolvedBroadcastVariables(content);
           // 通知文(altText)は1通目の指定を使う。Flex で指定が無ければ、中身から作る
           const altText = (i === 0 ? (raw.alt_text as string | null) : m.altText) || (m.type === 'flex' ? extractFlexAltText(content) : undefined);
@@ -1393,7 +1423,7 @@ broadcasts.get('/api/broadcasts/:id/progress', async (c) => {
 
 // POST /api/segments/count — count friends matching segment conditions
 broadcasts.post('/api/segments/count', async (c) => {
-  const body = await c.req.json<{ conditions: unknown; accountId?: string; followingOnly?: boolean }>();
+  const body = await c.req.json<{ conditions: unknown; accountId?: string; followingOnly?: boolean; countMissingRealName?: boolean }>();
   try {
     const { buildSegmentQuery } = await import('../services/segment-query.js');
     const { sql, bindings } = buildSegmentQuery(body.conditions as SegmentCondition);
@@ -1410,7 +1440,17 @@ broadcasts.post('/api/segments/count', async (c) => {
     const countSql = `SELECT COUNT(*) as count FROM (${accountSql}) audience`;
     const result = await c.env.DB.prepare(countSql).bind(...accountBindings).first<{ count: number }>();
 
-    return c.json({ success: true, count: result?.count ?? 0, data: { count: result?.count ?? 0 } });
+    // 本名の差し込みを使うとき: 本名が未登録で、LINE名が入る人の数(送る前の確認に出す)
+    let missingRealName: number | undefined;
+    if (body.countMissingRealName === true) {
+      const miss = await c.env.DB
+        .prepare(`SELECT COUNT(*) as count FROM (${accountSql}) audience WHERE audience.real_name IS NULL OR trim(audience.real_name) = ''`)
+        .bind(...accountBindings)
+        .first<{ count: number }>();
+      missingRealName = miss?.count ?? 0;
+    }
+
+    return c.json({ success: true, count: result?.count ?? 0, data: { count: result?.count ?? 0, ...(missingRealName !== undefined ? { missingRealName } : {}) } });
   } catch (err) {
     console.error('POST /api/segments/count error:', err);
     return c.json({ success: false, error: 'Invalid segment conditions' }, 400);

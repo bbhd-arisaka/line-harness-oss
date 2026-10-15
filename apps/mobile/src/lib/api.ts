@@ -222,8 +222,10 @@ export function createApiClient(options: ApiClientOptions) {
       }),
     deleteBroadcast: (id: string) => request<null>('DELETE', `/api/broadcasts/${encodeURIComponent(id)}`),
     /** 条件に合う、友だち中の人数(accountId は必須) */
-    countSegment: (accountId: string, conditions: SegmentCondition) =>
-      request<{ count: number }>('POST', '/api/segments/count', { body: { conditions, accountId, followingOnly: true } }),
+    countSegment: (accountId: string, conditions: SegmentCondition, opts?: { countMissingRealName?: boolean }) =>
+      request<{ count: number; missingRealName?: number }>('POST', '/api/segments/count', {
+        body: { conditions, accountId, followingOnly: true, ...(opts?.countMissingRealName ? { countMissingRealName: true } : {}) },
+      }),
     listTags: () => request<TagItem[]>('GET', '/api/tags'),
 
     // ── 友だち ──

@@ -1,43 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../state/services';
 import { pickAndUploadImage } from '../state/image-upload';
 import { Button } from './ui';
 import { PickModal, type PickItem } from './pick-modal';
-import {
-  formTag,
-  insertCodeIntoParts,
-  MAX_BROADCAST_MESSAGES,
-  MAX_MESSAGE_LENGTH,
-  NAME_TAG,
-  newDraftMessage,
-  removeTagPart,
-  setPartText,
-  toEditorParts,
-  type DraftKind,
-  type DraftMessage,
-  type EditorPart,
-} from '../lib/broadcast';
+import { formTag, MAX_BROADCAST_MESSAGES, MAX_MESSAGE_LENGTH, NAME_TAG, newDraftMessage, REAL_NAME_TAG, type DraftKind, type DraftMessage } from '../lib/broadcast';
+import { appendTag, applyEdit, displayOf, insertTag, segDisplay, segsToText, tagTone, toSegs, type TagTone } from '../lib/tag-editor';
 import { describeError } from '../lib/errors';
 import type { FormOption } from '../lib/types';
 import { MIN_TAP, useColors } from '../theme/theme';
 
-/** ボックス(タグ)の色。Web版と同じ系統: 名前=水色、フォーム=青、そのほか=紫 */
-const CHIP = {
+/** ボックス(タグ)の色。Web版と同じ系統: LINE名=水色、本名=緑、フォーム=青、そのほか=紫 */
+const CHIP: Record<TagTone, { fg: string; bg: string; border: string }> = {
   name: { fg: '#075985', bg: '#e0f2fe', border: '#7dd3fc' },
+  realName: { fg: '#065f46', bg: '#d1fae5', border: '#6ee7b7' },
   form: { fg: '#1d5f92', bg: '#e3f0fb', border: '#93c5fd' },
   other: { fg: '#5b21b6', bg: '#ede9fe', border: '#c4b5fd' },
-} as const;
+};
 
 /**
  * 一斉配信のメッセージを、最大5通まで並べて作る。上から順に届く。
- * 1通ごとに、テキスト(名前・回答フォームを、色付きのボックスで入れられる)か画像(写真アプリから選ぶ。✕で消せる)を選べ、
+ * 1通ごとに、テキスト(LINE名・本名・回答フォームを、色付きのボックスで入れられる)か画像(写真アプリから選ぶ。✕で消せる)を選べ、
  * ↑↓で順番を入れ替え、削除できる。
  *
  * 【タグは、{{…}} の文字のまま見せない】(beyondシリーズ共通の決まり)
- * 入力欄は「文字ブロック → ボックス → 文字ブロック …」の並びで、ボックスの✕で消す。
- * 保存・送信する本文は、これまでどおり、つなげたタグコードつきの文字列。
+ * 入力欄の中でも、タグは、文章の中に並ぶ色付きのボックス(LINE名 など)で見せる。ボックスは、バックスペースで消せる。
+ * 保存・送信する本文は、これまでどおり、タグコードつきの文字列(計算は lib/tag-editor.ts)。
  */
 export function MessageListEditor({
   messages,
@@ -54,8 +43,9 @@ export function MessageListEditor({
   const [pickFor, setPickFor] = useState<string | null>(null); // フォームを選んでいる最中のメッセージの key
   const [uploading, setUploading] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // メッセージごとの、最後に触った文字ブロックとカーソル位置(ボックスを入れる位置)
-  const [focus, setFocus] = useState<Record<string, { partIndex: number; selection: { start: number; end: number } }>>({});
+  // メッセージごとの、入力欄のカーソル位置(表示の位置)と、ボタンで入れたあとにカーソルを置く位置
+  const selections = useRef<Record<string, { start: number; end: number }>>({});
+  const [forcedSelection, setForcedSelection] = useState<{ key: string; pos: number } | null>(null);
 
   const needForms = useMemo(() => messages.some((m) => m.kind === 'text' && m.text.includes('{{form_url:')), [messages]);
   const loadForms = useCallback(async () => {
@@ -86,8 +76,14 @@ export function MessageListEditor({
   };
   const remove = (key: string) => onChange(messages.filter((m) => m.key !== key));
 
+  /** カーソル位置に、ボックスを入れる(選択範囲があれば置き換える)。カーソルが分からないときは、最後に足す */
   function insertCode(m: DraftMessage, code: string) {
-    patch(m.key, { text: insertCodeIntoParts(toEditorParts(m.text), code, focus[m.key] ?? null) });
+    const segs = toSegs(m.text);
+    const sel = selections.current[m.key];
+    const r = sel ? insertTag(segs, sel.start, sel.end, code, formNames) : appendTag(segs, code, formNames);
+    patch(m.key, { text: segsToText(r.segs) });
+    selections.current[m.key] = { start: r.cursor, end: r.cursor };
+    setForcedSelection({ key: m.key, pos: r.cursor });
   }
 
   async function choosePhoto(m: DraftMessage) {
@@ -141,33 +137,35 @@ export function MessageListEditor({
 
           {m.kind === 'text' ? (
             <View style={{ marginTop: 10 }}>
-              <TextComposer
-                parts={toEditorParts(m.text)}
+              <TagTextInput
+                text={m.text}
                 formNames={formNames}
                 disabled={disabled}
-                placeholderWhenEmpty={m.text === ''}
                 label={`${index + 1}通目のメッセージ`}
-                onChangePart={(i, t) => patch(m.key, { text: setPartText(toEditorParts(m.text), i, t) })}
-                onRemoveTag={(i) => patch(m.key, { text: removeTagPart(toEditorParts(m.text), i) })}
-                onFocusPart={(i, selection) => setFocus((prev) => ({ ...prev, [m.key]: { partIndex: i, selection } }))}
+                forcedPos={forcedSelection?.key === m.key ? forcedSelection.pos : null}
+                onChangeText={(t) => patch(m.key, { text: t })}
+                onSelection={(sel) => {
+                  selections.current[m.key] = sel;
+                  setForcedSelection((f) => (f?.key === m.key ? null : f));
+                }}
               />
               <View style={styles.insertRow}>
-                <Pressable accessibilityRole="button" disabled={disabled} onPress={() => insertCode(m, NAME_TAG)} style={[styles.insertBtn, { borderColor: CHIP.name.border, backgroundColor: CHIP.name.bg }]}>
-                  <Text style={{ color: CHIP.name.fg, fontWeight: '700', fontSize: 13 }}>＋ 名前を入れる</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
+                <InsertButton label="＋ LINE名" tone="name" disabled={disabled} onPress={() => insertCode(m, NAME_TAG)} />
+                <InsertButton label="＋ 本名" tone="realName" disabled={disabled} onPress={() => insertCode(m, REAL_NAME_TAG)} />
+                <InsertButton
+                  label="＋ 回答フォーム"
+                  tone="form"
                   disabled={disabled}
                   onPress={() => {
                     setPickFor(m.key);
                     void loadForms();
                   }}
-                  style={[styles.insertBtn, { borderColor: CHIP.form.border, backgroundColor: CHIP.form.bg }]}
-                >
-                  <Text style={{ color: CHIP.form.fg, fontWeight: '700', fontSize: 13 }}>＋ 回答フォームを入れる</Text>
-                </Pressable>
+                />
               </View>
-              <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'right', marginTop: 4 }}>
+              <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 17, marginTop: 6 }}>
+                ボックスは、バックスペースで消せます。本名が未登録の人には、LINE名が入ります。
+              </Text>
+              <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'right', marginTop: 2 }}>
                 {Array.from(m.text).length.toLocaleString('ja-JP')} / {MAX_MESSAGE_LENGTH.toLocaleString('ja-JP')}
               </Text>
             </View>
@@ -233,62 +231,64 @@ export function MessageListEditor({
 }
 
 /**
- * テキスト1通の入力欄: 文字ブロック(入力できる)と、色付きのボックス(✕で消す)を、上から順に並べる。
- * ボックスは、{{…}} のコードではなく、日本語の名前で見せる(名前・フォーム：○○)。
+ * 色付きのボックスが、文章の中に並ぶ入力欄。
+ * 入力欄の文字は「文字+ボックスの日本語名」。ボックスの部分だけに、色(背景)を付ける。
+ * 打つ・消すたびに、前の表示といまの表示の差から、ボックスを壊さずに本文へ戻す(lib/tag-editor.ts)。
  */
-function TextComposer({
-  parts,
+function TagTextInput({
+  text,
   formNames,
   disabled,
-  placeholderWhenEmpty,
   label,
-  onChangePart,
-  onRemoveTag,
-  onFocusPart,
+  forcedPos,
+  onChangeText,
+  onSelection,
 }: {
-  parts: EditorPart[];
+  text: string;
   formNames: ReadonlyMap<string, string>;
   disabled: boolean;
-  placeholderWhenEmpty: boolean;
   label: string;
-  onChangePart: (index: number, text: string) => void;
-  onRemoveTag: (index: number) => void;
-  onFocusPart: (index: number, selection: { start: number; end: number }) => void;
+  forcedPos: number | null;
+  onChangeText: (text: string) => void;
+  onSelection: (sel: { start: number; end: number }) => void;
 }) {
   const c = useColors();
+  const segs = useMemo(() => toSegs(text), [text]);
+  const shown = useMemo(() => displayOf(segs, formNames), [segs, formNames]);
   return (
-    <View style={[styles.composer, { borderColor: c.border, backgroundColor: c.card }]}>
-      {parts.map((p, i) => {
-        if (p.kind === 'text') {
-          return (
-            <TextInput
-              key={`t${i}`}
-              value={p.text}
-              onChangeText={(t) => onChangePart(i, t)}
-              onFocus={() => onFocusPart(i, { start: p.text.length, end: p.text.length })}
-              onSelectionChange={(e) => onFocusPart(i, e.nativeEvent.selection)}
-              editable={!disabled}
-              placeholder={placeholderWhenEmpty && i === 0 ? '送るメッセージを入力' : undefined}
-              placeholderTextColor={c.textMuted}
-              multiline
-              style={[styles.block, { color: c.text, minHeight: i === 0 ? 96 : 40 }]}
-              accessibilityLabel={`${label}(${i / 2 + 1}つ目の文字欄)`}
-            />
-          );
-        }
-        const tone = p.tag.kind === 'name' ? CHIP.name : p.tag.kind === 'form' ? CHIP.form : CHIP.other;
-        const text =
-          p.tag.kind === 'name' ? '名前' : p.tag.kind === 'form' ? (formNames.get(p.tag.formId) ? `フォーム：${formNames.get(p.tag.formId)}` : 'フォーム') : p.tag.code;
-        return (
-          <View key={`g${i}`} style={[styles.chip, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-            <Text style={{ color: tone.fg, fontSize: 14, fontWeight: '700', flexShrink: 1 }} numberOfLines={1}>{text}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel={`${text}を削除`} disabled={disabled} onPress={() => onRemoveTag(i)} hitSlop={10} style={styles.chipX}>
-              <Ionicons name="close" size={18} color={tone.fg} />
-            </Pressable>
-          </View>
-        );
-      })}
-    </View>
+    <TextInput
+      multiline
+      editable={!disabled}
+      onChangeText={(next) => onChangeText(segsToText(applyEdit(segs, shown, next, formNames)))}
+      onSelectionChange={(e) => onSelection(e.nativeEvent.selection)}
+      selection={forcedPos !== null ? { start: forcedPos, end: forcedPos } : undefined}
+      placeholder="送るメッセージを入力"
+      placeholderTextColor={c.textMuted}
+      scrollEnabled={false}
+      style={[styles.composer, { color: c.text, borderColor: c.border }]}
+      accessibilityLabel={label}
+    >
+      <Text>
+        {segs.map((s, i) =>
+          s.kind === 'text' ? (
+            <Text key={i}>{s.text}</Text>
+          ) : (
+            <Text key={i} style={{ backgroundColor: CHIP[tagTone(s.code)].bg, color: CHIP[tagTone(s.code)].fg, fontWeight: '700' }}>
+              {segDisplay(s, formNames)}
+            </Text>
+          ),
+        )}
+      </Text>
+    </TextInput>
+  );
+}
+
+function InsertButton({ label, tone, disabled, onPress }: { label: string; tone: TagTone; disabled: boolean; onPress: () => void }) {
+  const t = CHIP[tone];
+  return (
+    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.insertBtn, { borderColor: t.border, backgroundColor: t.bg }]}>
+      <Text style={{ color: t.fg, fontWeight: '700', fontSize: 13 }}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -315,10 +315,7 @@ const styles = StyleSheet.create({
   iconBtn: { width: MIN_TAP - 4, height: MIN_TAP - 4, alignItems: 'center', justifyContent: 'center' },
   segmented: { flexDirection: 'row', gap: 8 },
   segment: { flex: 1, minHeight: 40, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  composer: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
-  block: { fontSize: 16, paddingVertical: 8, paddingHorizontal: 2, textAlignVertical: 'top' },
-  chip: { alignSelf: 'flex-start', maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 8, paddingLeft: 10, paddingRight: 4, minHeight: 34 },
-  chipX: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  composer: { minHeight: 140, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, lineHeight: 24, textAlignVertical: 'top' },
   insertRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   insertBtn: { minHeight: 38, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
   thumb: { width: '100%', height: 200, borderRadius: 10 },

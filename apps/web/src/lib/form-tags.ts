@@ -26,14 +26,14 @@ export function splitFormTags(text: string): Array<{ text: string } | { formId: 
 /* ────────────────── 差し込み語（名前・友だち情報・予約など） ────────────────── */
 
 /**
- * 差し込み語: `{{name}}` `{{friend_id}}` `{{uid}}` `{{liff_id}}` `{{form}}`
+ * 差し込み語: `{{name}}`(LINE名) `{{real_name}}`(本名。一斉配信。未登録の人にはLINE名) `{{friend_id}}` `{{uid}}` `{{liff_id}}` `{{form}}`
  *            `{{metadata.友だち情報欄のキー}}` `{{reserve.xxx}}`
  * 送信時にサーバー側が、お客様ごとの値に置き換える。
  * 管理画面の入力欄では、波かっこの文字ではなく、色付きの枠の日本語名で見せる
  * （1文字消すと効かなくなる記号を、人が直接さわらなくてよいようにする）。
  */
 export const VARIABLE_PATTERN =
-  '\{\{(name|friend_id|uid|liff_id|form|metadata\.[^}\s]+|reserve\.[^}\s]+)\}\}'
+  '\{\{(name|real_name|friend_id|uid|liff_id|form|metadata\.[^}\s]+|reserve\.[^}\s]+)\}\}'
 
 export type TagPart = { text: string } | { formId: string } | { variable: string }
 
@@ -60,7 +60,8 @@ export function splitTags(text: string): TagPart[] {
 }
 
 const VARIABLE_LABELS: Record<string, string> = {
-  name: '名前',
+  name: 'LINE名',
+  real_name: '本名',
   friend_id: '友だちID',
   uid: 'ユーザーID',
   liff_id: 'LIFF ID',
@@ -90,8 +91,9 @@ export function variableLabel(key: string, fieldLabels?: ReadonlyMap<string, str
 }
 
 /** 色の系統。同じ種類の語は同じ色にして、見分けやすくする */
-export function variableTone(key: string): 'name' | 'id' | 'info' | 'reserve' | 'other' {
+export function variableTone(key: string): 'name' | 'realName' | 'id' | 'info' | 'reserve' | 'other' {
   if (key === 'name') return 'name'
+  if (key === 'real_name') return 'realName'
   if (key === 'friend_id' || key === 'uid' || key === 'liff_id') return 'id'
   if (key.startsWith('metadata.')) return 'info'
   if (key.startsWith('reserve.')) return 'reserve'
@@ -100,6 +102,7 @@ export function variableTone(key: string): 'name' | 'id' | 'info' | 'reserve' | 
 
 const TONE_CLASS: Record<ReturnType<typeof variableTone>, string> = {
   name: 'border-sky-300 bg-sky-50 text-sky-800',
+  realName: 'border-emerald-300 bg-emerald-100 text-emerald-900',
   id: 'border-slate-300 bg-slate-50 text-slate-700',
   info: 'border-emerald-300 bg-emerald-50 text-emerald-800',
   reserve: 'border-amber-300 bg-amber-50 text-amber-800',

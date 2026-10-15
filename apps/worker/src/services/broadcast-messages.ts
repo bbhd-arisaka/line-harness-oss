@@ -193,7 +193,7 @@ export async function prepareExtraMessages(
 /** 友だちごとの差し込み({{name}}・{{liff_id}})を入れて、LINE に送る形(Message)にする */
 export function renderMessageItems(
   items: BroadcastMessageItem[],
-  context: { liffId?: string | null; displayName?: string | null },
+  context: { liffId?: string | null; displayName?: string | null; realName?: string | null },
   build: (type: string, content: string, altText?: string) => Message,
 ): Array<{ type: string; content: string; message: Message }> {
   return items.map((m) => {

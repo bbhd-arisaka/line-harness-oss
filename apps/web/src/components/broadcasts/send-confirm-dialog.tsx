@@ -14,6 +14,8 @@ interface PerAccountBreakdown {
 interface SendConfirmDialogProps {
   title: string
   targetCount: number
+  /** 本名の差し込みを使うとき、本名が未登録(LINE名が入る)の人の数 */
+  missingRealName?: number
   accountName: string
   /** true で multi-account 配信としてレンダリングする (perAccount=[] でも単アカ表示にしない). */
   isMultiAccount?: boolean
@@ -22,7 +24,7 @@ interface SendConfirmDialogProps {
   onCancel: () => void
 }
 
-export default function SendConfirmDialog({ title, targetCount, accountName, isMultiAccount, perAccount, onConfirm, onCancel }: SendConfirmDialogProps) {
+export default function SendConfirmDialog({ title, targetCount, missingRealName = 0, accountName, isMultiAccount, perAccount, onConfirm, onCancel }: SendConfirmDialogProps) {
   const [countdown, setCountdown] = useState(3)
 
   useEffect(() => {
@@ -47,6 +49,9 @@ export default function SendConfirmDialog({ title, targetCount, accountName, isM
             <dt className="text-kumo-subtle">対象</dt>
             <dd className="font-medium text-kumo-strong">{targetCount.toLocaleString('ja-JP')}人</dd>
           </div>
+          {missingRealName > 0 ? (
+            <p className="text-xs text-kumo-warning">本名が未登録の{missingRealName.toLocaleString('ja-JP')}人には、本名の代わりにLINE名が入ります。</p>
+          ) : null}
           {showBreakdown ? (
             <div>
               <dt className="mb-1 text-kumo-subtle">配信先</dt>
