@@ -209,6 +209,12 @@ friends.get('/api/friends', async (c) => {
     const countStmt = db.prepare(`SELECT COUNT(*) as count FROM friends f ${where}`);
     const totalRow = await (binds.length > 0 ? countStmt.bind(...binds) : countStmt).first<{ count: number }>();
     const total = totalRow?.count ?? 0;
+    // 公式アカウントを指定した一覧の1ページ目には、「友だち中の人数」(ブロック中を除く)も添える。
+    // アカウント切り替え画面の友だち数(GET /api/line-accounts の stats.friendCount)と同じ数え方
+    const followingTotal = lineAccountId && offset === 0
+      ? ((await db.prepare('SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?')
+          .bind(lineAccountId).first<{ count: number }>())?.count ?? 0)
+      : undefined;
 
     // When `search` is present we want exact / prefix matches to surface
     // first regardless of friend age. Plain `ORDER BY created_at DESC`
@@ -385,6 +391,7 @@ friends.get('/api/friends', async (c) => {
       data: {
         items: itemsWithTags,
         total,
+        ...(followingTotal !== undefined ? { followingTotal } : {}),
         page: Math.floor(offset / limit) + 1,
         limit,
         hasNextPage: offset + limit < total,

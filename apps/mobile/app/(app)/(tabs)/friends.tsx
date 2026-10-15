@@ -57,6 +57,8 @@ function FriendsScreen() {
 
   const [items, setItems] = useState<Friend[]>([]);
   const [total, setTotal] = useState(0);
+  // 友だち中の人数(ブロック中を除く)。アカウント切り替え画面の友だち数と同じ数え方
+  const [followingTotal, setFollowingTotal] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,6 +82,7 @@ function FriendsScreen() {
         if (id !== seq.current) return;
         setItems(page.items);
         setTotal(page.total);
+        if (page.followingTotal !== undefined) setFollowingTotal(page.followingTotal);
         setHasMore(page.hasNextPage);
         setError(null);
       } catch (e) {
@@ -170,8 +173,11 @@ function FriendsScreen() {
           ListHeaderComponent={
             items.length > 0 ? (
               <Text style={{ color: c.textMuted, fontSize: 12, marginHorizontal: 16, marginVertical: 8 }}>
-                {search ? `「${search}」の検索結果 ` : ''}
-                {total.toLocaleString('ja-JP')}人
+                {search
+                  ? `「${search}」の検索結果 ${total.toLocaleString('ja-JP')}人`
+                  : followingTotal === null
+                    ? `${total.toLocaleString('ja-JP')}人`
+                    : `友だち ${followingTotal.toLocaleString('ja-JP')}人${total > followingTotal ? `(ほかにブロック中 ${(total - followingTotal).toLocaleString('ja-JP')}人)` : ''}`}
               </Text>
             ) : null
           }

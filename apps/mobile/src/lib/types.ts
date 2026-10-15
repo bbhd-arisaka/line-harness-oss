@@ -207,6 +207,8 @@ export interface Friend {
 export interface FriendPage {
   items: Friend[];
   total: number;
+  /** 友だち中の人数(ブロック中を除く)。公式アカウントを指定した1ページ目だけ付く */
+  followingTotal?: number;
   page: number;
   limit: number;
   hasNextPage: boolean;
