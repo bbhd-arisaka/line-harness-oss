@@ -49,6 +49,8 @@ export default function FriendsPage() {
   const [friends, setFriends] = useState<FriendListItem[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [total, setTotal] = useState(0)
+  // 友だち中の人数(ブロック中を除く)。アカウント切り替えの友だち数と同じ数え方。サーバーは1ページ目だけ返すので、取れたときだけ更新する
+  const [followingTotal, setFollowingTotal] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [selectedTagId, setSelectedTagId] = useState('')
   const [searchInput, setSearchInput] = useState('')
@@ -69,6 +71,8 @@ export default function FriendsPage() {
   const [savingSearch, setSavingSearch] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const filterActive = !isFilterEmpty(filter)
+  // 何も絞り込んでいないとき(=その公式アカウントの全員の一覧)だけ、友だち中の人数を見出しにする
+  const unfiltered = !filterActive && !selectedTagId && !searchSubmitted && responseFilter === 'all' && !fieldFilter
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
@@ -115,6 +119,8 @@ export default function FriendsPage() {
       if (res.success) {
         setFriends(res.data.items)
         setTotal(res.data.total)
+        const following = (res.data as { followingTotal?: number }).followingTotal
+        if (typeof following === 'number') setFollowingTotal(following)
       } else {
         setError(res.error)
       }
@@ -270,7 +276,11 @@ export default function FriendsPage() {
             items={{ all: 'すべて', unhandled: '未対応のみ' }}
           />
           <span className="ml-auto pb-1 text-xs text-kumo-subtle">
-            {loading ? '読み込み中' : `${total.toLocaleString('ja-JP')} 件`}
+            {loading
+              ? '読み込み中'
+              : unfiltered && selectedAccountId && followingTotal !== null
+                ? `友だち ${followingTotal.toLocaleString('ja-JP')}人${total > followingTotal ? `(ほかにブロック・退会 ${(total - followingTotal).toLocaleString('ja-JP')}人)` : ''}`
+                : `${total.toLocaleString('ja-JP')} 件`}
           </span>
         </div>
       </LayerCard>
