@@ -47,10 +47,12 @@ export function FriendMultiPickModal({
   // 開くたびに、選択を引き継いで、履歴を取り直す
   useEffect(() => {
     if (!visible) return;
-    setPicked(new Map(initial.map((f) => [f.id, f])));
-    setQ('');
-    setFound([]);
-    setError(null);
+    queueMicrotask(() => {
+      setPicked(new Map(initial.map((f) => [f.id, f])));
+      setQ('');
+      setFound([]);
+      setError(null);
+    });
     let alive = true;
     api
       .listTestSendHistory(accountId)
@@ -68,13 +70,17 @@ export function FriendMultiPickModal({
 
   useEffect(() => {
     if (!visible || !searchMode) {
-      setFound([]);
-      setLoading(false);
+      queueMicrotask(() => {
+        setFound([]);
+        setLoading(false);
+      });
       return;
     }
     const mine = ++seq.current;
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => {
+      setLoading(true);
+      setError(null);
+    });
     api
       .listFriends({ lineAccountId: accountId, search: word, limit: 30 })
       .then((page) => {

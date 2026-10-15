@@ -12,6 +12,7 @@ import { describeError } from '../../../src/lib/errors';
 import { isSplitLayout, LIST_PANE_WIDTH } from '../../../src/lib/layout';
 import { ChatView } from '../../../src/components/chat-view';
 import { useInterval } from '../../../src/state/hooks';
+import { useUnread } from '../../../src/state/unread';
 import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
 import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
 
@@ -67,6 +68,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   const router = useRouter();
   const { selected } = useAccounts();
   const accountId = selected?.id ?? null;
+  const { refresh: refreshUnread } = useUnread();
 
   const [filter, setFilter] = useState<Filter>('all');
   const [items, setItems] = useState<ChatSummary[]>([]);
@@ -127,7 +129,8 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
         return;
       }
       void fetchFirst('silent');
-    }, [fetchFirst]),
+      refreshUnread(); // 下バーの数字(トーク画面で対応状態を変えたかもしれない)
+    }, [fetchFirst, refreshUnread]),
   );
 
   async function loadMore() {

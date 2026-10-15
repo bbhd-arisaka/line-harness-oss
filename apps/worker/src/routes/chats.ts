@@ -440,7 +440,30 @@ chats.get('/api/chats/pulse', async (c) => {
   try {
     // 一斉配信の記録は数えない(配信中に、全員の一覧が何度も取り直されるのを防ぐ)
     const row = await c.env.DB.prepare(`SELECT MAX(created_at) AS latest FROM messages_log WHERE ${NOT_BROADCAST_LOG}`).first<{ latest: string | null }>();
-    return c.json({ success: true, data: { latest: row?.latest ?? null } });
+    const body: { latest: string | null; unreadCount?: number } = { latest: row?.latest ?? null };
+
+    // ?unread=1&lineAccountId=… のときだけ、その公式アカウントの「未対応」のトーク数も返す(アプリの下バーの数字用)。
+    // 数え方は、トーク一覧の「未対応」と同じ(友だちごとの最新のトークの状態が unread)。
+    // 毎回ではなく、新着が変わったときや画面を開いたときだけ呼ばれる想定(chats の行を読むので、pulse より少し重い)。
+    const lineAccountId = c.req.query('lineAccountId');
+    if (c.req.query('unread') === '1' && lineAccountId) {
+      const allowed = c.get('allowedAccountIds');
+      if (allowed && !allowed.includes(lineAccountId)) return c.json({ success: false, error: 'Forbidden' }, 403);
+      const cnt = await c.env.DB
+        .prepare(
+          `SELECT COUNT(*) AS n FROM (
+             SELECT c.status AS status, MAX(c.created_at) AS created_at
+             FROM chats c
+             JOIN friends f ON f.id = c.friend_id
+             WHERE f.line_account_id = ?
+             GROUP BY c.friend_id
+           ) WHERE status = 'unread'`,
+        )
+        .bind(lineAccountId)
+        .first<{ n: number }>();
+      body.unreadCount = cnt?.n ?? 0;
+    }
+    return c.json({ success: true, data: body });
   } catch (err) {
     console.error('GET /api/chats/pulse error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

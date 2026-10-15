@@ -131,8 +131,14 @@ export function createApiClient(options: ApiClientOptions) {
     /** 送った項目だけを更新する。accountId を付けると、その公式アカウントだけの設定(accountMuted・mutedKinds)を更新する */
     setPushSettings: (change: { mutedAccountIds?: string[]; mutedKinds?: string[]; accountId?: string; accountMuted?: boolean }) => request<PushSettings>('PUT', '/api/app/push-settings', { body: change }),
 
-    /** 新着の有無だけの軽い確認(最新のメッセージの時刻を返す。1行しか読まない)。トーク・一覧の定期確認に使う */
-    getChatPulse: () => request<{ latest: string | null }>('GET', '/api/chats/pulse'),
+    /**
+     * 新着の有無だけの軽い確認(最新のメッセージの時刻を返す。1行しか読まない)。トーク・一覧の定期確認に使う。
+     * unread を付けると、その公式アカウントの「未対応」のトーク数(unreadCount)も返す(下バーの数字用。少し重いので、必要なときだけ)。
+     */
+    getChatPulse: (opts?: { lineAccountId?: string; unread?: boolean }) =>
+      request<{ latest: string | null; unreadCount?: number }>('GET', '/api/chats/pulse', {
+        query: { lineAccountId: opts?.lineAccountId, unread: opts?.unread ? 1 : undefined },
+      }),
 
     // ── 公式アカウント ──
     listLineAccounts: () => request<LineAccount[]>('GET', '/api/line-accounts'),

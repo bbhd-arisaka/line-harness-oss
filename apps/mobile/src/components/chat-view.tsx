@@ -13,6 +13,7 @@ import { ErrorView, LoadingView } from '../components/ui';
 import { MIN_TAP, useColors } from '../theme/theme';
 import { describeError } from '../lib/errors';
 import { ACTIVITY_RETRY_MS, isActivityForChat, subscribeChatActivity } from '../lib/chat-activity';
+import { useUnread } from '../state/unread';
 
 const POLL_MS = 10_000;
 const MAX_LENGTH = 5000; // LINE のテキストメッセージの上限
@@ -150,6 +151,7 @@ const BubbleView = memo(function BubbleView({
  * - embedded(iPad の横など、2列表示の右側): 右側の枠の中に出す。ヘッダーは自前の細い帯
  */
 export function ChatView({ id, embedded = false, onChanged }: { id: string; embedded?: boolean; onChanged?: () => void }) {
+  const { refresh: refreshUnread } = useUnread();
   const c = useColors();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -273,6 +275,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
     setSendError(null);
     try {
       await api.sendChatText(id, body);
+      refreshUnread();
       setText('');
       await load(true);
       onChanged?.();
@@ -297,6 +300,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
     try {
       await api.updateChatStatus(current.friendId, next);
       onChanged?.();
+      refreshUnread(); // 下バーの数字を、すぐ最新にする
     } catch (e) {
       setChat((c) => (c ? { ...c, status: prev } : c));
       setStatusError(describeError(e, '対応状態を変更できませんでした'));

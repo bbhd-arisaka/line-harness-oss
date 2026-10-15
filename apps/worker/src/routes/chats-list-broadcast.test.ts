@@ -75,3 +75,51 @@ describe('個別トーク一覧と一斉配信', () => {
     expect(rows).toEqual([{ friend_id: 'f4', status: 'resolved', last_message_at: '2026-10-01T09:00:00.000+09:00', line_account_id: 'acc' }]);
   });
 });
+
+// アプリの下バー「トーク」の数字: その公式アカウントの「未対応」のトーク数(一覧の「未対応」と同じ数え方)
+describe('新着の合図(pulse)の未対応数', () => {
+  let fixture: ReturnType<typeof sqliteD1>;
+  beforeEach(() => {
+    fixture = sqliteD1();
+    fixture.sqlite.exec(schema);
+    fixture.sqlite.exec(`
+      INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret) VALUES
+        ('acc','ch','A','t','s'),('other','ch2','B','t','s');
+      INSERT INTO friends(id,line_user_id,line_account_id,display_name) VALUES
+        ('f1','U1','acc','a'),('f2','U2','acc','b'),('f3','U3','acc','c'),('f4','U4','acc','d'),('x1','U9','other','別アカウント');
+      INSERT INTO chats(id,friend_id,status,created_at,updated_at) VALUES
+        ('c1','f1','unread','2026-10-10T00:00:00.000','2026-10-10T00:00:00.000'),
+        ('c2','f2','in_progress','2026-10-10T00:00:00.000','2026-10-10T00:00:00.000'),
+        ('c3','f3','resolved','2026-10-10T00:00:00.000','2026-10-10T00:00:00.000'),
+        ('c4','f4','resolved','2026-10-10T00:00:00.000','2026-10-10T00:00:00.000'),
+        ('cx','x1','unread','2026-10-10T00:00:00.000','2026-10-10T00:00:00.000');
+    `);
+  });
+  afterEach(() => fixture.sqlite.close());
+
+  function appWith(allowed: string[] | null) {
+    const a = new Hono<{ Variables: { allowedAccountIds: string[] | null } }>();
+    a.use('*', async (c, next) => {
+      c.set('allowedAccountIds', allowed);
+      await next();
+    });
+    a.route('/', chats as never);
+    return a;
+  }
+
+  it('最新のトークの状態が「未対応」の人だけを、その公式アカウント分だけ数える', async () => {
+    const res = await appWith(null).request('/api/chats/pulse?unread=1&lineAccountId=acc', {}, { DB: fixture.db });
+    const body = (await res.json()) as { data: { unreadCount: number } };
+    expect(body.data.unreadCount).toBe(1); // f1 のみ(f2=対応中・f3/f4=対応済み・別アカウントは数えない)
+  });
+
+  it('unread=1 でなければ数えない(軽い確認のまま)', async () => {
+    const res = await appWith(null).request('/api/chats/pulse?lineAccountId=acc', {}, { DB: fixture.db });
+    expect(((await res.json()) as { data: Record<string, unknown> }).data).not.toHaveProperty('unreadCount');
+  });
+
+  it('見てよい公式アカウントの範囲外は数えない(403)', async () => {
+    const res = await appWith(['other']).request('/api/chats/pulse?unread=1&lineAccountId=acc', {}, { DB: fixture.db });
+    expect(res.status).toBe(403);
+  });
+});
