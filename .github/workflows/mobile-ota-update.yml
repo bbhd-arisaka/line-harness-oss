@@ -1,0 +1,43 @@
+name: Mobile OTA Update (ビルドを使わずにアプリを更新)
+
+# 画面や文言など、JavaScriptだけの変更を、TestFlight/App Store のアプリへ「ビルドなし」で配る(EAS Update)。
+# EASの無料枠は、iOSビルドが月15回まで。ビルドを使わないこの方法なら、回数を消費しない。
+# 配信先は、同じバージョン(app.json の version)のアプリだけ。アプリの次の起動時に受け取る(2回目の起動で反映されることがある)。
+# 使えないとき(=新しいビルドが必要): ネイティブの部品の追加・変更(expo-* の追加、app.json の plugins や権限、アイコン)、version を上げたとき。
+# 手動実行(Actions の「Run workflow」)。事前に、リポジトリの Secrets に EXPO_TOKEN を登録済み。
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 配信のメモ(何を変えたか)
+        required: false
+        default: update
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      # 配る前に、型チェックとテストを必ず通す
+      - run: npx tsc --noEmit
+      - run: npm test
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: 本番(production)のアプリへ配信
+        env:
+          MESSAGE: ${{ inputs.message }}
+        run: eas update --branch production --message "$MESSAGE" --non-interactive
