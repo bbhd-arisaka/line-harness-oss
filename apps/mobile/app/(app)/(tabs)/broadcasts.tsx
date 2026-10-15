@@ -6,7 +6,7 @@ import { AccountBar } from '../../../src/components/account-bar';
 import { Button, EmptyView, ErrorView, LoadingView } from '../../../src/components/ui';
 import { api } from '../../../src/state/services';
 import { useAccounts, useAuth } from '../../../src/state/session';
-import { describeSavedConditions, broadcastStatusLabel } from '../../../src/lib/broadcast';
+import { describeSavedConditions, broadcastStatusLabel, messageSummary } from '../../../src/lib/broadcast';
 import { formatListTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
 import type { BroadcastItem } from '../../../src/lib/types';
@@ -116,7 +116,8 @@ export default function BroadcastsScreen() {
                     {item.title}
                   </Text>
                   <Text style={{ color: c.textSub, fontSize: 13, marginTop: 2 }} numberOfLines={2}>
-                    {item.messageContent.replace(/\s+/g, ' ')}
+                    {messageSummary({ type: item.messageType, content: item.messageContent })}
+                    {(item.messageCount ?? 1) > 1 ? `  (全${item.messageCount}通)` : ''}
                   </Text>
                   <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 4 }}>
                     {broadcastStatusLabel(item.status)}

@@ -192,6 +192,11 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
   const raw = broadcast as unknown as Record<string, unknown>
   const accountId = raw.lineAccountId as string | null
 
+  // 配信するメッセージの全部(古いデータは1通だけ)。上から順に届く
+  const shownMessages = broadcast.messages && broadcast.messages.length > 0
+    ? broadcast.messages
+    : [{ type: broadcast.messageType, content: broadcast.messageContent }]
+
   return (
     <div>
       <Header
@@ -212,21 +217,28 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* Left: Preview */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">メッセージプレビュー</h3>
-          {broadcast.messageType === 'flex' ? (
-            <FlexPreviewComponent content={broadcast.messageContent} maxWidth={300} />
-          ) : broadcast.messageType === 'image' ? (
-            (() => {
-              try {
-                const img = JSON.parse(broadcast.messageContent)
-                return <img src={img.originalContentUrl} alt="" className="max-w-[300px] rounded-lg" />
-              } catch { return <p className="text-gray-400 text-sm">画像プレビュー不可</p> }
-            })()
-          ) : (
-            <div className="bg-green-500 text-white rounded-2xl rounded-tl-sm px-4 py-3 max-w-[300px] text-sm whitespace-pre-wrap">
-              {broadcast.messageContent}
-            </div>
-          )}
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">メッセージプレビュー{shownMessages.length > 1 ? `(${shownMessages.length}通・上から順に届きます)` : ''}</h3>
+          <div className="space-y-3">
+            {shownMessages.map((m, i) => (
+              <div key={i}>
+                {shownMessages.length > 1 && <p className="mb-1 text-xs text-gray-400">{i + 1}通目</p>}
+                {m.type === 'flex' ? (
+                  <FlexPreviewComponent content={m.content} maxWidth={300} />
+                ) : m.type === 'image' ? (
+                  (() => {
+                    try {
+                      const img = JSON.parse(m.content)
+                      return <img src={img.originalContentUrl} alt="" className="max-w-[300px] rounded-lg" />
+                    } catch { return <p className="text-gray-400 text-sm">画像プレビュー不可</p> }
+                  })()
+                ) : (
+                  <div className="bg-green-500 text-white rounded-2xl rounded-tl-sm px-4 py-3 max-w-[300px] text-sm whitespace-pre-wrap">
+                    {m.content}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Right: Settings */}
@@ -235,7 +247,7 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between">
               <dt className="text-gray-500">種別</dt>
-              <dd className="text-gray-900">{broadcast.messageType === 'text' ? 'テキスト' : broadcast.messageType === 'image' ? '画像' : 'Flex'}</dd>
+              <dd className="text-gray-900">{shownMessages.length > 1 ? `${shownMessages.length}通(${shownMessages.map((m) => (m.type === 'text' ? 'テキスト' : m.type === 'image' ? '画像' : 'Flex')).join(' → ')})` : broadcast.messageType === 'text' ? 'テキスト' : broadcast.messageType === 'image' ? '画像' : 'Flex'}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-gray-500">対象</dt>

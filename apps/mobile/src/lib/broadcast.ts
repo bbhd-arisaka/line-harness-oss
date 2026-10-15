@@ -105,6 +105,120 @@ export function checkMessage(text: string): MessageCheck {
   return { ok: true };
 }
 
+/* ────────────────── 配信するメッセージ(最大5通・上から順に届く) ────────────────── */
+
+/** LINE の1回の配信に載せられるメッセージの上限 */
+export const MAX_BROADCAST_MESSAGES = 5;
+
+export type DraftKind = 'text' | 'image';
+
+/** 画面で作るメッセージ1通。key は、並べ替えても入力欄の状態が混ざらないための印(送信しない) */
+export interface DraftMessage {
+  key: string;
+  kind: DraftKind;
+  /** テキスト: 本文(差し込み語・フォームのタグコードを含められる) */
+  text: string;
+  /** 画像: アップロード済みの画像のURL(https) */
+  imageUrl: string | null;
+}
+
+export function newDraftMessage(kind: DraftKind = 'text', key: string = newUuid()): DraftMessage {
+  return { key, kind, text: '', imageUrl: null };
+}
+
+/** サーバーに送る1通の形(POST /api/broadcasts の messages) */
+export interface ApiMessage {
+  type: 'text' | 'image';
+  content: string;
+}
+
+/** 画面のメッセージを、サーバーに送る形にする(画像は、LINE が求める JSON の文字列) */
+export function toApiMessages(messages: DraftMessage[]): ApiMessage[] {
+  return messages.map((m): ApiMessage =>
+    m.kind === 'image'
+      ? { type: 'image', content: JSON.stringify({ originalContentUrl: m.imageUrl, previewImageUrl: m.imageUrl }) }
+      : { type: 'text', content: m.text.trim() },
+  );
+}
+
+/** サーバーが受け付ける差し込み語・タグ(これ以外の {{…}} は、送る前に止める) */
+const KNOWN_TAG_RE = /^(name|liff_id|form_url:\S+)$/;
+const ANY_TAG_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+/** 本文の中の、使えない {{…}} を探す(最初に見つかった分) */
+export function findUnsupportedTag(text: string): string | null {
+  for (const m of text.matchAll(ANY_TAG_RE)) {
+    if (!KNOWN_TAG_RE.test(m[1].trim())) return `{{${m[1].trim()}}}`;
+  }
+  return null;
+}
+
+/** 全メッセージの確認。問題があれば、「◯通目: …」の日本語の理由を返す */
+export function checkMessages(messages: DraftMessage[]): MessageCheck {
+  if (messages.length === 0) return { ok: false, reason: 'メッセージを1通以上入れてください' };
+  if (messages.length > MAX_BROADCAST_MESSAGES) return { ok: false, reason: `メッセージは${MAX_BROADCAST_MESSAGES}通までです` };
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const label = messages.length > 1 ? `${i + 1}通目: ` : '';
+    if (m.kind === 'image') {
+      if (!m.imageUrl) return { ok: false, reason: `${label}画像を選んでください` };
+      continue;
+    }
+    const c = checkMessage(m.text);
+    if (!c.ok) return { ok: false, reason: `${label}${c.reason}` };
+    const bad = findUnsupportedTag(m.text);
+    if (bad) return { ok: false, reason: `${label}使えない差し込み語があります(${bad})。「名前」「フォーム」のボタンから入れてください` };
+  }
+  return { ok: true };
+}
+
+/** 一覧・履歴に出す、メッセージ1通の短い説明(画像は「画像」) */
+export function messageSummary(m: { type: string; content: string }): string {
+  if (m.type === 'image') return '[画像]';
+  if (m.type === 'flex') return '[Flexメッセージ]';
+  return m.content.replace(/\s+/g, ' ');
+}
+
+/* ────────────────── 本文の中の差し込み語・フォームのタグ(色付きの枠で見せる) ────────────────── */
+
+export type TagPart =
+  | { kind: 'text'; text: string }
+  | { kind: 'name' }
+  | { kind: 'form'; formId: string }
+  | { kind: 'other'; code: string };
+
+/** 本文を、ふつうの文字 / 名前の差し込み / フォームのタグ / その他の差し込み語 に分ける */
+export function splitTags(text: string): TagPart[] {
+  const parts: TagPart[] = [];
+  let last = 0;
+  for (const m of text.matchAll(ANY_TAG_RE)) {
+    const idx = m.index ?? 0;
+    if (idx > last) parts.push({ kind: 'text', text: text.slice(last, idx) });
+    const code = m[1].trim();
+    if (code === 'name') parts.push({ kind: 'name' });
+    else if (code.startsWith('form_url:')) parts.push({ kind: 'form', formId: code.slice('form_url:'.length) });
+    else parts.push({ kind: 'other', code });
+    last = idx + m[0].length;
+  }
+  if (last < text.length) parts.push({ kind: 'text', text: text.slice(last) });
+  return parts;
+}
+
+/** 入力欄に入れる、タグコード */
+export const NAME_TAG = '{{name}}';
+export function formTag(formId: string): string {
+  return `{{form_url:${formId}}}`;
+}
+
+/** カーソル位置(選択範囲)に、文字を入れる。戻り値は、新しい本文と、入れたあとのカーソル位置 */
+export function insertAtSelection(text: string, insert: string, selection: { start: number; end: number } | null): { text: string; cursor: number } {
+  const start = selection ? Math.min(selection.start, selection.end) : text.length;
+  const end = selection ? Math.max(selection.start, selection.end) : text.length;
+  const safeStart = Math.max(0, Math.min(start, text.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, text.length));
+  return { text: text.slice(0, safeStart) + insert + text.slice(safeEnd), cursor: safeStart + insert.length };
+}
+
 export const BROADCAST_STATUS_LABEL: Record<string, string> = {
   draft: '下書き',
   scheduled: '予約中',
@@ -117,9 +231,10 @@ export function broadcastStatusLabel(status: string): string {
 }
 
 /** 送る前の確認ダイアログの本文 */
-export function confirmSendMessage(accountName: string, count: number, narrowed: boolean): string {
+export function confirmSendMessage(accountName: string, count: number, narrowed: boolean, messageCount = 1): string {
   const who = narrowed ? '条件に合う' : '友だち全員の';
-  return `「${accountName}」の${who}${count.toLocaleString('ja-JP')}人に、いますぐ送ります。送ったあとは取り消せません。`;
+  const how = messageCount > 1 ? `${messageCount}通のメッセージを上から順に、` : '';
+  return `「${accountName}」の${who}${count.toLocaleString('ja-JP')}人に、${how}いますぐ送ります。送ったあとは取り消せません。`;
 }
 
 /** UUID v4(作成の二重実行を防ぐ Idempotency-Key 用。サーバーは UUID の形を求める) */
@@ -131,6 +246,6 @@ export function newUuid(random: () => number = Math.random): string {
 }
 
 /** 同じ内容なら同じキー、内容が変わったら新しいキーにするための、内容の識別 */
-export function draftSignature(parts: { accountId: string; message: string }): string {
-  return `${parts.accountId}\n${parts.message.trim()}`;
+export function draftSignature(parts: { accountId: string; messages: DraftMessage[] }): string {
+  return `${parts.accountId}\n${JSON.stringify(toApiMessages(parts.messages))}`;
 }

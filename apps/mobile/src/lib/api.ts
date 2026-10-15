@@ -17,8 +17,9 @@ import type {
   PushSettings,
   TagItem,
   UpdatedChat,
+  FormOption,
 } from './types';
-import type { SegmentCondition } from './broadcast';
+import type { ApiMessage, SegmentCondition } from './broadcast';
 import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
 
 /** 本番 API。EXPO_PUBLIC_API_URL で上書きできる。 */
@@ -179,12 +180,17 @@ export function createApiClient(options: ApiClientOptions) {
     listBroadcasts: (lineAccountId: string) => request<BroadcastItem[]>('GET', '/api/broadcasts', { query: { lineAccountId } }),
     getBroadcast: (id: string) => request<BroadcastItem>('GET', `/api/broadcasts/${encodeURIComponent(id)}`),
     getBroadcastProgress: (id: string) => request<BroadcastProgress>('GET', `/api/broadcasts/${encodeURIComponent(id)}/progress`),
-    /** 下書きを作る(送らない)。key は UUID: 同じキーで同じ内容なら、二重に作られない */
-    createBroadcastDraft: (body: { title: string; messageContent: string; lineAccountId: string }, key: string) =>
+    /** 下書きを作る(送らない)。messages は1〜5通(順番がそのまま配信順)。key は UUID: 同じキーで同じ内容なら、二重に作られない */
+    createBroadcastDraft: (body: { title: string; messages: ApiMessage[]; lineAccountId: string }, key: string) =>
       request<BroadcastItem>('POST', '/api/broadcasts', {
-        body: { title: body.title, messageType: 'text', messageContent: body.messageContent, targetType: 'all', lineAccountId: body.lineAccountId },
+        body: { title: body.title, messages: body.messages, targetType: 'all', lineAccountId: body.lineAccountId },
         headers: { 'Idempotency-Key': key },
       }),
+    /** 配信に入れられるフォームの一覧(回答フォームのリンクを本文に入れるため)。id=タグコードに使う・name=表示名 */
+    listForms: () => request<FormOption[]>('GET', '/api/forms'),
+    /** 画像をアップロードして、配信に使えるURLを得る(JPEG/PNG・base64) */
+    uploadImage: (base64: string, mimeType: string, filename?: string) =>
+      request<{ url: string; key: string }>('POST', '/api/images', { body: { data: base64, mimeType, filename } }),
     /** 下書きを、いますぐ友だち全員に送る */
     sendBroadcastToAll: (id: string) => request<BroadcastItem>('POST', `/api/broadcasts/${encodeURIComponent(id)}/send`),
     /** 下書きを、条件で絞り込んだ友だちに送る(順番に配信される) */

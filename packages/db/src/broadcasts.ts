@@ -26,6 +26,8 @@ export interface Broadcast {
   alt_text?: string | null;
   /** 直近の送信失敗理由 (クォータ不足ガード等)。送信成功で NULL に戻る。 */
   last_error?: string | null;
+  /** 2通目以降のメッセージ(最大4通)の JSON 配列。NULL = 1通だけ。形は services/broadcast-messages.ts。 */
+  extra_messages?: string | null;
 }
 
 export async function getBroadcasts(db: D1Database, accountId?: string): Promise<Broadcast[]> {
@@ -92,6 +94,8 @@ export interface CreateBroadcastInput {
   trackLinks?: boolean;
   lineAccountId?: string | null;
   altText?: string | null;
+  /** 2通目以降のメッセージ(JSON 文字列)。1通だけなら省略 */
+  extraMessages?: string | null;
 }
 
 export async function createBroadcast(
@@ -106,8 +110,8 @@ export async function createBroadcast(
   await db
     .prepare(
       `INSERT INTO broadcasts
-         (id, title, message_type, message_content, target_type, target_tag_id, status, scheduled_at, sent_at, total_count, success_count, account_ids, dedup_priority, track_links, line_account_id, alt_text, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?)`,
+         (id, title, message_type, message_content, target_type, target_tag_id, status, scheduled_at, sent_at, total_count, success_count, account_ids, dedup_priority, track_links, line_account_id, alt_text, extra_messages, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -123,6 +127,7 @@ export async function createBroadcast(
       input.trackLinks === false ? 0 : 1,
       input.lineAccountId ?? null,
       input.altText ?? null,
+      input.extraMessages ?? null,
       now,
     )
     .run();
@@ -141,6 +146,7 @@ export type UpdateBroadcastInput = Partial<
     | 'status'
     | 'scheduled_at'
     | 'track_links'
+    | 'extra_messages'
   >
 >;
 
@@ -183,6 +189,10 @@ export async function updateBroadcast(
   if (updates.track_links !== undefined) {
     fields.push('track_links = ?');
     values.push(updates.track_links ? 1 : 0);
+  }
+  if (updates.extra_messages !== undefined) {
+    fields.push('extra_messages = ?');
+    values.push(updates.extra_messages);
   }
 
   if (fields.length > 0) {

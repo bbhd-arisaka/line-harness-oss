@@ -2,6 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   broadcastStatusLabel,
   checkMessage,
+  checkMessages,
+  findUnsupportedTag,
+  formTag,
+  insertAtSelection,
+  MAX_BROADCAST_MESSAGES,
+  messageSummary,
+  newDraftMessage,
+  splitTags,
+  toApiMessages,
+  type DraftMessage,
   confirmSendMessage,
   defaultTitle,
   describeRule,
@@ -65,6 +75,9 @@ describe('メッセージ・題名・確認', () => {
     expect(defaultTitle('あ'.repeat(30), d)).toBe(`${'あ'.repeat(20)}(10/15)`);
     expect(defaultTitle('   ', d)).toBe('一斉配信(10/15)');
   });
+  it('メッセージが2通以上のときは、確認文に通数と「上から順」を入れる', () => {
+    expect(confirmSendMessage('土岐店', 5, true, 3)).toBe('「土岐店」の条件に合う5人に、3通のメッセージを上から順に、いますぐ送ります。送ったあとは取り消せません。');
+  });
   it('送る前の確認文: アカウント名・人数・絞り込みの有無・取り消せないこと', () => {
     expect(confirmSendMessage('土岐店', 1234, false)).toBe('「土岐店」の友だち全員の1,234人に、いますぐ送ります。送ったあとは取り消せません。');
     expect(confirmSendMessage('土岐店', 5, true)).toBe('「土岐店」の条件に合う5人に、いますぐ送ります。送ったあとは取り消せません。');
@@ -86,9 +99,66 @@ describe('作成の二重実行の防止(Idempotency-Key)', () => {
     expect(newUuid(() => 0)).toMatch(re);
     expect(newUuid(() => 0.999)).toMatch(re);
   });
-  it('内容(アカウント・本文)が同じなら同じ識別、変われば別', () => {
-    expect(draftSignature({ accountId: 'A', message: ' hi ' })).toBe(draftSignature({ accountId: 'A', message: 'hi' }));
-    expect(draftSignature({ accountId: 'A', message: 'hi' })).not.toBe(draftSignature({ accountId: 'B', message: 'hi' }));
-    expect(draftSignature({ accountId: 'A', message: 'hi' })).not.toBe(draftSignature({ accountId: 'A', message: 'ho' }));
+  it('内容(アカウント・本文・順番・種類)が同じなら同じ識別、変われば別', () => {
+    const t = (text: string, key = 'k'): DraftMessage => ({ key, kind: 'text', text, imageUrl: null });
+    expect(draftSignature({ accountId: 'A', messages: [t(' hi ')] })).toBe(draftSignature({ accountId: 'A', messages: [t('hi', 'other-key')] }));
+    expect(draftSignature({ accountId: 'A', messages: [t('hi')] })).not.toBe(draftSignature({ accountId: 'B', messages: [t('hi')] }));
+    expect(draftSignature({ accountId: 'A', messages: [t('hi')] })).not.toBe(draftSignature({ accountId: 'A', messages: [t('ho')] }));
+    // 順番を入れ替えたら別の配信(二重作成防止のキーが変わる)
+    expect(draftSignature({ accountId: 'A', messages: [t('1'), t('2')] })).not.toBe(draftSignature({ accountId: 'A', messages: [t('2'), t('1')] }));
+  });
+});
+
+// 一斉配信のメッセージは最大5通・上から順に届く(2026-10-15)。画像・名前の差し込み・フォームも使える
+describe('配信するメッセージ(最大5通)', () => {
+  const text = (t: string): DraftMessage => ({ ...newDraftMessage('text', `k-${t}`), text: t });
+  const image = (url: string | null): DraftMessage => ({ ...newDraftMessage('image', 'img'), imageUrl: url });
+
+  it('サーバーに送る形: テキストは前後の空白を除き、画像は LINE が求める JSON', () => {
+    expect(toApiMessages([text('  こんにちは  '), image('https://example.test/a.jpg')])).toEqual([
+      { type: 'text', content: 'こんにちは' },
+      { type: 'image', content: JSON.stringify({ originalContentUrl: 'https://example.test/a.jpg', previewImageUrl: 'https://example.test/a.jpg' }) },
+    ]);
+  });
+  it('通数は1〜5通。0通・6通は送れない', () => {
+    expect(checkMessages([])).toMatchObject({ ok: false });
+    expect(checkMessages(Array.from({ length: MAX_BROADCAST_MESSAGES }, (_, i) => text(`m${i}`)))).toEqual({ ok: true });
+    expect(checkMessages(Array.from({ length: MAX_BROADCAST_MESSAGES + 1 }, (_, i) => text(`m${i}`)))).toMatchObject({ ok: false });
+  });
+  it('問題は「◯通目」つきで返す(1通だけなら、通目は付けない)', () => {
+    expect(checkMessages([text('  ')])).toEqual({ ok: false, reason: 'メッセージを入力してください' });
+    expect(checkMessages([text('a'), text('')])).toEqual({ ok: false, reason: '2通目: メッセージを入力してください' });
+    expect(checkMessages([text('a'), image(null)])).toEqual({ ok: false, reason: '2通目: 画像を選んでください' });
+    expect(checkMessages([text('a'), image('https://example.test/a.jpg')])).toEqual({ ok: true });
+  });
+  it('名前・フォームのタグは使える。それ以外の {{…}} は、送る前に止める', () => {
+    expect(checkMessages([text(`こんにちは{{name}}さん ${formTag('f-1')}`)])).toEqual({ ok: true });
+    expect(findUnsupportedTag('{{name}} {{liff_id}} {{form_url:abc}}')).toBeNull();
+    expect(findUnsupportedTag('{{coupon}}')).toBe('{{coupon}}');
+    expect(checkMessages([text('a'), text('{{coupon}}')])).toMatchObject({ ok: false, reason: expect.stringContaining('2通目') });
+  });
+  it('本文を、ふつうの文字・名前・フォーム・その他に分ける(色付きの枠で見せるため)', () => {
+    expect(splitTags(`こんにちは{{name}}さん\n回答は${formTag('f-1')}から {{foo}}`)).toEqual([
+      { kind: 'text', text: 'こんにちは' },
+      { kind: 'name' },
+      { kind: 'text', text: 'さん\n回答は' },
+      { kind: 'form', formId: 'f-1' },
+      { kind: 'text', text: 'から ' },
+      { kind: 'other', code: 'foo' },
+    ]);
+    expect(splitTags('タグなし')).toEqual([{ kind: 'text', text: 'タグなし' }]);
+    expect(splitTags('')).toEqual([]);
+  });
+  it('カーソル位置に入れる(選択範囲は置き換え・範囲外でも壊れない・位置が不明なら末尾)', () => {
+    expect(insertAtSelection('こんにちは', '{{name}}', { start: 2, end: 2 })).toEqual({ text: 'こん{{name}}にちは', cursor: 10 });
+    expect(insertAtSelection('abcdef', 'X', { start: 1, end: 4 })).toEqual({ text: 'aXef', cursor: 2 });
+    expect(insertAtSelection('abc', 'X', { start: 99, end: 120 })).toEqual({ text: 'abcX', cursor: 4 });
+    expect(insertAtSelection('abc', 'X', null)).toEqual({ text: 'abcX', cursor: 4 });
+    expect(insertAtSelection('abcdef', 'X', { start: 4, end: 1 })).toEqual({ text: 'aXef', cursor: 2 });
+  });
+  it('履歴・一覧の短い説明', () => {
+    expect(messageSummary({ type: 'image', content: '{}' })).toBe('[画像]');
+    expect(messageSummary({ type: 'flex', content: '{}' })).toBe('[Flexメッセージ]');
+    expect(messageSummary({ type: 'text', content: 'こんにちは\n  世界' })).toBe('こんにちは 世界');
   });
 });

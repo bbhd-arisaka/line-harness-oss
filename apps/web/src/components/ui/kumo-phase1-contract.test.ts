@@ -54,6 +54,7 @@ const migratedFiles = [
   '../friends/friend-table.tsx',
   '../friends/tag-badge.tsx',
   '../broadcasts/broadcast-form.tsx',
+  '../broadcasts/message-list-editor.tsx',
   '../broadcasts/broadcast-detail.tsx',
   '../broadcasts/segment-builder.tsx',
   '../broadcasts/test-send-section.tsx',

@@ -26,6 +26,17 @@ import {
 } from './render-message.js';
 import { createBroadcastRetryKey } from './broadcast-retry-key.js';
 import {
+  broadcastHasRecipientVariables,
+  firstUnsupportedVariables,
+  jstPlusMs,
+  parseExtraMessages,
+  prepareExtraMessages,
+  renderMessageItems,
+  scaleAudience,
+  serializeExtraMessages,
+  type BroadcastMessageItem,
+} from './broadcast-messages.js';
+import {
   isQuotaExceeded,
   quotaEnabled,
   getQuotaUsage,
@@ -189,7 +200,8 @@ export async function processBroadcastSend(
   lineClient = await resolveBroadcastSender(db, broadcast, lineClient);
   await updateBroadcastStatus(db, broadcastId, 'sending');
 
-  const unsupportedVariables = getUnsupportedBroadcastVariables(broadcast.message_content);
+  // 1通目と2通目以降(最大5通)のどれかに、使えない差し込み語がないか
+  const unsupportedVariables = firstUnsupportedVariables(broadcast);
   if (unsupportedVariables.length > 0) {
     throw new Error(
       `Unsupported broadcast variables: ${unsupportedVariables.map((v) => `{{${v}}}`).join(', ')}`,
@@ -199,7 +211,7 @@ export async function processBroadcastSend(
   // A recipient variable cannot be delivered through LINE broadcast or
   // multicast because those endpoints accept one shared Message object.
   // Convert scheduled/direct sends into the resumable queue path.
-  if (hasRecipientVariables(broadcast.message_content)
+  if (broadcastHasRecipientVariables(broadcast)
     && broadcast.target_type !== 'multi-account-dedup') {
     const raw = broadcast as unknown as Record<string, unknown>;
     const accountId = raw.line_account_id as string | null;
@@ -284,15 +296,31 @@ export async function processBroadcastSend(
   // ここは tag / all 系の単一 account 経路のみ (multi-account-dedup は冒頭で queue に
   // 委譲済みで到達しない。dedup の {{liff_id}} 置換は dedup-broadcast.ts 側で per-account
   // に行う)。
+  let sendLiffId: string | null = null;
   if (broadcastAccountId) {
     const { getLineAccountById: getLA } = await import('@line-crm/db');
     const acct = await getLA(db, broadcastAccountId);
-    const liffId = (acct as unknown as { liff_id?: string | null } | null)?.liff_id ?? null;
-    finalContent = renderBroadcastMessageContent(finalType, finalContent, { liffId });
+    sendLiffId = (acct as unknown as { liff_id?: string | null } | null)?.liff_id ?? null;
+    finalContent = renderBroadcastMessageContent(finalType, finalContent, { liffId: sendLiffId });
   }
   assertNoUnresolvedBroadcastVariables(finalContent);
   const altText = (broadcast as unknown as Record<string, unknown>).alt_text as string | undefined;
   const message = buildMessage(finalType, finalContent, altText || undefined);
+  // 2通目以降(最大4通): フォームのタグ→リンク、URL→計測リンク、{{liff_id}} を済ませて、上から順に送る
+  const extraPrepared = await prepareExtraMessages(db, parseExtraMessages(broadcast.extra_messages), {
+    workerUrl,
+    accountId: broadcastAccountId,
+    trackLinks: broadcast.track_links !== 0,
+    applyTracking: true,
+  });
+  const extraSent = renderMessageItems(applyLiff(extraPrepared.items, sendLiffId), {}, buildMessage);
+  const messages: Message[] = [message, ...extraSent.map((e) => e.message)];
+  // 配信の記録(トーク履歴)に残す、全メッセージ。1通目は従来どおり元の内容
+  const logItems: Array<{ type: string; content: string }> = [
+    { type: broadcast.message_type, content: broadcast.message_content },
+    ...extraSent.map((e) => ({ type: e.type, content: e.content })),
+  ];
+  const extraKeyParts = extraSent.flatMap((e) => [e.type, e.content]);
   let totalCount = 0;
   let successCount = 0;
   let attempted = false;
@@ -327,17 +355,18 @@ export async function processBroadcastSend(
             .first<{ count: number }>();
       // 送信前クォータガード: 残量が全員配信1回分に満たなければ中止する。
       // throw → 下の catch が draft へ戻す (last_error に理由記録済み)。
-      await assertLinePlanQuota(db, lineClient, broadcast, allTargetGuardAudience(db, broadcastAccountId));
+      await assertLinePlanQuota(db, lineClient, broadcast, scaleAudience(allTargetGuardAudience(db, broadcastAccountId), messages.length));
       // Use LINE broadcast API (sends to all followers)
       const retryKey = await createBroadcastRetryKey(
         broadcast.id,
         'broadcast',
         finalType,
         finalContent,
+        ...extraKeyParts,
       );
       totalCount = followerRow?.count ?? 0;
       attempted = true;
-      const { requestId } = await lineClient.broadcast([message], retryKey);
+      const { requestId } = await lineClient.broadcast(messages, retryKey);
       accepted = true;
       successCount = totalCount;
       await updateBroadcastLineRequestId(db, broadcast.id, requestId, null);
@@ -353,7 +382,7 @@ export async function processBroadcastSend(
       // 送信前クォータガード (all と同じ)。バッチ途中でのクォータ切れによる
       // 部分送信をここで未然に防ぐ (タグ対象は followingFriends が実母数なので
       // そのまま渡す)。
-      await assertLinePlanQuota(db, lineClient, broadcast, totalCount);
+      await assertLinePlanQuota(db, lineClient, broadcast, totalCount * messages.length);
 
       // Send in batches with stealth delays to mimic human patterns
       const now = jstNow();
@@ -383,9 +412,10 @@ export async function processBroadcastSend(
             'multicast',
             ...batch.map((f) => f.id),
             JSON.stringify(batchMessage),
+            ...extraKeyParts,
           );
           attempted = true;
-          await lineClient.multicast(lineUserIds, [batchMessage], [unit], retryKey);
+          await lineClient.multicast(lineUserIds, [batchMessage, ...extraSent.map((e) => e.message)], [unit], retryKey);
           batchAccepted = true;
           accepted = true;
           successCount += batch.length;
@@ -394,11 +424,13 @@ export async function processBroadcastSend(
           // line_account_id は broadcast 設定時のアカウントを記録 (送信時点の固定値)。
           // friends.line_account_id は webhook で書き換わる mutable なので使わない。
           const broadcastAccount = (broadcast as unknown as Record<string, unknown>).line_account_id as string | null;
-          const logStmts = batch.map(friend =>
-            db.prepare(
-              `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
-               VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, 'broadcast', ?, ?)`,
-            ).bind(crypto.randomUUID(), friend.id, broadcast.message_type, broadcast.message_content, broadcastId, broadcastAccount, now),
+          const logStmts = batch.flatMap(friend =>
+            logItems.map((m, i) =>
+              db.prepare(
+                `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
+                 VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, 'broadcast', ?, ?)`,
+              ).bind(crypto.randomUUID(), friend.id, m.type, m.content, broadcastId, broadcastAccount, jstPlusMs(now, i)),
+            ),
           );
           await db.batch(logStmts);
         } catch (err) {
@@ -645,14 +677,35 @@ async function processQueuedBroadcastBatches(
 
   // {{liff_id}} 置換 (single account 経路のみ; multi は dedup 側で per-account 置換)。
   const queuedAccountId = raw.line_account_id as string | null;
+  let queuedLiffId: string | null = null;
   if (queuedAccountId && broadcast.target_type !== 'multi-account-dedup') {
     const { getLineAccountById: getLA } = await import('@line-crm/db');
     const acct = await getLA(db, queuedAccountId);
-    const liffId = (acct as unknown as { liff_id?: string | null } | null)?.liff_id ?? null;
-    finalContent = renderBroadcastMessageContent(finalType, finalContent, { liffId });
+    queuedLiffId = (acct as unknown as { liff_id?: string | null } | null)?.liff_id ?? null;
+    finalContent = renderBroadcastMessageContent(finalType, finalContent, { liffId: queuedLiffId });
   }
   const altText = raw.alt_text as string | undefined;
   const message = buildMessage(finalType, finalContent, altText || undefined);
+
+  // 2通目以降(最大4通)。フォームのタグ→リンクは毎回、URL→計測リンクは「最初の1回だけ」(やり直すと計測リンクが二重にできるため)。
+  // 計測リンクへ変えたら、次のバッチ以降のために保存する(1通目と同じ)。
+  const queuedExtras = await prepareExtraMessages(db, parseExtraMessages(broadcast.extra_messages), {
+    workerUrl,
+    accountId: queuedAccountId,
+    trackLinks: broadcast.track_links !== 0,
+    applyTracking: batchOffset === 0 && !isDedupContinuation,
+  });
+  if (queuedExtras.changed) {
+    await db.prepare('UPDATE broadcasts SET extra_messages = ? WHERE id = ?')
+      .bind(serializeExtraMessages(queuedExtras.items), broadcast.id).run();
+  }
+  const extraItems = applyLiff(queuedExtras.items, queuedLiffId);
+  const queuedExtraKeyParts = extraItems.flatMap((m) => [m.type, m.content]);
+  // 配信の記録(トーク履歴)に残す、全メッセージ(友だちごとの差し込みが無いときの内容)
+  const queuedLogItems = (items: Array<{ type: string; content: string }>) => [
+    { type: finalType, content: finalContent },
+    ...items,
+  ];
 
   // multi-account-dedup: delegate to processMultiAccountDedupBroadcast.
   // dedup ループは内部で per-account に {{liff_id}} 置換 + buildMessage する。
@@ -738,7 +791,7 @@ async function processQueuedBroadcastBatches(
     const followerCount = followerRow?.count ?? 0;
     // 送信前クォータガード (queue 経路は draft 戻しで中止)。
     if (await revertQueuedBroadcastOnQuotaShortfall(
-      db, lineClient, broadcast, allTargetGuardAudience(db, accountId),
+      db, lineClient, broadcast, scaleAudience(allTargetGuardAudience(db, accountId), 1 + extraItems.length),
     )) {
       return;
     }
@@ -747,8 +800,10 @@ async function processQueuedBroadcastBatches(
       'queued-broadcast',
       finalType,
       finalContent,
+      ...queuedExtraKeyParts,
     );
-    const { requestId } = await lineClient.broadcast([message], retryKey);
+    const allExtra = renderMessageItems(extraItems, {}, buildMessage);
+    const { requestId } = await lineClient.broadcast([message, ...allExtra.map((e) => e.message)], retryKey);
     await updateBroadcastLineRequestId(db, broadcast.id, requestId, null);
     await createBroadcastInsight(db, broadcast.id);
     await updateBroadcastStatus(db, broadcast.id, 'sent', { totalCount: followerCount, successCount: followerCount });
@@ -762,7 +817,7 @@ async function processQueuedBroadcastBatches(
 
     // 送信前クォータガード (fresh 開始時のみ — まだ1通も送っていないので draft へ
     // 戻して安全に中止できる。resume 中の row は既存のバッチ単位失敗処理に任せる)。
-    if (await revertQueuedBroadcastOnQuotaShortfall(db, lineClient, broadcast, friends.length)) {
+    if (await revertQueuedBroadcastOnQuotaShortfall(db, lineClient, broadcast, friends.length * (1 + extraItems.length))) {
       return;
     }
   }
@@ -771,17 +826,23 @@ async function processQueuedBroadcastBatches(
   const now = jstNow();
   const unit = `bcast_${broadcast.id.slice(0, 8).replace(/[^a-zA-Z0-9_]/g, '_')}`;
   let currentOffset = batchOffset;
-  const personalized = hasRecipientVariables(finalContent);
-  const unsupportedVariables = getUnsupportedBroadcastVariables(finalContent);
+  const personalized = hasRecipientVariables(finalContent) || extraItems.some((m) => hasRecipientVariables(m.content));
+  const unsupportedVariables = [
+    ...getUnsupportedBroadcastVariables(finalContent),
+    ...extraItems.flatMap((m) => getUnsupportedBroadcastVariables(m.content)),
+  ];
   if (unsupportedVariables.length > 0) {
     await updateBroadcastBatchProgress(db, broadcast.id, batchOffset, 0);
     throw new Error(
       `Unsupported broadcast variables: ${unsupportedVariables.map((v) => `{{${v}}}`).join(', ')}`,
     );
   }
+  // 友だちごとの差し込みが無いときは、2通目以降を、全員共通のメッセージとして先に作っておく
+  let sharedExtra: Array<{ type: string; content: string; message: Message }> = [];
   if (!personalized) {
     try {
       assertNoUnresolvedBroadcastVariables(finalContent);
+      sharedExtra = renderMessageItems(extraItems, {}, buildMessage);
     } catch (err) {
       await updateBroadcastBatchProgress(db, broadcast.id, batchOffset, 0);
       throw err;
@@ -824,29 +885,29 @@ async function processQueuedBroadcastBatches(
           });
           assertNoUnresolvedBroadcastVariables(renderedContent);
           const personalizedMessage = buildMessage(finalType, renderedContent, altText || undefined);
+          // 2通目以降も、この友だちの名前を入れて作る(上から順に、1リクエストで送る)
+          const personalizedExtra = renderMessageItems(extraItems, { displayName: friend.display_name }, buildMessage);
           const retryKey = await createBroadcastRetryKey(
             broadcast.id,
             'personalized-push',
             friend.id,
             finalType,
             renderedContent,
+            ...personalizedExtra.flatMap((e) => [e.type, e.content]),
           );
-          await lineClient.pushMessage(friend.line_user_id, [personalizedMessage], retryKey, [unit]);
+          await lineClient.pushMessage(friend.line_user_id, [personalizedMessage, ...personalizedExtra.map((e) => e.message)], retryKey, [unit]);
           recipientAccepted = true;
 
-          await db.prepare(
-            `INSERT INTO messages_log
-              (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
-             VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, 'broadcast', ?, ?)`,
-          ).bind(
-            crypto.randomUUID(),
-            friend.id,
-            finalType,
-            renderedContent,
-            broadcast.id,
-            accountId,
-            now,
-          ).run();
+          // 全メッセージの記録を、1回のまとまりで残す(途中までしか残らない状態を避ける)
+          await db.batch(
+            [{ type: finalType, content: renderedContent }, ...personalizedExtra.map((e) => ({ type: e.type, content: e.content }))].map((m, i) =>
+              db.prepare(
+                `INSERT INTO messages_log
+                  (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
+                 VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, 'broadcast', ?, ?)`,
+              ).bind(crypto.randomUUID(), friend.id, m.type, m.content, broadcast.id, accountId, jstPlusMs(now, i)),
+            ),
+          );
           currentOffset++;
         } catch (err) {
           if (recipientAccepted) recordingError = BROADCAST_RECORDING_ERROR;
@@ -857,7 +918,7 @@ async function processQueuedBroadcastBatches(
             `UPDATE broadcasts
                 SET batch_offset = ?, batch_lock_at = NULL,
                     success_count = (
-                      SELECT COUNT(*) FROM messages_log
+                      SELECT COUNT(DISTINCT friend_id) FROM messages_log
                        WHERE broadcast_id = ? AND direction = 'outgoing'
                          AND COALESCE(delivery_type, '') != 'test'
                     )
@@ -871,7 +932,7 @@ async function processQueuedBroadcastBatches(
         `UPDATE broadcasts
             SET batch_offset = ?, batch_lock_at = NULL,
                 success_count = (
-                  SELECT COUNT(*) FROM messages_log
+                  SELECT COUNT(DISTINCT friend_id) FROM messages_log
                    WHERE broadcast_id = ? AND direction = 'outgoing'
                      AND COALESCE(delivery_type, '') != 'test'
                 )
@@ -899,8 +960,9 @@ async function processQueuedBroadcastBatches(
         'queued-multicast',
         ...batch.map((f) => f.id),
         JSON.stringify(batchMessage),
+        ...queuedExtraKeyParts,
       );
-      await lineClient.multicast(lineUserIds, [batchMessage], [unit], retryKey);
+      await lineClient.multicast(lineUserIds, [batchMessage, ...sharedExtra.map((e) => e.message)], [unit], retryKey);
     } catch (err) {
       console.error(`Queued broadcast batch ${batchIndex} send failed:`, broadcastDeliveryFailure(err));
       await setBroadcastLastError(db, broadcast.id, [recordingError, broadcastDeliveryFailure(err)].filter(Boolean).join("\n"));
@@ -914,11 +976,13 @@ async function processQueuedBroadcastBatches(
     // (friends.line_account_id ではなく送信元アカウントを固定で記録)。
     const queuedBroadcastAccount = (broadcast as unknown as Record<string, unknown>).line_account_id as string | null;
     try {
-      const stmts = batch.map(friend =>
-        db.prepare(
-          `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
-           VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, 'broadcast', ?, ?)`,
-        ).bind(crypto.randomUUID(), friend.id, finalType, finalContent, broadcast.id, queuedBroadcastAccount, now),
+      const stmts = batch.flatMap(friend =>
+        queuedLogItems(sharedExtra.map((e) => ({ type: e.type, content: e.content }))).map((m, i) =>
+          db.prepare(
+            `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
+             VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, 'broadcast', ?, ?)`,
+          ).bind(crypto.randomUUID(), friend.id, m.type, m.content, broadcast.id, queuedBroadcastAccount, jstPlusMs(now, i)),
+        ),
       );
       await db.batch(stmts);
     } catch (logErr) {
@@ -938,6 +1002,12 @@ async function processQueuedBroadcastBatches(
   await updateBroadcastLineRequestId(db, broadcast.id, null, unit);
   await createBroadcastInsight(db, broadcast.id);
   await updateBroadcastStatus(db, broadcast.id, 'sent', { lastError: recordingError });
+}
+
+/** 2通目以降の {{liff_id}} を、送信アカウントの LIFF ID に置き換える(友だちの名前は、送る直前に入れる) */
+function applyLiff(items: BroadcastMessageItem[], liffId: string | null): BroadcastMessageItem[] {
+  if (!liffId) return items;
+  return items.map((m) => ({ ...m, content: renderBroadcastMessageContent(m.type, m.content, { liffId }) }));
 }
 
 export function buildMessage(messageType: string, messageContent: string, altText?: string): Message {

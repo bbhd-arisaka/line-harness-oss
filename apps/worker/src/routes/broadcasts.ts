@@ -25,6 +25,18 @@ import {
 } from '../services/quota.js';
 import { computeDedupBroadcastPreview } from '../services/dedup-broadcast.js';
 import { processSegmentSend } from '../services/segment-send.js';
+import {
+  allBroadcastMessages,
+  broadcastHasRecipientVariables,
+  broadcastMessageCount,
+  firstUnsupportedVariables,
+  jstPlusMs,
+  MAX_BROADCAST_MESSAGES,
+  normalizeMessagesInput,
+  parseExtraMessages,
+  prepareExtraMessages,
+  serializeExtraMessages,
+} from '../services/broadcast-messages.js';
 import type { SegmentCondition } from '../services/segment-query.js';
 import { getLineAccountById } from '@line-crm/db';
 import type { Env } from '../index.js';
@@ -79,10 +91,15 @@ function parseJsonObject(s: unknown): Record<string, unknown> | null {
   }
 }
 
+/** 配信するメッセージ1通。messages は、この配列の順番がそのまま配信順(最大5通) */
+type BroadcastMessageInput = { type: BroadcastMessageType; content: string; altText?: string | null };
+
 type CreateBroadcastBody = {
   title: string;
   messageType: BroadcastMessageType;
   messageContent: string;
+  /** 1〜5通。指定すると、messageType / messageContent / altText の代わりになる(古いクライアントは従来どおり1通) */
+  messages?: BroadcastMessageInput[];
   targetType: BroadcastTargetType;
   targetTagId?: string | null;
   scheduledAt?: string | null;
@@ -93,12 +110,13 @@ type CreateBroadcastBody = {
   trackLinks?: boolean;
 };
 
-function sameCreateRequest(existing: DbBroadcast, body: CreateBroadcastBody): boolean {
+function sameCreateRequest(existing: DbBroadcast, body: CreateBroadcastBody, extraJson: string | null = null): boolean {
   const existingAccountIds = parseJsonArray(existing.account_ids) ?? [];
   const existingPriority = parseJsonArray(existing.dedup_priority) ?? [];
   return existing.title === body.title
     && existing.message_type === body.messageType
     && existing.message_content === body.messageContent
+    && (existing.extra_messages ?? null) === extraJson
     && existing.target_type === body.targetType
     && existing.target_tag_id === (body.targetTagId ?? null)
     && existing.scheduled_at === (body.scheduledAt ?? null)
@@ -116,6 +134,9 @@ function serializeBroadcast(row: DbBroadcast) {
     title: row.title,
     messageType: row.message_type,
     messageContent: row.message_content,
+    // 配信するメッセージの全部(1通目+2通目以降)。順番がそのまま配信順。1通だけの配信も、1件の配列で返す
+    messages: allBroadcastMessages(row).map((m) => ({ type: m.type, content: m.content, altText: m.altText ?? null })),
+    messageCount: broadcastMessageCount(row),
     targetType: row.target_type,
     targetTagId: row.target_tag_id,
     status: row.status,
@@ -352,6 +373,17 @@ broadcasts.post('/api/broadcasts', async (c) => {
       return c.json({ success: false, error: 'Idempotency-Key must be a UUID' }, 400);
     }
 
+    // messages(1〜5通)があれば、それを使う。1通目は従来の messageType / messageContent / altText、2通目以降は extra_messages に入る
+    let extraJson: string | null = null;
+    if (body.messages !== undefined) {
+      const normalized = normalizeMessagesInput(body.messages);
+      if (!normalized.ok) return c.json({ success: false, error: normalized.error }, 400);
+      body.messageType = normalized.first.type;
+      body.messageContent = normalized.first.content;
+      body.altText = normalized.first.altText ?? body.altText ?? null;
+      extraJson = serializeExtraMessages(normalized.extras);
+    }
+
     if (!body.title || !body.messageType || !body.messageContent || !body.targetType) {
       return c.json(
         { success: false, error: 'title, messageType, messageContent, and targetType are required' },
@@ -401,7 +433,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
     if (idempotencyKey) {
       const existing = await getBroadcastById(c.env.DB, idempotencyKey);
       if (existing) {
-        if (!sameCreateRequest(existing, body)) {
+        if (!sameCreateRequest(existing, body, extraJson)) {
           return c.json({ success: false, error: 'Idempotency-Key was already used with a different request' }, 409);
         }
         c.header('Idempotency-Replayed', 'true');
@@ -431,6 +463,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
         trackLinks: body.trackLinks,
         lineAccountId: body.lineAccountId ?? null,
         altText: body.altText ?? null,
+        extraMessages: extraJson,
       });
     } catch (createError) {
       // Concurrent retries may both pass the SELECT above. The primary key makes
@@ -439,7 +472,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
         ? await getBroadcastById(c.env.DB, idempotencyKey)
         : null;
       if (!existing) throw createError;
-      if (!sameCreateRequest(existing, body)) {
+      if (!sameCreateRequest(existing, body, extraJson)) {
         return c.json({ success: false, error: 'Idempotency-Key was already used with a different request' }, 409);
       }
       c.header('Idempotency-Replayed', 'true');
@@ -480,12 +513,22 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       title?: string;
       messageType?: BroadcastMessageType;
       messageContent?: string;
+      /** 1〜5通。指定すると、messageType / messageContent の代わりに全部を置き換える */
+      messages?: BroadcastMessageInput[];
       targetType?: BroadcastTargetType;
       targetTagId?: string | null;
       scheduledAt?: string | null;
       trackLinks?: boolean;
     }>();
 
+    let extraUpdate: string | null | undefined;
+    if (body.messages !== undefined) {
+      const normalized = normalizeMessagesInput(body.messages);
+      if (!normalized.ok) return c.json({ success: false, error: normalized.error }, 400);
+      body.messageType = normalized.first.type;
+      body.messageContent = normalized.first.content;
+      extraUpdate = serializeExtraMessages(normalized.extras);
+    }
     if (body.messageContent !== undefined) {
       const variableError = unsupportedVariablesError(body.messageContent);
       if (variableError) {
@@ -503,6 +546,7 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       title: body.title,
       message_type: body.messageType,
       message_content: body.messageContent,
+      ...(extraUpdate !== undefined ? { extra_messages: extraUpdate } : {}),
       target_type: body.targetType,
       target_tag_id: body.targetTagId,
       scheduled_at: body.scheduledAt,
@@ -617,10 +661,12 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       c.env.DB, existing, new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN),
     );
 
-    const variableError = unsupportedVariablesError(existing.message_content);
-    if (variableError) {
-      return c.json({ success: false, error: variableError }, 400);
+    const unsupportedInAny = firstUnsupportedVariables(existing);
+    if (unsupportedInAny.length > 0) {
+      return c.json({ success: false, error: `Unsupported broadcast variables: ${unsupportedInAny.map((v) => `{{${v}}}`).join(', ')}` }, 400);
     }
+    // LINE は1通ごとに数える。メッセージが複数のときは、対象人数に通数をかけて月間上限を判定する
+    const messageCount = broadcastMessageCount(existing);
 
     // Opt-in usage quota: while over the limit, bulk sends are refused with a
     // structured 403 the admin UI can explain (1:1 replies are unaffected).
@@ -632,11 +678,11 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
     // one big send just under the limit cannot overshoot it wholesale.
     //
     // Personalized delivery additionally validates missing recipient names below.
-    const personalizedSend = hasRecipientVariables(existing.message_content)
+    const personalizedSend = broadcastHasRecipientVariables(existing)
       && existing.target_type !== 'multi-account-dedup';
     if (!personalizedSend && quota.monthlyMessages.max > 0) {
       const estimate = await estimateSendAudience(c.env.DB, existing);
-      if (wouldExceedMonthlyQuota(quota, estimate)) {
+      if (wouldExceedMonthlyQuota(quota, estimate === null ? null : estimate * messageCount)) {
         return c.json({ success: false, error: 'quota_exceeded', quota }, 403);
       }
     }
@@ -670,7 +716,7 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       // Same projected-audience refusal as the other targets, using this
       // branch's exact audience count — the same WHERE (account filter
       // included) that the queued personalized send will deliver to.
-      if (quota.monthlyMessages.max > 0 && wouldExceedMonthlyQuota(quota, total)) {
+      if (quota.monthlyMessages.max > 0 && wouldExceedMonthlyQuota(quota, total * messageCount)) {
         return c.json({ success: false, error: 'quota_exceeded', quota }, 403);
       }
 
@@ -742,7 +788,7 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
           missingDisplayNames += a.recipients.filter((r) => !r.displayName?.trim()).length;
         }
       }
-      if (hasRecipientVariables(existing.message_content) && missingDisplayNames > 0) {
+      if (broadcastHasRecipientVariables(existing) && missingDisplayNames > 0) {
         return c.json({
           success: false,
           error: `Cannot personalize broadcast: ${missingDisplayNames} recipient(s) have no display name`,
@@ -894,10 +940,11 @@ broadcasts.post('/api/broadcasts/:id/send-segment', async (c) => {
       c.env.DB, existing, new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN),
     );
 
-    const variableError = unsupportedVariablesError(existing.message_content);
-    if (variableError) {
-      return c.json({ success: false, error: variableError }, 400);
+    const unsupportedInAnySeg = firstUnsupportedVariables(existing);
+    if (unsupportedInAnySeg.length > 0) {
+      return c.json({ success: false, error: `Unsupported broadcast variables: ${unsupportedInAnySeg.map((v) => `{{${v}}}`).join(', ')}` }, 400);
     }
+    const segMessageCount = broadcastMessageCount(existing);
 
     // Same opt-in usage quota gate as /send (bulk sends only), including the
     // projected-total check — the segment COUNT is a single cheap query.
@@ -916,12 +963,12 @@ broadcasts.post('/api/broadcasts/:id/send-segment', async (c) => {
         countBindings.unshift(segAccountId);
       }
       const segCount = await c.env.DB.prepare(countSql).bind(...countBindings).first<{ count: number }>();
-      if (wouldExceedMonthlyQuota(quota, segCount?.count ?? 0)) {
+      if (wouldExceedMonthlyQuota(quota, (segCount?.count ?? 0) * segMessageCount)) {
         return c.json({ success: false, error: 'quota_exceeded', quota }, 403);
       }
     }
 
-    if (hasRecipientVariables(existing.message_content)) {
+    if (broadcastHasRecipientVariables(existing)) {
       const { buildSegmentQuery } = await import('../services/segment-query.js');
       const { sql, bindings } = buildSegmentQuery(body.conditions);
       const accountId = (existing as unknown as Record<string, unknown>).line_account_id as string | null;
@@ -1220,23 +1267,21 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
     if (!account) return c.json({ success: false, error: 'LINE account not found' }, 400);
     const lineClient = new LineClient(account.channel_access_token);
 
-    // Build message with test label
-    let messageContent = broadcast.message_content;
-    if (broadcast.message_type === 'text') {
-      messageContent = `【テスト配信】\n${messageContent}`;
-    }
-
-    // Auto-track URLs (track_links=0 なら本番送信と同様に短縮せず raw のまま)
-    let tracked = { messageType: broadcast.message_type as string, content: messageContent };
-    if (broadcast.track_links !== 0) {
-      const { autoTrackContent } = await import('../services/auto-track.js');
-      // Self-hosted installs may omit WORKER_URL. Use the request URL, never
-      // the caller-controlled Origin header, for the Worker's tracking base.
-      const trackWorkerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
-      tracked = await autoTrackContent(c.env.DB, broadcast.message_type, messageContent, trackWorkerUrl, {
-        lineAccountId: accountId,
-      });
-    }
+    // 本番と同じ全メッセージ(最大5通)を、同じ順番で送る。1通目が文字なら、先頭に【テスト配信】を付ける
+    const testItems = allBroadcastMessages(broadcast).map((m, i) => ({
+      ...m,
+      content: i === 0 && m.type === 'text' ? `【テスト配信】\n${m.content}` : m.content,
+    }));
+    // フォームのタグ→LIFFリンク、URL→計測リンク(track_links=0 なら本番送信と同様に短縮せず raw のまま)。
+    // Self-hosted installs may omit WORKER_URL. Use the request URL, never
+    // the caller-controlled Origin header, for the Worker's tracking base.
+    const trackWorkerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+    const preparedTest = (await prepareExtraMessages(c.env.DB, testItems, {
+      workerUrl: trackWorkerUrl,
+      accountId,
+      trackLinks: broadcast.track_links !== 0,
+      applyTracking: true,
+    })).items;
 
     const { extractFlexAltText } = await import('../utils/flex-alt-text.js');
     const liffId = (account as unknown as { liff_id?: string | null }).liff_id ?? null;
@@ -1248,21 +1293,24 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
     const sentFriendIds: string[] = [];
     for (const friend of friends.results) {
       try {
-        const renderedContent = renderBroadcastMessageContent(tracked.messageType, tracked.content, {
-          liffId,
-          displayName: friend.display_name,
+        const rendered = preparedTest.map((m, i) => {
+          const content = renderBroadcastMessageContent(m.type, m.content, { liffId, displayName: friend.display_name });
+          assertNoUnresolvedBroadcastVariables(content);
+          // 通知文(altText)は1通目の指定を使う。Flex で指定が無ければ、中身から作る
+          const altText = (i === 0 ? (raw.alt_text as string | null) : m.altText) || (m.type === 'flex' ? extractFlexAltText(content) : undefined);
+          return { type: m.type, content, message: buildMessage(m.type, content, altText || undefined) };
         });
-        assertNoUnresolvedBroadcastVariables(renderedContent);
-        const altText = raw.alt_text as string
-          || (tracked.messageType === 'flex' ? extractFlexAltText(renderedContent) : undefined);
-        const message = buildMessage(tracked.messageType, renderedContent, altText);
-        await lineClient.pushMessage(friend.line_user_id, [message]);
+        await lineClient.pushMessage(friend.line_user_id, rendered.map((r) => r.message));
         sent++;
         sentFriendIds.push(friend.id);
-        await c.env.DB.prepare(
-          `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, delivery_type, source, created_at)
-           VALUES (?, ?, 'outgoing', ?, ?, NULL, 'test', 'broadcast', ?)`
-        ).bind(crypto.randomUUID(), friend.id, tracked.messageType, renderedContent, now).run();
+        await c.env.DB.batch(
+          rendered.map((r, i) =>
+            c.env.DB.prepare(
+              `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, delivery_type, source, created_at)
+               VALUES (?, ?, 'outgoing', ?, ?, NULL, 'test', 'broadcast', ?)`
+            ).bind(crypto.randomUUID(), friend.id, r.type, r.content, jstPlusMs(now, i)),
+          ),
+        );
       } catch (err) {
         console.error(`Test send to ${friend.id} failed:`, err);
         failed++;

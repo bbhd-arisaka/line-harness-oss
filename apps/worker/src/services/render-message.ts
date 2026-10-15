@@ -9,8 +9,17 @@ export function getBroadcastVariables(content: string): string[] {
   return [...new Set([...content.matchAll(BROADCAST_VARIABLE_RE)].map((m) => m[1].trim()))];
 }
 
+/**
+ * フォームのタグコード `{{form_url:フォームID}}` は、送信の直前に、配信アカウントの LIFF リンクへ展開される(form-link.ts)。
+ * 展開前の本文を検査するときは、未対応の変数として扱わない(展開できずに残った場合は、展開後の
+ * assertNoUnresolvedBroadcastVariables が止める)。
+ */
+const FORM_TAG_VARIABLE_RE = /^form_url:\S+$/;
+
 export function getUnsupportedBroadcastVariables(content: string): string[] {
-  return getBroadcastVariables(content).filter((name) => !SUPPORTED_BROADCAST_VARIABLES.has(name));
+  return getBroadcastVariables(content).filter(
+    (name) => !SUPPORTED_BROADCAST_VARIABLES.has(name) && !FORM_TAG_VARIABLE_RE.test(name),
+  );
 }
 
 export function hasRecipientVariables(content: string): boolean {

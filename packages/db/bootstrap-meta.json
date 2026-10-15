@@ -111,7 +111,8 @@
     "103_line_account_lstep_forward.sql",
     "104_app_push_enabled_kinds.sql",
     "105_app_push_by_account.sql",
-    "106_chats_backfill_for_broadcast_only.sql"
+    "106_chats_backfill_for_broadcast_only.sql",
+    "107_broadcast_extra_messages.sql"
   ],
-  "migrationCount": 112
+  "migrationCount": 113
 }

@@ -51,6 +51,9 @@ export interface BroadcastItem {
   totalCount: number;
   successCount: number;
   lineAccountId: string | null;
+  /** 配信するメッセージの全部(1通目+2通目以降。最大5通)。順番がそのまま配信順。古いサーバーでは無い */
+  messages?: Array<{ type: string; content: string; altText?: string | null }>;
+  messageCount?: number;
   /** 条件で絞り込んだ配信のとき、保存された条件 */
   segmentConditions: { operator?: string; rules?: unknown[] } | null;
   lastError: string | null;
@@ -63,6 +66,13 @@ export interface BroadcastProgress {
   totalCount: number;
   successCount: number;
   batchOffset: number;
+}
+
+/** GET /api/forms の1件(配信の本文に、回答フォームのリンクを入れるときの選択肢) */
+export interface FormOption {
+  id: string;
+  name: string;
+  isActive?: boolean;
 }
 
 /** GET /api/tags の1件 */

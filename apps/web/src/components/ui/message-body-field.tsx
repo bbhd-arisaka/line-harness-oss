@@ -20,6 +20,7 @@ export function MessageBodyField({
   rows = 4,
   required,
   description,
+  allowNameTag = false,
 }: {
   label?: string
   value: string
@@ -29,6 +30,8 @@ export function MessageBodyField({
   rows?: number
   required?: boolean
   description?: string
+  /** 「名前を挿入」ボタンを出す(一斉配信など、友だちごとの名前を入れられる画面だけ) */
+  allowNameTag?: boolean
 }) {
   const editorRef = useRef<TagTextEditorHandle>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -69,13 +72,24 @@ export function MessageBodyField({
           className="block w-full px-3 py-2 text-sm text-gray-900"
         />
         <div className="flex items-center justify-between border-t border-kumo-line px-2 py-1">
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="rounded px-2 py-1 text-xs text-[#2b7bb9] hover:bg-[#eef6ff]"
-          >
-            ＋ 回答フォームを挿入
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="rounded px-2 py-1 text-xs text-[#2b7bb9] hover:bg-[#eef6ff]"
+            >
+              ＋ 回答フォームを挿入
+            </button>
+            {allowNameTag ? (
+              <button
+                type="button"
+                onClick={() => editorRef.current?.insertTag('{{name}}')}
+                className="rounded px-2 py-1 text-xs text-sky-700 hover:bg-sky-50"
+              >
+                ＋ 名前を挿入
+              </button>
+            ) : null}
+          </div>
           <span className="text-[11px] text-gray-400">送信時に、送信アカウント用のフォームリンクに変換されます</span>
         </div>
       </div>

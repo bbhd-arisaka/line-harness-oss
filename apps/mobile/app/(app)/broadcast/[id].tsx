@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { api } from '../../../src/state/services';
 import { useInterval } from '../../../src/state/hooks';
 import { Button, Card, confirmAsync, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
 import { withReadableWidth } from '../../../src/components/readable-width';
+import { TaggedText } from '../../../src/components/tagged-text';
 import { broadcastStatusLabel, describeSavedConditions } from '../../../src/lib/broadcast';
 import { formatDateTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
@@ -20,6 +21,8 @@ function BroadcastDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  // フォームのタグを「フォーム：○○」の枠で見せるための名前(本文にフォームがあるときだけ読む)
+  const [formNames, setFormNames] = useState<Map<string, string>>(new Map());
 
   const load = useCallback(
     async (silent: boolean) => {
@@ -41,6 +44,23 @@ function BroadcastDetailScreen() {
   useEffect(() => {
     queueMicrotask(() => void load(false));
   }, [load]);
+
+  const hasFormTag = !!item && (item.messages ?? [{ content: item.messageContent }]).some((m) => m.content.includes('{{form_url:'));
+  useEffect(() => {
+    if (!hasFormTag) return;
+    let alive = true;
+    api
+      .listForms()
+      .then((rows) => {
+        if (alive) setFormNames(new Map(rows.map((f) => [f.id, f.name])));
+      })
+      .catch(() => {
+        /* 名前が出ないだけ。「フォーム」とだけ表示する */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [hasFormTag]);
 
   // 配信中は、5秒ごとに進み具合を確認する(1件分の軽い確認)
   useInterval(() => void load(true), 5000, item?.status === 'sending');
@@ -64,6 +84,8 @@ function BroadcastDetailScreen() {
   if (error || !item) return <ErrorView message={error ?? '読み込めませんでした'} onRetry={() => void load(false)} />;
 
   const narrowed = describeSavedConditions(item.segmentConditions);
+  // 配信するメッセージの全部(古いサーバーは1通だけ)
+  const shown = item.messages && item.messages.length > 0 ? item.messages : [{ type: item.messageType, content: item.messageContent }];
   const percent = item.totalCount > 0 ? Math.min(100, Math.round((item.successCount / item.totalCount) * 100)) : 0;
   const deletable = item.status === 'draft' || item.status === 'scheduled';
 
@@ -96,16 +118,36 @@ function BroadcastDetailScreen() {
         </Text>
       </Card>
 
-      <SectionTitle>メッセージ</SectionTitle>
-      <Card>
-        <Text selectable style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>
-          {item.messageContent}
-        </Text>
-      </Card>
+      <SectionTitle>{shown.length > 1 ? `メッセージ(${shown.length}通・上から順に届きます)` : 'メッセージ'}</SectionTitle>
+      {shown.map((m, i) => (
+        <Card key={i}>
+          {shown.length > 1 ? <Text style={{ color: c.textMuted, fontSize: 12, marginBottom: 6 }}>{i + 1}通目</Text> : null}
+          {m.type === 'image' ? (
+            <ImageMessage content={m.content} />
+          ) : m.type === 'flex' ? (
+            <Text style={{ color: c.textSub, fontSize: 14 }}>[Flexメッセージ]</Text>
+          ) : (
+            <TaggedText text={m.content} formNames={formNames} style={{ color: c.text, fontSize: 15, lineHeight: 22 }} />
+          )}
+        </Card>
+      ))}
 
       {deletable ? <Button title="この配信を削除" variant="danger" loading={deleting} onPress={() => void remove()} style={{ marginTop: 8 }} /> : null}
     </ScrollView>
   );
+}
+
+/** 画像メッセージ1通(内容は、LINE が求める JSON の文字列) */
+function ImageMessage({ content }: { content: string }) {
+  const c = useColors();
+  let url: string | null = null;
+  try {
+    url = (JSON.parse(content) as { originalContentUrl?: string }).originalContentUrl ?? null;
+  } catch {
+    url = null;
+  }
+  if (!url) return <Text style={{ color: c.textSub, fontSize: 14 }}>[画像]</Text>;
+  return <Image source={{ uri: url }} style={{ width: '100%', height: 220, borderRadius: 10, backgroundColor: c.border }} resizeMode="contain" accessibilityLabel="配信した画像" />;
 }
 
 export default withReadableWidth(BroadcastDetailScreen);

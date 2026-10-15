@@ -95,6 +95,9 @@ export type ConversionApprovalItem = {
 
 /** Broadcast type from API (now camelCase after worker serialization) */
 export type ApiBroadcast = Omit<Broadcast, 'targetType'> & {
+  /** 配信するメッセージの全部(1通目+2通目以降。最大5通)。順番がそのまま配信順 */
+  messages?: Array<{ type: Broadcast['messageType']; content: string; altText?: string | null }>;
+  messageCount?: number;
   targetType: BroadcastTargetType;
   accountIds: string[] | null;
   dedupPriority: string[] | null;
@@ -608,8 +611,10 @@ export const api = {
       fetchApi<ApiResponse<ApiBroadcast>>(`/api/broadcasts/${id}`),
     create: (data: {
       title: string
-      messageType: ApiBroadcast['messageType']
-      messageContent: string
+      messageType?: ApiBroadcast['messageType']
+      messageContent?: string
+      /** 1〜5通。指定すると messageType / messageContent の代わりになる */
+      messages?: Array<{ type: ApiBroadcast['messageType']; content: string; altText?: string | null }>
       targetType: ApiBroadcast['targetType']
       targetTagId?: string | null
       scheduledAt?: string | null

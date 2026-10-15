@@ -2,7 +2,7 @@
   "expo": {
     "name": "beyond line",
     "slug": "beyond-line",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "scheme": "beyondline",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -53,6 +53,14 @@
           "ios": {
             "deploymentTarget": "16.4"
           }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "一斉配信に添付する画像を選ぶために、写真を使います。",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ],
       [

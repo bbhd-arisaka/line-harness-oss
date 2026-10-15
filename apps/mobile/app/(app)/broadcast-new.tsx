@@ -8,19 +8,22 @@ import { PickModal, type PickItem } from '../../src/components/pick-modal';
 import { FriendMultiPickModal, type PickedFriend } from '../../src/components/friend-multi-pick-modal';
 import { withReadableWidth } from '../../src/components/readable-width';
 import { accountLabel } from '../../src/lib/accounts';
+import { MessageListEditor } from '../../src/components/message-list-editor';
 import {
   ALL_FOLLOWING_CONDITION,
-  checkMessage,
+  checkMessages,
   confirmSendMessage,
   defaultTitle,
   describeRule,
   draftSignature,
   isRuleComplete,
-  MAX_MESSAGE_LENGTH,
   MAX_RULES,
+  newDraftMessage,
   newUuid,
   RULE_KIND_LABEL,
+  toApiMessages,
   toSegmentConditions,
+  type DraftMessage,
   type DraftRule,
   type RuleKind,
 } from '../../src/lib/broadcast';
@@ -44,7 +47,8 @@ function BroadcastNewScreen() {
   const allowed = staff?.role === 'owner' || staff?.role === 'admin';
   const parallel = !!selected?.lstepForwardUrl;
 
-  const [message, setMessage] = useState('');
+  // 配信するメッセージ(1〜5通・上から順に届く)
+  const [messages, setMessages] = useState<DraftMessage[]>(() => [newDraftMessage('text')]);
   const [narrowed, setNarrowed] = useState(false);
   const [operator, setOperator] = useState<'AND' | 'OR'>('AND');
   const [rules, setRules] = useState<DraftRule[]>([]);
@@ -115,7 +119,7 @@ function BroadcastNewScreen() {
 
   /** 条件のチェック。問題があれば、画面に出す文言を返す */
   function problem(): string | null {
-    const m = checkMessage(message);
+    const m = checkMessages(messages);
     if (!m.ok) return m.reason;
     if (narrowed) {
       if (rules.some((r) => !isRuleComplete(r))) return '未入力の条件があります(友だち情報の「値」を入れるか、条件を削除してください)';
@@ -147,10 +151,12 @@ function BroadcastNewScreen() {
 
   async function ensureDraft(): Promise<string> {
     if (!accountId) throw new Error('公式アカウントが選ばれていません');
-    const signature = draftSignature({ accountId, message });
+    const signature = draftSignature({ accountId, messages });
     if (draft.current.signature !== signature) draft.current = { key: newUuid(), signature, id: null };
     if (draft.current.id) return draft.current.id;
-    const created = await api.createBroadcastDraft({ title: defaultTitle(message, new Date()), messageContent: message.trim(), lineAccountId: accountId }, draft.current.key);
+    const first = messages[0];
+    const titleSource = first.kind === 'text' ? first.text : '画像の配信';
+    const created = await api.createBroadcastDraft({ title: defaultTitle(titleSource, new Date()), messages: toApiMessages(messages), lineAccountId: accountId }, draft.current.key);
     draft.current.id = created.id;
     return created.id;
   }
@@ -187,7 +193,7 @@ function BroadcastNewScreen() {
         setNotice({ ok: false, text: '対象が0人です。条件を見直してください。' });
         return;
       }
-      const ok = await confirmAsync('この内容で、一斉配信しますか?', confirmSendMessage(accountName, n, narrowed), '送る');
+      const ok = await confirmAsync('この内容で、一斉配信しますか?', confirmSendMessage(accountName, n, narrowed, messages.length), '送る');
       if (!ok) return;
       const id = await ensureDraft();
       if (narrowed && conditions) await api.sendBroadcastToSegment(id, conditions);
@@ -225,24 +231,14 @@ function BroadcastNewScreen() {
       </Card>
 
       <SectionTitle>メッセージ</SectionTitle>
-      <Card>
-        <TextInput
-          value={message}
-          onChangeText={(t) => {
-            setMessage(t);
-            setNotice(null);
-          }}
-          placeholder="送るメッセージを入力"
-          placeholderTextColor={c.textMuted}
-          multiline
-          maxLength={MAX_MESSAGE_LENGTH}
-          style={[styles.textArea, { color: c.text, borderColor: c.border }]}
-          accessibilityLabel="送るメッセージ"
-        />
-        <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'right', marginTop: 4 }}>
-          {Array.from(message).length.toLocaleString('ja-JP')} / {MAX_MESSAGE_LENGTH.toLocaleString('ja-JP')}
-        </Text>
-      </Card>
+      <MessageListEditor
+        messages={messages}
+        onChange={(next) => {
+          setMessages(next);
+          setNotice(null);
+        }}
+        disabled={busyAny}
+      />
 
       <SectionTitle>送る相手</SectionTitle>
       <Card>
