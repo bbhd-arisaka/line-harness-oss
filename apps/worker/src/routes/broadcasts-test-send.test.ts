@@ -75,6 +75,59 @@ describe('broadcast test-send tracking origin', () => {
     await expectTrackedSend(await send(), 'https://go.example');
   });
 
+  function sendTo(friendIds: unknown) {
+    return app.request('https://request-worker.example/api/broadcasts/broadcast-a/test-send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ friendIds }),
+    }, { DB: fixture.db, WORKER_URL: 'https://w.example' });
+  }
+
+  describe('その場で選んだ友だちへの送信', () => {
+    beforeEach(() => {
+      fixture.sqlite.exec(`
+        INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret)
+          VALUES('account-b','channel-b','Other','token-b','secret-b');
+        INSERT INTO friends(id,line_user_id,line_account_id,display_name,is_following)
+          VALUES('friend-b','line-friend-b','account-a','Second',1),
+                ('friend-x','line-friend-x','account-b','Other account',1),
+                ('friend-blocked','line-friend-blocked','account-a','Blocked',0);
+      `);
+    });
+
+    it('選んだ人だけに送り、履歴に新しい順で残す(設定済みの送信先には送らない)', async () => {
+      const res = await sendTo(['friend-b']);
+      expect(await res.json()).toMatchObject({ success: true, sent: 1, failed: 0 });
+      expect(requests.map((r) => r.to)).toEqual(['line-friend-b']);
+      await sendTo(['friend-a']);
+      const hist = fixture.sqlite.prepare("SELECT value FROM account_settings WHERE key='test_send_history' AND line_account_id='account-a'").get() as { value: string };
+      expect(JSON.parse(hist.value)).toEqual(['friend-a', 'friend-b']);
+    });
+
+    it('他のアカウントの人・ブロック中の人には送らない', async () => {
+      const res = await sendTo(['friend-x', 'friend-blocked']);
+      expect(res.status).toBe(400);
+      expect(requests).toEqual([]);
+      const mixed = await sendTo(['friend-x', 'friend-b']);
+      expect(await mixed.json()).toMatchObject({ sent: 1 });
+      expect(requests.map((r) => r.to)).toEqual(['line-friend-b']);
+    });
+
+    it('宛先が多すぎるときは送らない', async () => {
+      const res = await sendTo(Array.from({ length: 11 }, (_, i) => `f${i}`));
+      expect(res.status).toBe(400);
+      expect(requests).toEqual([]);
+    });
+
+    it('履歴つきの候補は、前回の人→登録済みの人の順で返る', async () => {
+      await sendTo(['friend-b']);
+      const { accountSettings } = await import('./account-settings.js');
+      const a = new Hono();
+      a.route('/', accountSettings);
+      const res = await a.request('/api/account-settings/test-recipients?accountId=account-a&history=1', {}, { DB: fixture.db });
+      const body = await res.json() as { data: Array<{ id: string; recent: boolean }> };
+      expect(body.data.map((f) => [f.id, f.recent])).toEqual([['friend-b', true], ['friend-a', false]]);
+    });
+  });
+
   it('keeps track_links=0 unchanged without creating tracked links', async () => {
     fixture.sqlite.exec("UPDATE broadcasts SET track_links=0 WHERE id='broadcast-a'");
     const response = await send();

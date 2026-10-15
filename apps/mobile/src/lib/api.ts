@@ -184,8 +184,14 @@ export function createApiClient(options: ApiClientOptions) {
     /** 下書きを、条件で絞り込んだ友だちに送る(順番に配信される) */
     sendBroadcastToSegment: (id: string, conditions: SegmentCondition) =>
       request<BroadcastItem>('POST', `/api/broadcasts/${encodeURIComponent(id)}/send-segment`, { body: { conditions } }),
-    /** 設定してある「テスト送信先」に送る(下書きだけ) */
-    testSendBroadcast: (id: string) => request<{ sent: number; failed: number }>('POST', `/api/broadcasts/${encodeURIComponent(id)}/test-send`),
+    /** 選んだ友だちにテスト送信する(下書きだけ。最大10人) */
+    testSendBroadcast: (id: string, friendIds: string[]) =>
+      request<{ sent: number; failed: number }>('POST', `/api/broadcasts/${encodeURIComponent(id)}/test-send`, { body: { friendIds } }),
+    /** テスト送信の候補: 前回のテスト送信で使った友だち(新しい順)→登録済みのテスト送信先 */
+    listTestSendHistory: (accountId: string) =>
+      request<Array<{ id: string; displayName: string; pictureUrl: string | null; recent: boolean }>>('GET', '/api/account-settings/test-recipients', {
+        query: { accountId, history: 1 },
+      }),
     deleteBroadcast: (id: string) => request<null>('DELETE', `/api/broadcasts/${encodeURIComponent(id)}`),
     /** 条件に合う、友だち中の人数(accountId は必須) */
     countSegment: (accountId: string, conditions: SegmentCondition) =>

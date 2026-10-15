@@ -1161,7 +1161,11 @@ broadcasts.post('/api/broadcasts/:id/fetch-insight', async (c) => {
   }
 });
 
+/** テスト送信で一度に選べる友だちの上限(誤って大人数に送らないため) */
+const MAX_TEST_SEND_RECIPIENTS = 10;
+
 // POST /api/broadcasts/:id/test-send — send to test recipients with 【テスト配信】 label
+// body { friendIds?: string[] } でその場で選んだ友だちへ。省略時は公式アカウント設定のテスト送信先へ
 broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
   const id = c.req.param('id');
   try {
@@ -1179,19 +1183,38 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
     const accountId = raw.line_account_id as string | null;
     if (!accountId) return c.json({ success: false, error: 'Broadcast has no line_account_id' }, 400);
 
-    // Get test recipients
-    const setting = await c.env.DB.prepare(
-      `SELECT value FROM account_settings WHERE line_account_id = ? AND key = 'test_recipients'`
-    ).bind(accountId).first<{ value: string }>();
-    if (!setting) return c.json({ success: false, error: 'No test recipients configured' }, 400);
+    // 宛先: リクエストで友だちが指定されていればその人たち(その場で選んだ人)。
+    // 指定が無ければ、これまで通り公式アカウント設定の「テスト送信先」(古いアプリ・Web用)
+    const reqBody = await c.req.json<{ friendIds?: unknown }>().catch((): { friendIds?: unknown } => ({}));
+    const picked = Array.isArray(reqBody.friendIds)
+      ? [...new Set(reqBody.friendIds.filter((v): v is string => typeof v === 'string' && v.length > 0))]
+      : null;
+    if (picked && picked.length > MAX_TEST_SEND_RECIPIENTS) {
+      return c.json({ success: false, error: `テスト送信の宛先は${MAX_TEST_SEND_RECIPIENTS}人までです` }, 400);
+    }
 
-    const friendIds: string[] = JSON.parse(setting.value);
-    if (friendIds.length === 0) return c.json({ success: false, error: 'No test recipients configured' }, 400);
+    let friends: { results: Array<{ id: string; line_user_id: string; display_name: string | null }> };
+    if (picked && picked.length > 0) {
+      // この公式アカウントの友だち(ブロック中でない人)だけ。他のアカウントの人には送らない
+      const placeholders = picked.map(() => '?').join(',');
+      friends = await c.env.DB.prepare(
+        `SELECT id, line_user_id, display_name FROM friends WHERE id IN (${placeholders}) AND line_account_id = ? AND is_following = 1`
+      ).bind(...picked, accountId).all<{ id: string; line_user_id: string; display_name: string | null }>();
+      if (friends.results.length === 0) return c.json({ success: false, error: '選んだ友だちには送れません(この公式アカウントの友だちではないか、ブロックされています)' }, 400);
+    } else {
+      const setting = await c.env.DB.prepare(
+        `SELECT value FROM account_settings WHERE line_account_id = ? AND key = 'test_recipients'`
+      ).bind(accountId).first<{ value: string }>();
+      if (!setting) return c.json({ success: false, error: 'No test recipients configured' }, 400);
 
-    const placeholders = friendIds.map(() => '?').join(',');
-    const friends = await c.env.DB.prepare(
-      `SELECT id, line_user_id, display_name FROM friends WHERE id IN (${placeholders})`
-    ).bind(...friendIds).all<{ id: string; line_user_id: string; display_name: string | null }>();
+      const friendIds: string[] = JSON.parse(setting.value);
+      if (friendIds.length === 0) return c.json({ success: false, error: 'No test recipients configured' }, 400);
+
+      const placeholders = friendIds.map(() => '?').join(',');
+      friends = await c.env.DB.prepare(
+        `SELECT id, line_user_id, display_name FROM friends WHERE id IN (${placeholders})`
+      ).bind(...friendIds).all<{ id: string; line_user_id: string; display_name: string | null }>();
+    }
 
     const account = await getLineAccountById(c.env.DB, accountId);
     if (!account) return c.json({ success: false, error: 'LINE account not found' }, 400);
@@ -1222,6 +1245,7 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
     let failed = 0;
     const now = new Date(Date.now() + 9 * 60 * 60_000).toISOString().replace('Z', '+09:00');
 
+    const sentFriendIds: string[] = [];
     for (const friend of friends.results) {
       try {
         const renderedContent = renderBroadcastMessageContent(tracked.messageType, tracked.content, {
@@ -1234,6 +1258,7 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
         const message = buildMessage(tracked.messageType, renderedContent, altText);
         await lineClient.pushMessage(friend.line_user_id, [message]);
         sent++;
+        sentFriendIds.push(friend.id);
         await c.env.DB.prepare(
           `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, delivery_type, source, created_at)
            VALUES (?, ?, 'outgoing', ?, ?, NULL, 'test', 'broadcast', ?)`
@@ -1241,6 +1266,24 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
       } catch (err) {
         console.error(`Test send to ${friend.id} failed:`, err);
         failed++;
+      }
+    }
+
+    // 送れた友だちを「前回使った人」の履歴に(新しい順・重複なし・最大30人)。履歴の保存に失敗しても送信結果は返す
+    if (picked && sentFriendIds.length > 0) {
+      try {
+        const hist = await c.env.DB.prepare(
+          `SELECT value FROM account_settings WHERE line_account_id = ? AND key = 'test_send_history'`
+        ).bind(accountId).first<{ value: string }>();
+        const prev: string[] = hist ? JSON.parse(hist.value) : [];
+        const next = JSON.stringify([...new Set([...sentFriendIds, ...prev])].slice(0, 30));
+        await c.env.DB.prepare(
+          `INSERT INTO account_settings (id, line_account_id, key, value, created_at, updated_at)
+           VALUES (?, ?, 'test_send_history', ?, ?, ?)
+           ON CONFLICT (line_account_id, key) DO UPDATE SET value = ?, updated_at = ?`
+        ).bind(crypto.randomUUID(), accountId, next, now, now, next, now).run();
+      } catch (histErr) {
+        console.error('test-send history save failed:', histErr);
       }
     }
 

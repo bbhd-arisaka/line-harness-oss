@@ -650,8 +650,12 @@ export const api = {
       fetchApi<ApiResponse<BroadcastInsight | null>>(`/api/broadcasts/${id}/insight`),
     fetchInsight: (id: string) =>
       fetchApi<ApiResponse<BroadcastInsight>>(`/api/broadcasts/${id}/fetch-insight`, { method: 'POST' }),
-    testSend: (id: string) =>
-      fetchApi<{ success: boolean; sent?: number; failed?: number; error?: string }>(`/api/broadcasts/${id}/test-send`, { method: 'POST' }),
+    /** friendIds を渡すと、その人たちへ送る。省略時は公式アカウント設定の「テスト送信先」へ */
+    testSend: (id: string, friendIds?: string[]) =>
+      fetchApi<{ success: boolean; sent?: number; failed?: number; error?: string }>(`/api/broadcasts/${id}/test-send`, {
+        method: 'POST',
+        ...(friendIds ? { body: JSON.stringify({ friendIds }) } : {}),
+      }),
     getProgress: (id: string) =>
       fetchApi<{ success: boolean; data?: { status: string; totalCount: number; successCount: number; batchOffset: number } }>(`/api/broadcasts/${id}/progress`),
     previewCount: (id: string) =>
@@ -715,6 +719,9 @@ export const api = {
   accountSettings: {
     getTestRecipients: (accountId: string) =>
       fetchApi<{ success: boolean; data: Array<{ id: string; displayName: string; pictureUrl: string | null }> }>(`/api/account-settings/test-recipients?accountId=${accountId}`),
+    /** 前回のテスト送信で使った友だち(新しい順)→登録済みのテスト送信先 の順 */
+    getTestRecipientsWithHistory: (accountId: string) =>
+      fetchApi<{ success: boolean; data: Array<{ id: string; displayName: string; pictureUrl: string | null; recent: boolean }> }>(`/api/account-settings/test-recipients?accountId=${accountId}&history=1`),
     updateTestRecipients: (accountId: string, friendIds: string[]) =>
       fetchApi<{ success: boolean }>('/api/account-settings/test-recipients', {
         method: 'PUT',

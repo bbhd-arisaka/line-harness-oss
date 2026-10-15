@@ -18,7 +18,33 @@ accountSettings.get('/api/account-settings/test-recipients', async (c) => {
     `SELECT value FROM account_settings WHERE line_account_id = ? AND key = 'test_recipients'`
   ).bind(accountId).first<{ value: string }>();
 
-  const friendIds: string[] = row ? JSON.parse(row.value) : [];
+  const registered: string[] = row ? JSON.parse(row.value) : [];
+
+  // ?history=1: 「前回のテスト送信で使った友だち(新しい順)」→「登録済みのテスト送信先」の順に並べて返す。
+  // 送信の画面で、検索しなくてもすぐ選べるようにするための候補
+  if (c.req.query('history') === '1') {
+    const hist = await c.env.DB.prepare(
+      `SELECT value FROM account_settings WHERE line_account_id = ? AND key = 'test_send_history'`
+    ).bind(accountId).first<{ value: string }>();
+    const recent: string[] = hist ? JSON.parse(hist.value) : [];
+    const order = [...new Set([...recent, ...registered])].slice(0, 30);
+    if (order.length === 0) return c.json({ success: true, data: [] });
+    const ph = order.map(() => '?').join(',');
+    const rows = await c.env.DB.prepare(
+      `SELECT id, display_name, picture_url FROM friends WHERE id IN (${ph}) AND line_account_id = ? AND is_following = 1`
+    ).bind(...order, accountId).all<{ id: string; display_name: string | null; picture_url: string | null }>();
+    const byId = new Map(rows.results.map((f) => [f.id, f]));
+    const recentSet = new Set(recent);
+    return c.json({
+      success: true,
+      data: order.filter((id) => byId.has(id)).map((id) => {
+        const f = byId.get(id)!;
+        return { id, displayName: f.display_name ?? '(名前なし)', pictureUrl: f.picture_url, recent: recentSet.has(id) };
+      }),
+    });
+  }
+
+  const friendIds = registered;
 
   if (friendIds.length === 0) {
     return c.json({ success: true, data: [] });

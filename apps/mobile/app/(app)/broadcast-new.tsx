@@ -5,6 +5,7 @@ import { api } from '../../src/state/services';
 import { useAccounts, useAuth } from '../../src/state/session';
 import { Button, Card, confirmAsync, SectionTitle } from '../../src/components/ui';
 import { PickModal, type PickItem } from '../../src/components/pick-modal';
+import { FriendMultiPickModal, type PickedFriend } from '../../src/components/friend-multi-pick-modal';
 import { withReadableWidth } from '../../src/components/readable-width';
 import { accountLabel } from '../../src/lib/accounts';
 import {
@@ -29,6 +30,9 @@ import { MIN_TAP, useColors } from '../../src/theme/theme';
 
 type Picker = { ruleKind: RuleKind } | null;
 
+/** テスト送信で一度に選べる人数(サーバー側の上限と同じ) */
+const MAX_TEST_FRIENDS = 10;
+
 /** 新しい一斉配信: メッセージ → 配信先(全員 / 条件で絞り込み) → 人数の確認 → テスト送信 → 送る */
 function BroadcastNewScreen() {
   const c = useColors();
@@ -49,6 +53,8 @@ function BroadcastNewScreen() {
   const [fields, setFields] = useState<FriendFieldDefinition[] | null>(null);
   const [count, setCount] = useState<number | null>(null);
   const [busy, setBusy] = useState<'count' | 'test' | 'send' | null>(null);
+  const [testFriends, setTestFriends] = useState<PickedFriend[]>([]);
+  const [friendPickerOpen, setFriendPickerOpen] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   // 下書きは、内容が同じなら同じキーで作る(押し間違い・通信のやり直しで、二重に作られない)
   const draft = useRef<{ key: string; signature: string; id: string | null }>({ key: newUuid(), signature: '', id: null });
@@ -152,14 +158,18 @@ function BroadcastNewScreen() {
   async function onTest() {
     const p = problem();
     if (p) return setNotice({ ok: false, text: p });
+    if (testFriends.length === 0) {
+      setFriendPickerOpen(true);
+      return;
+    }
     setBusy('test');
     setNotice(null);
     try {
       const id = await ensureDraft();
-      const r = await api.testSendBroadcast(id);
-      setNotice({ ok: r.failed === 0 && r.sent > 0, text: `テスト送信先の${r.sent}人に送りました${r.failed > 0 ? `(${r.failed}人は失敗)` : ''}。LINEで確認してください。` });
+      const r = await api.testSendBroadcast(id, testFriends.map((f) => f.id));
+      setNotice({ ok: r.failed === 0 && r.sent > 0, text: `選んだ${r.sent}人に送りました${r.failed > 0 ? `(${r.failed}人は失敗)` : ''}。LINEで確認してください。` });
     } catch (e) {
-      setNotice({ ok: false, text: describeError(e, 'テスト送信できませんでした(Web版の公式アカウント設定で、テスト送信先を決めてください)') });
+      setNotice({ ok: false, text: describeError(e, 'テスト送信できませんでした') });
     } finally {
       setBusy(null);
     }
@@ -325,11 +335,47 @@ function BroadcastNewScreen() {
         </Text>
       ) : null}
 
+      <SectionTitle>テスト送信</SectionTitle>
+      <Card>
+        <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18 }}>
+          本番の前に、選んだ友だちだけに送って確認できます(最大{MAX_TEST_FRIENDS}人)。前回使った人は、選ぶ画面の上に並びます。
+        </Text>
+        <Text style={{ color: testFriends.length > 0 ? c.text : c.textMuted, fontSize: 15, marginTop: 8, lineHeight: 22 }}>
+          {testFriends.length > 0 ? `送る相手: ${testFriends.map((f) => f.name).join('、')}` : '送る友だちが選ばれていません'}
+        </Text>
+        <Button
+          title={testFriends.length > 0 ? '送る友だちを選び直す' : '友だちを検索して選ぶ'}
+          variant="secondary"
+          disabled={busyAny}
+          onPress={() => setFriendPickerOpen(true)}
+          style={{ marginTop: 8 }}
+        />
+      </Card>
+
       <View style={{ gap: 10, marginTop: 8 }}>
-        <Button title="テスト送信(設定したテスト送信先だけに送る)" variant="secondary" loading={busy === 'test'} disabled={busyAny && busy !== 'test'} onPress={() => void onTest()} />
+        <Button
+          title={testFriends.length > 0 ? `選んだ${testFriends.length}人にテスト送信` : 'テスト送信'}
+          variant="secondary"
+          loading={busy === 'test'}
+          disabled={(busyAny && busy !== 'test') || testFriends.length === 0}
+          onPress={() => void onTest()}
+        />
         <Button title="いますぐ送る" loading={busy === 'send'} disabled={busyAny && busy !== 'send'} onPress={() => void onSend()} />
         <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' }}>送る前に、人数の確認が出ます。送ったあとは取り消せません。</Text>
       </View>
+
+      <FriendMultiPickModal
+        visible={friendPickerOpen}
+        accountId={accountId}
+        initial={testFriends}
+        max={MAX_TEST_FRIENDS}
+        onDone={(list) => {
+          setTestFriends(list);
+          setFriendPickerOpen(false);
+          setNotice(null);
+        }}
+        onClose={() => setFriendPickerOpen(false)}
+      />
 
       <PickModal
         visible={picker !== null}
