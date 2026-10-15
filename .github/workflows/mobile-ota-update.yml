@@ -41,3 +41,9 @@ jobs:
         env:
           MESSAGE: ${{ inputs.message }}
         run: eas update --branch production --message "$MESSAGE" --non-interactive
+      # TestFlight / App Store のアプリは「production」というチャンネルを見ている。そのチャンネルが、いま配信した
+      # production ブランチにつながっていないと、更新が届かない。つなぎ直して(無ければ作って)、つながりを表示する。
+      - name: チャンネル production を、production ブランチにつなぐ
+        run: |
+          eas channel:edit production --branch production --non-interactive || eas channel:create production --branch production --non-interactive
+          eas channel:view production --non-interactive || true
