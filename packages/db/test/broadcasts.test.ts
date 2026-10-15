@@ -39,6 +39,7 @@ describe('createBroadcast', () => {
     // add the columns createBroadcast writes atomically today.
     sqlite.exec('ALTER TABLE broadcasts ADD COLUMN line_account_id TEXT');
     sqlite.exec('ALTER TABLE broadcasts ADD COLUMN alt_text TEXT');
+    sqlite.exec('ALTER TABLE broadcasts ADD COLUMN extra_messages TEXT');
     db = asD1(sqlite);
   });
 
