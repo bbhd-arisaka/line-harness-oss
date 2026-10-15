@@ -1,5 +1,6 @@
 import { getLineAccountById, type Broadcast } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
+import { isParallelAccount, PARALLEL_BROADCAST_BLOCKED_MESSAGE } from './broadcast-guard.js';
 
 export class BroadcastSenderError extends Error {
   constructor(message: string) {
@@ -21,6 +22,10 @@ export async function resolveBroadcastSender(
       const account = await getLineAccountById(db, broadcast.line_account_id);
       if (!account || account.is_active !== 1 || !account.channel_access_token?.trim()) {
         throw new BroadcastSenderError('送信元アカウントが見つからないか、無効・未設定です。アカウント設定を確認してください。');
+      }
+      // Lステップと並行運用中のアカウントは、beyond line からは送らない(二重配信の防止。予約配信・キュー配信もここを通る)
+      if (isParallelAccount(account as unknown as { lstep_forward_url?: string | null })) {
+        throw new BroadcastSenderError(PARALLEL_BROADCAST_BLOCKED_MESSAGE);
       }
       return new LineClient(account.channel_access_token);
     }

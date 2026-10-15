@@ -1,5 +1,7 @@
 import type {
   ApiEnvelope,
+  BroadcastItem,
+  BroadcastProgress,
   ChatDetail,
   ChatStatus,
   ChatSummary,
@@ -13,8 +15,10 @@ import type {
   LineAccount,
   LoginResult,
   PushSettings,
+  TagItem,
   UpdatedChat,
 } from './types';
+import type { SegmentCondition } from './broadcast';
 import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
 
 /** 本番 API。EXPO_PUBLIC_API_URL で上書きできる。 */
@@ -46,6 +50,8 @@ interface RequestOptions {
   body?: unknown;
   /** false のとき Authorization を付けず、401 でも onUnauthorized を呼ばない(ログイン用) */
   auth?: boolean;
+  /** 追加のヘッダー(Idempotency-Key など) */
+  headers?: Record<string, string>;
 }
 
 export function buildQuery(query?: RequestOptions['query']): string {
@@ -66,6 +72,7 @@ export function createApiClient(options: ApiClientOptions) {
     const auth = opts.auth !== false;
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+    if (opts.headers) Object.assign(headers, opts.headers);
     if (auth) {
       const token = options.getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
@@ -161,6 +168,29 @@ export function createApiClient(options: ApiClientOptions) {
     /** 対応状態の変更(未対応/対応中/対応済み)。id は friendId(chats.id でも可) */
     updateChatStatus: (id: string, status: ChatStatus) =>
       request<UpdatedChat>('PUT', `/api/chats/${encodeURIComponent(id)}`, { body: { status } }),
+
+    // ── 一斉配信(オーナー・管理者だけ。サーバーが確認する) ──
+    listBroadcasts: (lineAccountId: string) => request<BroadcastItem[]>('GET', '/api/broadcasts', { query: { lineAccountId } }),
+    getBroadcast: (id: string) => request<BroadcastItem>('GET', `/api/broadcasts/${encodeURIComponent(id)}`),
+    getBroadcastProgress: (id: string) => request<BroadcastProgress>('GET', `/api/broadcasts/${encodeURIComponent(id)}/progress`),
+    /** 下書きを作る(送らない)。key は UUID: 同じキーで同じ内容なら、二重に作られない */
+    createBroadcastDraft: (body: { title: string; messageContent: string; lineAccountId: string }, key: string) =>
+      request<BroadcastItem>('POST', '/api/broadcasts', {
+        body: { title: body.title, messageType: 'text', messageContent: body.messageContent, targetType: 'all', lineAccountId: body.lineAccountId },
+        headers: { 'Idempotency-Key': key },
+      }),
+    /** 下書きを、いますぐ友だち全員に送る */
+    sendBroadcastToAll: (id: string) => request<BroadcastItem>('POST', `/api/broadcasts/${encodeURIComponent(id)}/send`),
+    /** 下書きを、条件で絞り込んだ友だちに送る(順番に配信される) */
+    sendBroadcastToSegment: (id: string, conditions: SegmentCondition) =>
+      request<BroadcastItem>('POST', `/api/broadcasts/${encodeURIComponent(id)}/send-segment`, { body: { conditions } }),
+    /** 設定してある「テスト送信先」に送る(下書きだけ) */
+    testSendBroadcast: (id: string) => request<{ sent: number; failed: number }>('POST', `/api/broadcasts/${encodeURIComponent(id)}/test-send`),
+    deleteBroadcast: (id: string) => request<null>('DELETE', `/api/broadcasts/${encodeURIComponent(id)}`),
+    /** 条件に合う、友だち中の人数(accountId は必須) */
+    countSegment: (accountId: string, conditions: SegmentCondition) =>
+      request<{ count: number }>('POST', '/api/segments/count', { body: { conditions, accountId, followingOnly: true } }),
+    listTags: () => request<TagItem[]>('GET', '/api/tags'),
 
     // ── 友だち ──
     listFriends: (params: { lineAccountId: string; search?: string; limit?: number; offset?: number }) =>

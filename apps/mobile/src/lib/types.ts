@@ -32,7 +32,44 @@ export interface LineAccount {
   displayName: string;
   pictureUrl: string | null;
   basicId: string | null;
+  /** Lステップと並行運用中のとき、転送先の URL(一斉配信などの送信ができない) */
+  lstepForwardUrl?: string | null;
   stats?: { friendCount: number; activeScenarios: number; messagesThisMonth: number };
+}
+
+/** GET /api/broadcasts の1件 */
+export interface BroadcastItem {
+  id: string;
+  title: string;
+  messageType: string;
+  messageContent: string;
+  targetType: string;
+  targetTagId: string | null;
+  status: string;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  totalCount: number;
+  successCount: number;
+  lineAccountId: string | null;
+  /** 条件で絞り込んだ配信のとき、保存された条件 */
+  segmentConditions: { operator?: string; rules?: unknown[] } | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+/** GET /api/broadcasts/:id/progress */
+export interface BroadcastProgress {
+  status: string;
+  totalCount: number;
+  successCount: number;
+  batchOffset: number;
+}
+
+/** GET /api/tags の1件 */
+export interface TagItem {
+  id: string;
+  name: string;
+  color?: string | null;
 }
 
 /** GET /api/line-accounts/:id/friend-add: 友だち追加用の URL と QR コード(PNG を base64 で) */

@@ -1,5 +1,6 @@
 import { BroadcastDeliveryError } from '../services/broadcast-delivery-error.js';
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import {
   getBroadcasts,
   getBroadcastById,
@@ -11,6 +12,7 @@ import type { Broadcast as DbBroadcast, BroadcastMessageType, BroadcastTargetTyp
 import { LineClient } from '@line-crm/line-sdk';
 import { processBroadcastSend, buildMessage, processQueuedBroadcasts } from '../services/broadcast.js';
 import { BroadcastSenderError, resolveBroadcastSender } from '../services/broadcast-sender.js';
+import { appBroadcastDenied, isParallelAccount, PARALLEL_BROADCAST_BLOCKED_MESSAGE } from '../services/broadcast-guard.js';
 import { LinePlanQuotaError } from '../services/quota-alert.js';
 import {
   getQuotaUsage,
@@ -139,6 +141,17 @@ function serializeBroadcast(row: DbBroadcast) {
     lastError: (r.last_error as string | undefined) ?? null,
     createdAt: row.created_at,
   };
+}
+
+/** アプリからの一斉配信の権限確認(オーナー・管理者だけ・公式アカウント指定あり・見られるアカウント)。問題なければ null */
+function appDenied(c: Context<Env>, accountId: string | null | undefined): Response | null {
+  const message = appBroadcastDenied({
+    viaApp: !!c.get('appSessionId'),
+    role: c.get('staff')?.role,
+    allowedAccountIds: c.get('allowedAccountIds'),
+    accountId,
+  });
+  return message ? c.json({ success: false, error: message }, 403) : null;
 }
 
 // GET /api/broadcasts - list all
@@ -349,6 +362,17 @@ broadcasts.post('/api/broadcasts', async (c) => {
     const variableError = unsupportedVariablesError(body.messageContent);
     if (variableError) {
       return c.json({ success: false, error: variableError }, 400);
+    }
+
+    // アプリからは、オーナー・管理者だけ。公式アカウントの指定が必要
+    const denied = appDenied(c, body.lineAccountId);
+    if (denied) return denied;
+    // Lステップと並行運用中のアカウントでは、一斉配信を作らない(送信側でも止めるが、作る時点で分かるようにする)
+    if (body.lineAccountId) {
+      const target = await getLineAccountById(c.env.DB, body.lineAccountId);
+      if (isParallelAccount(target as unknown as { lstep_forward_url?: string | null } | null)) {
+        return c.json({ success: false, error: PARALLEL_BROADCAST_BLOCKED_MESSAGE }, 400);
+      }
     }
 
     if (body.targetType === 'tag' && !body.targetTagId) {
@@ -580,6 +604,10 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
 
     if (!existing) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    }
+    {
+      const denied = appDenied(c, (existing as unknown as Record<string, unknown>).line_account_id as string | null);
+      if (denied) return denied;
     }
 
     if (existing.status !== 'draft' && existing.status !== 'scheduled') {
@@ -844,6 +872,10 @@ broadcasts.post('/api/broadcasts/:id/send-segment', async (c) => {
 
     if (!existing) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    }
+    {
+      const denied = appDenied(c, (existing as unknown as Record<string, unknown>).line_account_id as string | null);
+      if (denied) return denied;
     }
 
     const body = await c.req.json<{ conditions: SegmentCondition }>();
@@ -1138,6 +1170,10 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
     if (broadcast.status !== 'draft') {
       return c.json({ success: false, error: 'Only draft broadcasts can be test-sent' }, 400);
     }
+    {
+      const denied = appDenied(c, (broadcast as unknown as Record<string, unknown>).line_account_id as string | null);
+      if (denied) return denied;
+    }
 
     const raw = broadcast as unknown as Record<string, unknown>;
     const accountId = raw.line_account_id as string | null;
@@ -1208,7 +1244,7 @@ broadcasts.post('/api/broadcasts/:id/test-send', async (c) => {
       }
     }
 
-    return c.json({ success: true, sent, failed });
+    return c.json({ success: true, sent, failed, data: { sent, failed } });
   } catch (err) {
     console.error('POST /api/broadcasts/:id/test-send error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -1235,7 +1271,7 @@ broadcasts.get('/api/broadcasts/:id/progress', async (c) => {
 
 // POST /api/segments/count — count friends matching segment conditions
 broadcasts.post('/api/segments/count', async (c) => {
-  const body = await c.req.json<{ conditions: unknown; accountId?: string }>();
+  const body = await c.req.json<{ conditions: unknown; accountId?: string; followingOnly?: boolean }>();
   try {
     const { buildSegmentQuery } = await import('../services/segment-query.js');
     const { sql, bindings } = buildSegmentQuery(body.conditions as SegmentCondition);
@@ -1247,10 +1283,12 @@ broadcasts.post('/api/segments/count', async (c) => {
       accountBindings.unshift(body.accountId);
     }
 
+    // 実際に届く人数(友だち中の人だけ)を知りたいとき(アプリ)。Web の従来の数え方(followingOnly なし)は変えない
+    if (body.followingOnly === true) accountSql = accountSql.replace('WHERE', 'WHERE f.is_following = 1 AND');
     const countSql = `SELECT COUNT(*) as count FROM (${accountSql}) audience`;
     const result = await c.env.DB.prepare(countSql).bind(...accountBindings).first<{ count: number }>();
 
-    return c.json({ success: true, count: result?.count ?? 0 });
+    return c.json({ success: true, count: result?.count ?? 0, data: { count: result?.count ?? 0 } });
   } catch (err) {
     console.error('POST /api/segments/count error:', err);
     return c.json({ success: false, error: 'Invalid segment conditions' }, 400);

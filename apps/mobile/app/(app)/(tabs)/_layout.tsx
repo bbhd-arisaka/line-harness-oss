@@ -31,6 +31,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="broadcasts"
+        options={{
+          title: '配信',
+          tabBarIcon: ({ color, size }) => <Ionicons name="megaphone" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: '設定',

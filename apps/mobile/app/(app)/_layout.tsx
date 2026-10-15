@@ -57,6 +57,8 @@ function Gate() {
         <Stack.Screen name="friend/[id]" options={{ title: '友だち詳細' }} />
         <Stack.Screen name="form-answer/[submissionId]" options={{ title: '回答結果' }} />
         <Stack.Screen name="friend-add" options={{ title: '友だち追加のQR・URL' }} />
+        <Stack.Screen name="broadcast-new" options={{ title: '新しい配信' }} />
+        <Stack.Screen name="broadcast/[id]" options={{ title: '配信の詳細' }} />
       </Stack.Protected>
       <Stack.Protected guard={acc.choosing}>
         <Stack.Screen name="select-account" options={{ title: 'アカウントを選ぶ', headerBackVisible: false }} />

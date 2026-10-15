@@ -88,7 +88,7 @@ describe('OR segments stay inside the selected sending account', () => {
         body: JSON.stringify({ conditions, accountId: 'a' }),
       }, { DB: s.db });
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ success: true, count: 2 });
+      expect(await response.json()).toEqual({ success: true, count: 2, data: { count: 2 } });
       expect(s.multicast).not.toHaveBeenCalled();
     } finally { s.sqlite.close(); }
   });
