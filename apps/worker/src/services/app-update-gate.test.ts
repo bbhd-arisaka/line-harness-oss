@@ -64,6 +64,11 @@ describe('App Store の最新版の確認', () => {
     expect(await getStoreVersion(f as never, 2_000)).toBe('1.1.2');
     expect(f).toHaveBeenCalledTimes(1);
   });
+  it('Apple の配信網の古い答えに当たらないよう、毎回違う値(t=)を付けて聞く', async () => {
+    const f = vi.fn(async (_url: string) => storeJson('1.1.2'));
+    await getStoreVersion(f as never, 5_000_000);
+    expect(f.mock.calls[0][0]).toContain('country=jp&t=5000000');
+  });
   it('通信に失敗・結果が空のときは null(止めない側に倒す)。失敗は短い時間で取り直す', async () => {
     const bad = vi.fn(async () => { throw new Error('down'); });
     expect(await getStoreVersion(bad as never, 1_000)).toBeNull();
