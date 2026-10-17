@@ -52,28 +52,42 @@ function Skeleton({ className = '' }: { className?: string }) {
 }
 
 /** 現在の対応状況。押すと、その状態に絞ったトーク一覧へ */
+/** 押せる部品の見た目(ボタンらしく・控えめに): 白地・細い枠・ごく薄い影・右の「›」。さわると薄く色が付く */
+const PRESSABLE = 'group flex items-center gap-2 rounded-lg border border-kumo-line bg-white shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+const CHEVRON = (
+  <span className="shrink-0 text-lg leading-none text-gray-400 transition-colors group-hover:text-gray-600" aria-hidden="true">
+    ›
+  </span>
+)
+
 function StatusTiles({ s }: { s: HomeSummary }) {
   const tiles = [
-    { key: 'unread', label: '未対応', value: s.chatStatus.unread, tone: 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' },
-    { key: 'in_progress', label: '対応中', value: s.chatStatus.in_progress, tone: 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' },
-    { key: 'resolved', label: '対応済み', value: s.chatStatus.resolved, tone: 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' },
+    { key: 'unread', label: '未対応', value: s.chatStatus.unread, dot: 'bg-red-500' },
+    { key: 'in_progress', label: '対応中', value: s.chatStatus.in_progress, dot: 'bg-amber-500' },
+    { key: 'resolved', label: '対応済み', value: s.chatStatus.resolved, dot: 'bg-green-500' },
   ]
   return (
     <div className="grid grid-cols-3 gap-3">
       {tiles.map((t) => (
-        <Link key={t.key} href={`/chats?status=${t.key}`} className={`rounded-lg border px-3 py-4 text-center transition-colors ${t.tone}`} aria-label={`${t.label} ${t.value}人。トーク一覧を開く`}>
-          <p className="text-xs font-semibold">{t.label}</p>
-          <p className="mt-1 text-3xl font-bold tabular-nums">{n(t.value)}</p>
+        <Link key={t.key} href={`/chats?status=${t.key}`} className={`${PRESSABLE} px-3 py-3`} aria-label={`${t.label} ${t.value}人。トーク一覧を開く`}>
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-[#757578]">
+              <span className={`h-2 w-2 rounded-full ${t.dot}`} aria-hidden="true" />
+              {t.label}
+            </p>
+            <p className="mt-0.5 text-2xl font-semibold tabular-nums text-kumo-strong">{n(t.value)}</p>
+          </div>
+          {CHEVRON}
         </Link>
       ))}
     </div>
   )
 }
 
-const ALERT_STYLE: Record<HomeAlert['severity'], { box: string; dot: string }> = {
-  critical: { box: 'border-red-200 bg-red-50', dot: 'bg-red-500' },
-  warning: { box: 'border-amber-200 bg-amber-50', dot: 'bg-amber-500' },
-  info: { box: 'border-sky-200 bg-sky-50', dot: 'bg-sky-500' },
+const ALERT_DOT: Record<HomeAlert['severity'], string> = {
+  critical: 'bg-red-500',
+  warning: 'bg-amber-500',
+  info: 'bg-sky-500',
 }
 
 function alertHref(a: HomeAlert): string | null {
@@ -97,19 +111,29 @@ function AlertList({ alerts }: { alerts: HomeAlert[] }) {
   return (
     <ul className="space-y-2">
       {alerts.map((a) => {
-        const style = ALERT_STYLE[a.severity]
         const href = alertHref(a)
-        const body = (
-          <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${style.box} ${href ? 'transition-opacity hover:opacity-80' : ''}`}>
-            <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${style.dot}`} aria-hidden="true" />
+        const inner = (
+          <>
+            <span className={`h-2 w-2 shrink-0 rounded-full ${ALERT_DOT[a.severity]}`} aria-hidden="true" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-[#414143]">{a.title}</p>
+              <p className="text-sm font-medium text-[#414143]">{a.title}</p>
               {a.detail ? <p className="text-xs text-[#757578]">{a.detail}</p> : null}
             </div>
-            {href ? <span className="self-center text-[#757578]" aria-hidden="true">›</span> : null}
-          </div>
+          </>
         )
-        return <li key={a.id}>{href ? <Link href={href}>{body}</Link> : body}</li>
+        // 押せるお知らせは、ボタンの見た目(枠・右の「›」)。押せないものは、枠のない平らな行
+        return (
+          <li key={a.id}>
+            {href ? (
+              <Link href={href} className={`${PRESSABLE} px-3 py-2`}>
+                {inner}
+                {CHEVRON}
+              </Link>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">{inner}</div>
+            )}
+          </li>
+        )
       })}
     </ul>
   )
@@ -117,13 +141,21 @@ function AlertList({ alerts }: { alerts: HomeAlert[] }) {
 
 function Stat({ title, value, sub, href }: { title: string; value: string; sub?: string; href?: string }) {
   const inner = (
-    <div className="rounded-lg border border-kumo-line bg-kumo-tint p-3">
+    <div className="min-w-0 flex-1">
       <p className="text-xs font-medium text-kumo-subtle">{title}</p>
-      <p className="mt-1 text-xl font-bold tabular-nums text-kumo-strong">{value}</p>
+      <p className="mt-1 text-xl font-semibold tabular-nums text-kumo-strong">{value}</p>
       {sub ? <p className="mt-0.5 text-[11px] text-kumo-subtle">{sub}</p> : null}
     </div>
   )
-  return href ? <Link href={href} className="block transition-opacity hover:opacity-80">{inner}</Link> : inner
+  // 押せるものだけ、ボタンの見た目(枠・影・右の「›」)。押せないものは、枠のない平らな面
+  return href ? (
+    <Link href={href} className={`${PRESSABLE} p-3`}>
+      {inner}
+      {CHEVRON}
+    </Link>
+  ) : (
+    <div className="flex items-center rounded-lg bg-gray-50 p-3">{inner}</div>
+  )
 }
 
 function signed(v: number): string {
@@ -203,7 +235,7 @@ export default function HomePage() {
   }, [load])
 
   const reload = (
-    <Button type="button" variant="ghost" size="xs" onClick={() => void load(true)} disabled={loading}>
+    <Button type="button" variant="secondary" size="xs" onClick={() => void load(true)} disabled={loading}>
       {loading ? '読み込み中…' : '再読み込み'}
     </Button>
   )
@@ -232,14 +264,17 @@ export default function HomePage() {
             <Card title="友だち数">
               {s ? (
                 <div className="grid grid-cols-2 gap-3">
-                  <Link href="/friends" className="block rounded-lg border border-kumo-line p-3 text-center transition-colors hover:bg-gray-50">
-                    <p className="text-xs font-medium text-kumo-subtle">有効友だち数</p>
-                    <p className="mt-1 text-3xl font-bold tabular-nums text-kumo-strong">{n(s.friends.active)}<span className="ml-0.5 text-sm font-normal">人</span></p>
-                    <p className="mt-0.5 text-[11px] text-kumo-subtle">友だち総数 {n(s.friends.total)}</p>
+                  <Link href="/friends" className={`${PRESSABLE} p-3`}>
+                    <div className="min-w-0 flex-1 text-center">
+                      <p className="text-xs font-medium text-kumo-subtle">有効友だち数</p>
+                      <p className="mt-1 text-3xl font-semibold tabular-nums text-kumo-strong">{n(s.friends.active)}<span className="ml-0.5 text-sm font-normal">人</span></p>
+                      <p className="mt-0.5 text-[11px] text-kumo-subtle">友だち総数 {n(s.friends.total)}</p>
+                    </div>
+                    {CHEVRON}
                   </Link>
-                  <div className="rounded-lg border border-kumo-line p-3 text-center">
+                  <div className="flex flex-col justify-center rounded-lg bg-gray-50 p-3 text-center">
                     <p className="text-xs font-medium text-kumo-subtle">ブロック数</p>
-                    <p className="mt-1 text-3xl font-bold tabular-nums text-kumo-strong">{n(s.friends.blocked)}<span className="ml-0.5 text-sm font-normal">人</span></p>
+                    <p className="mt-1 text-3xl font-semibold tabular-nums text-kumo-strong">{n(s.friends.blocked)}<span className="ml-0.5 text-sm font-normal">人</span></p>
                     <p className="mt-0.5 text-[11px] text-kumo-subtle">{s.ops.blockRatePct !== null ? `${s.ops.blockRatePct}%` : '—'}</p>
                   </div>
                 </div>

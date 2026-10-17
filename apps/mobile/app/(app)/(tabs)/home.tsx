@@ -93,9 +93,9 @@ function HomeScreen() {
 
           <SectionTitle>現在の対応状況</SectionTitle>
           <View style={styles.tiles}>
-            <StatusTile label="未対応" value={data.chatStatus.unread} fg={c.danger} bg={c.dangerSoft} onPress={() => openChats('unread')} />
-            <StatusTile label="対応中" value={data.chatStatus.in_progress} fg={c.warning} bg={c.warningSoft} onPress={() => openChats('in_progress')} />
-            <StatusTile label="対応済み" value={data.chatStatus.resolved} fg={c.primaryText} bg={c.primarySoft} onPress={() => openChats('resolved')} />
+            <StatusTile label="未対応" value={data.chatStatus.unread} dot={c.danger} onPress={() => openChats('unread')} />
+            <StatusTile label="対応中" value={data.chatStatus.in_progress} dot={c.warning} onPress={() => openChats('in_progress')} />
+            <StatusTile label="対応済み" value={data.chatStatus.resolved} dot={c.primary} onPress={() => openChats('resolved')} />
           </View>
 
           <SectionTitle>友だち数</SectionTitle>
@@ -164,11 +164,24 @@ function HomeScreen() {
 
 export default withReadableWidth(HomeScreen);
 
-function StatusTile({ label, value, fg, bg, onPress }: { label: string; value: number; fg: string; bg: string; onPress: () => void }) {
+/** 押せる部品は、ボタンの見た目(白地・細い枠・右の「›」)。色は小さな点だけで、控えめにする */
+function StatusTile({ label, value, dot, onPress }: { label: string; value: number; dot: string; onPress: () => void }) {
+  const c = useColors();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${label} ${value}人。トーク一覧を開く`} onPress={onPress} style={({ pressed }) => [styles.tile, { backgroundColor: bg, opacity: pressed ? 0.7 : 1 }]}>
-      <Text style={{ color: fg, fontSize: 13, fontWeight: '700' }}>{label}</Text>
-      <Text style={{ color: fg, fontSize: 30, fontWeight: '800', marginTop: 2 }}>{num(value)}</Text>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label} ${value}人。トーク一覧を開く`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.tile, { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border }]}
+    >
+      <View style={{ flex: 1 }}>
+        <View style={styles.tileLabel}>
+          <View style={[styles.dot, { backgroundColor: dot }]} />
+          <Text style={{ color: c.textSub, fontSize: 12 }}>{label}</Text>
+        </View>
+        <Text style={{ color: c.text, fontSize: 22, fontWeight: '600', marginTop: 2 }}>{num(value)}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={c.textMuted} />
     </Pressable>
   );
 }
@@ -177,26 +190,35 @@ function AlertsCard({ alerts, onOpen }: { alerts: HomeAlert[]; onOpen: (a: HomeA
   const c = useColors();
   if (alerts.length === 0) {
     return (
-      <View style={[styles.okRow, { backgroundColor: c.primarySoft }]}>
-        <Ionicons name="checkmark-circle" size={20} color={c.primaryText} />
-        <Text style={{ color: c.primaryText, fontSize: 14, fontWeight: '700' }}>お知らせはありません</Text>
+      <View style={[styles.okRow, { backgroundColor: c.inputBackground }]}>
+        <Ionicons name="checkmark-circle" size={20} color={c.primary} />
+        <Text style={{ color: c.textSub, fontSize: 14 }}>お知らせはありません</Text>
       </View>
     );
   }
-  const palette = { critical: { bg: c.dangerSoft, fg: c.danger }, warning: { bg: c.warningSoft, fg: c.warning }, info: { bg: c.inputBackground, fg: c.textSub } } as const;
+  const dotColor = { critical: c.danger, warning: c.warning, info: c.textMuted } as const;
   return (
     <View style={{ gap: 8 }}>
       {alerts.map((a) => {
-        const p = palette[a.severity];
         const tappable = alertRoute(a) !== null;
+        // 押せるお知らせは、ボタンの見た目(白地・枠・右の「›」)。押せないものは、枠のない平らな行
         return (
-          <Pressable key={a.id} disabled={!tappable} accessibilityRole={tappable ? 'button' : 'text'} onPress={() => onOpen(a)} style={({ pressed }) => [styles.alert, { backgroundColor: p.bg, opacity: pressed ? 0.7 : 1 }]}>
-            <Ionicons name={a.severity === 'info' ? 'information-circle' : 'alert-circle'} size={22} color={p.fg} />
+          <Pressable
+            key={a.id}
+            disabled={!tappable}
+            accessibilityRole={tappable ? 'button' : 'text'}
+            onPress={() => onOpen(a)}
+            style={({ pressed }) => [
+              styles.alert,
+              tappable ? { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border, borderWidth: 1 } : { backgroundColor: c.inputBackground },
+            ]}
+          >
+            <View style={[styles.dot, { backgroundColor: dotColor[a.severity] }]} />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: c.text, fontSize: 14, fontWeight: '700' }}>{a.title}</Text>
+              <Text style={{ color: c.text, fontSize: 14, fontWeight: '500' }}>{a.title}</Text>
               {a.detail ? <Text style={{ color: c.textSub, fontSize: 12, marginTop: 1 }}>{a.detail}</Text> : null}
             </View>
-            {tappable ? <Ionicons name="chevron-forward" size={18} color={c.textMuted} /> : null}
+            {tappable ? <Ionicons name="chevron-forward" size={16} color={c.textMuted} /> : null}
           </Pressable>
         );
       })}
@@ -314,7 +336,7 @@ function Stat({ title, value }: { title: string; value: string }) {
   return (
     <View style={[styles.stat, { backgroundColor: c.card, borderColor: c.border }]}>
       <Text style={{ color: c.textMuted, fontSize: 11 }} numberOfLines={2}>{title}</Text>
-      <Text style={{ color: c.text, fontSize: 20, fontWeight: '800', marginTop: 4 }}>{value}</Text>
+      <Text style={{ color: c.text, fontSize: 18, fontWeight: '600', marginTop: 4 }}>{value}</Text>
     </View>
   );
 }
@@ -322,14 +344,16 @@ function Stat({ title, value }: { title: string; value: string }) {
 const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 32, gap: 8 },
   tiles: { flexDirection: 'row', gap: 8 },
-  tile: { flex: 1, minHeight: MIN_TAP + 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+  tile: { flex: 1, minHeight: MIN_TAP + 12, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 12, paddingRight: 8, paddingVertical: 10 },
+  tileLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
   alert: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   okRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12 },
   twoCols: { flexDirection: 'row', alignItems: 'center' },
   bigCol: { flex: 1, alignItems: 'center' },
   divider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch' },
   label: { fontSize: 12 },
-  big: { fontSize: 32, fontWeight: '800', marginTop: 2 },
+  big: { fontSize: 30, fontWeight: '600', marginTop: 2 },
   unit: { fontSize: 14, fontWeight: '400' },
   track: { height: 8, borderRadius: 4, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 4 },
