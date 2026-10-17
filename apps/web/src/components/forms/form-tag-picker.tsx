@@ -46,9 +46,6 @@ export function FormTagPicker({
     <Modal open={open} onClose={onClose} maxWidthClass="max-w-2xl" align="center">
       <div className="p-5">
         <h2 className="text-base font-bold text-[#333]">回答フォームを挿入</h2>
-        <p className="mt-1 text-xs text-[#757578]">
-          選んだフォームは、送信時にこのトークのアカウント用のリンクに自動で変換されます。
-        </p>
         <input
           autoFocus
           value={query}

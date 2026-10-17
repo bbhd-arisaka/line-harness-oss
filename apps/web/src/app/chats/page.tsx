@@ -81,16 +81,16 @@ interface ChatDetail extends Chat {
 type StatusFilter = 'all' | 'unread' | 'in_progress' | 'resolved'
 
 const statusConfig: Record<Chat['status'], { label: string; className: string }> = {
-  unread: { label: '未読', className: 'bg-red-100 text-red-700' },
+  unread: { label: '未対応', className: 'bg-red-100 text-red-700' },
   in_progress: { label: '対応中', className: 'bg-yellow-100 text-yellow-700' },
-  resolved: { label: '解決済', className: 'bg-green-100 text-green-700' },
+  resolved: { label: '対応済み', className: 'bg-green-100 text-green-700' },
 }
 
 const statusFilters: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: '全て' },
-  { key: 'unread', label: '未読' },
+  { key: 'unread', label: '未対応' },
   { key: 'in_progress', label: '対応中' },
-  { key: 'resolved', label: '解決済' },
+  { key: 'resolved', label: '対応済み' },
 ]
 
 const SHOW_LOADING_PREF_KEY = 'lh_chat_show_loading_indicator'
@@ -340,6 +340,11 @@ export default function ChatsPage() {
   const [chatDetail, setChatDetail] = useState<ChatDetail | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const statusFilterRef = useRef<StatusFilter>('all')
+  // ホームの「現在の対応状況」から来たときは、その状態に絞って開く(/chats?status=unread など)
+  useEffect(() => {
+    const s = new URLSearchParams(window.location.search).get('status')
+    if (s === 'unread' || s === 'in_progress' || s === 'resolved') setStatusFilter(s)
+  }, [])
   const unansweredOnlyRef = useRef(false)
   const [unansweredOnly, setUnansweredOnly] = useState(() => {
     if (typeof window === 'undefined') return false

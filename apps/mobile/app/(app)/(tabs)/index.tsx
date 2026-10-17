@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { AccountBar } from '../../../src/components/account-bar';
 import { Avatar, EmptyView, ErrorView, LoadingView, StatusBadge } from '../../../src/components/ui';
 import { api } from '../../../src/state/services';
@@ -15,6 +15,7 @@ import { useInterval } from '../../../src/state/hooks';
 import { useUnread } from '../../../src/state/unread';
 import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
 import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
+import { parseChatFilter } from '../../../src/lib/home';
 
 const PAGE_SIZE = 50;
 
@@ -71,6 +72,12 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   const { refresh: refreshUnread } = useUnread();
 
   const [filter, setFilter] = useState<Filter>('all');
+  // ホームの「現在の対応状況」・お知らせから来たときは、その状態に絞って開く(押すたびに t が変わる)
+  const params = useLocalSearchParams<{ filter?: string; t?: string }>();
+  useEffect(() => {
+    const f = parseChatFilter(params.filter);
+    if (f) setFilter(f);
+  }, [params.filter, params.t]);
   const [items, setItems] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

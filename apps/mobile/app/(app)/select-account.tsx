@@ -24,7 +24,6 @@ function SelectAccountScreen() {
         data={acc.accounts}
         keyExtractor={(a) => a.id}
         contentContainerStyle={{ padding: 16 }}
-        ListHeaderComponent={<Text style={[styles.lead, { color: c.textSub }]}>操作する LINE 公式アカウントを選んでください。選んだアカウントは次回も使われます。</Text>}
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         renderItem={({ item }) => {
           const active = item.id === acc.selected?.id;
@@ -57,7 +56,6 @@ function SelectAccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  lead: { fontSize: 14, lineHeight: 21, marginBottom: 16 },
   row: { minHeight: 72, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center' },
   name: { fontSize: 16, fontWeight: '700' },
   closeButton: { minHeight: MIN_TAP, paddingHorizontal: 12 },

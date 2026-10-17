@@ -39,7 +39,7 @@ export default function SendConfirmDialog({ title, targetCount, missingRealName 
     <Dialog.Root role="alertdialog" open onOpenChange={(open) => { if (!open) onCancel() }}>
       <Dialog size="base" className="p-6">
         <Dialog.Title className="text-lg font-semibold text-kumo-strong">配信を送信しますか？</Dialog.Title>
-        <Dialog.Description className="mt-1 text-sm text-kumo-subtle">送信後は取り消せません。対象とアカウントを確認してください。</Dialog.Description>
+        <Dialog.Description className="mt-1 text-sm text-kumo-subtle">送信後は取り消せません。</Dialog.Description>
         <dl className="my-4 space-y-2 text-sm">
           <div className="flex justify-between">
             <dt className="text-kumo-subtle">タイトル</dt>

@@ -10,6 +10,7 @@ export default function TabsLayout() {
   const unread = useUnread();
   return (
     <Tabs
+      initialRouteName="home"
       screenOptions={{
         tabBarActiveTintColor: c.primary,
         tabBarInactiveTintColor: c.textMuted,
@@ -20,6 +21,13 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: c.background },
       }}
     >
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: 'ホーム',
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
+        }}
+      />
       <Tabs.Screen
         name="index"
         options={{

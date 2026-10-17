@@ -21,6 +21,7 @@ import type {
   TemplateOption,
 } from './types';
 import type { ApiMessage, SegmentCondition } from './broadcast';
+import type { HomeSummary } from './home';
 import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
 
 /** 本番 API。EXPO_PUBLIC_API_URL で上書きできる。 */
@@ -175,6 +176,9 @@ export function createApiClient(options: ApiClientOptions) {
           beforeId: params.before?.id,
         },
       }),
+    /** ホーム(トップ)の集計。fresh=true で、覚えている結果を使わず作り直す */
+    getHome: (lineAccountId: string, fresh = false) =>
+      request<HomeSummary>('GET', '/api/home', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),
     getChat: (id: string) => request<ChatDetail>('GET', `/api/chats/${encodeURIComponent(id)}`),
     /** トークの「回答結果を見る」カードから開く、フォームの回答結果 */
     getFormAnswer: (chatId: string, submissionId: string) =>

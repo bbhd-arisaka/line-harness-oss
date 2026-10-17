@@ -184,7 +184,6 @@ function FriendsScreen() {
           ListEmptyComponent={
             <EmptyView
               title={search ? '見つかりませんでした' : '友だちがいません'}
-              message={search ? '名前の一部で検索できます。ひらがな・漢字は表記が違うと見つからないことがあります。' : undefined}
             />
           }
           ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}

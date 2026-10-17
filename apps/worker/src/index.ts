@@ -44,6 +44,7 @@ import { reminders } from './routes/reminders.js';
 import { scoring } from './routes/scoring.js';
 import { templates } from './routes/templates.js';
 import { chats } from './routes/chats.js';
+import { home } from './routes/home.js';
 import { conversations } from './routes/conversations.js';
 // notifications ルート: 一度インボックス機能 (/api/inbox/unanswered) に置き換えて
 // 削除したが、クォータ不足通知 (services/quota-alert.ts, 2026-09-01 事故対応) が
@@ -270,6 +271,7 @@ app.route('/', reminders);
 app.route('/', scoring);
 app.route('/', templates);
 app.route('/', chats);
+app.route('/', home);
 app.route('/', notifications);
 app.route('/', conversations);
 app.route('/', stripe);

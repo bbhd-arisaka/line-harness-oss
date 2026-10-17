@@ -89,9 +89,6 @@ export function TemplatePicker({
     <Modal open={open} onClose={onClose} maxWidthClass="max-w-2xl" align="center">
       <div className="p-5">
         <h2 className="text-base font-bold text-[#333]">テンプレートから送る</h2>
-        <p className="mt-1 text-xs text-[#757578]">
-          テキストは、入力欄に入るので、直してから送れます。画像・Flex は、選ぶと、送る前の確認が出ます。
-        </p>
         <input
           autoFocus
           value={query}

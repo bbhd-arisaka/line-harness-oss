@@ -38,6 +38,38 @@ import { getApiBase } from './api-base'
 import type { FriendFilter } from './friend-filter'
 import type { FriendAddActionItem, FriendAddKindItem, FriendAddSettingItem } from './friend-add-actions'
 
+/** ホーム(トップ)の集計。GET /api/home */
+export type HomeAlert = {
+  id: string
+  severity: 'critical' | 'warning' | 'info'
+  title: string
+  detail?: string
+  target?: { kind: 'chats'; status: 'unread' } | { kind: 'broadcasts' } | { kind: 'friends' }
+}
+export type HomeTrendRow = { date: string; added: number; blocked: number; delta: number; active: number }
+export type HomeSummary = {
+  accountId: string
+  generatedAt: string
+  friends: { active: number; blocked: number; total: number }
+  chatStatus: { unread: number; in_progress: number; resolved: number }
+  unreadOver24h: number
+  oldestUnreadHours: number | null
+  quota: { type: 'limited' | 'none'; limit: number | null; consumption: number | null; remaining: number | null } | null
+  sentThisMonth: number
+  trend: HomeTrendRow[]
+  ops: {
+    avgFirstReplyMinutes: number | null
+    repliedCount: number
+    receivedThisMonth: number
+    formAnswersThisMonth: number
+    addedThisMonth: number
+    blockedThisMonth: number
+    blockRatePct: number | null
+  }
+  routes: Array<{ key: string; label: string; count: number }>
+  alerts: HomeAlert[]
+}
+
 /** Per-account delivery-health snapshot for the dashboard cards. */
 export type AccountDeliveryHealth = {
   lineAccountId: string
@@ -781,6 +813,8 @@ export const api = {
   lineAccounts: {
     list: () =>
       fetchApi<ApiResponse<LineAccount[]>>('/api/line-accounts'),
+    home: (lineAccountId: string, fresh = false) =>
+      fetchApi<ApiResponse<HomeSummary>>(`/api/home?lineAccountId=${encodeURIComponent(lineAccountId)}${fresh ? '&fresh=1' : ''}`),
     deliveryHealth: () =>
       fetchApi<ApiResponse<{ insightDate: string; accounts: AccountDeliveryHealth[] }>>(
         '/api/line-accounts/delivery-health',

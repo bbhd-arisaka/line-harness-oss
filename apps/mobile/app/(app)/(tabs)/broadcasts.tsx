@@ -75,7 +75,7 @@ export default function BroadcastsScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: c.background }}>
         <AccountBar />
-        <EmptyView title="一斉配信は、オーナーまたは管理者だけが使えます" message="使いたいときは、会社の管理者に権限を依頼してください。" />
+        <EmptyView title="一斉配信は、オーナーまたは管理者だけが使えます" />
       </View>
     );
   }

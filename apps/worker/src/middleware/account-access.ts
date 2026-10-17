@@ -76,7 +76,7 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
   if (isGet && friendAddMatch) return allowed.includes(friendAddMatch[1]) ? next() : forbidden(c);
 
   // 一覧系: アカウントの指定が必須
-  if (isGet && ['/api/friends', '/api/friends/count', '/api/friends/ref-stats', '/api/chats', '/api/conversations'].includes(path)) {
+  if (isGet && ['/api/friends', '/api/friends/count', '/api/friends/ref-stats', '/api/chats', '/api/conversations', '/api/home'].includes(path)) {
     return queryAccountAllowed(c, allowed, 'lineAccountId') ? next() : forbidden(c);
   }
   if (isGet && (path === '/api/inbox/unanswered' || path === '/api/inbox/unanswered/count')) {

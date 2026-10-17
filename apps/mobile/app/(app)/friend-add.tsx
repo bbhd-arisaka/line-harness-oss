@@ -96,9 +96,6 @@ function FriendAddScreen() {
         <View style={[styles.qrBox, { borderColor: c.border }]}>
           <Image source={{ uri: qrDataUri(info.qrPngBase64) }} style={styles.qr} accessibilityLabel="友だち追加のQRコード" resizeMode="contain" />
         </View>
-        <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }}>
-          お客様にこのQRコードを読み取ってもらうと、このアカウントを友だち追加できます。
-        </Text>
         <Button title={saving ? '保存しています…' : 'QRコードを画像で保存'} onPress={() => void saveQr()} loading={saving} style={{ alignSelf: 'stretch', marginTop: 12 }} />
         {saveMessage ? (
           <Text style={{ color: saveMessage.ok ? c.primaryText : c.danger, fontSize: 13, marginTop: 8, textAlign: 'center' }} accessibilityRole="alert">

@@ -97,7 +97,6 @@ function BroadcastDetailScreen() {
         <Text style={{ color: item.status === 'sent' ? c.primaryText : c.warning, fontSize: 14, fontWeight: '700', marginTop: 4 }}>
           {broadcastStatusLabel(item.status)}
           {item.status === 'scheduled' && item.scheduledAt ? `: ${formatScheduled(item.scheduledAt)} に配信します` : ''}
-          {item.status === 'sending' ? '(順番に配信しています。この画面を閉じても続きます)' : ''}
         </Text>
         {item.status === 'sending' || item.status === 'sent' ? (
           <View style={{ marginTop: 10 }}>

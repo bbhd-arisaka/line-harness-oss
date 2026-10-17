@@ -39,7 +39,7 @@ export function UpdateRequiredScreen({ storeUrl }: { storeUrl: string }) {
       </View>
       <Text style={{ color: c.text, fontSize: 22, fontWeight: '800', textAlign: 'center', marginTop: 20 }}>アプリを更新してください</Text>
       <Text style={{ color: c.textSub, fontSize: 15, lineHeight: 23, textAlign: 'center', marginTop: 12 }}>
-        新しいバージョンが公開されました。{'\n'}更新すると、これまでどおり続けて使えます。
+        新しいバージョンが公開されました。
       </Text>
       <Button title="App Storeを開く" onPress={() => void Linking.openURL(storeUrl)} style={{ marginTop: 28, alignSelf: 'stretch' }} />
       <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'center', marginTop: 16 }}>

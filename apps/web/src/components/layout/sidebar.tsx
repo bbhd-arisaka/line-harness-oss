@@ -20,7 +20,7 @@ type MenuSection = { label: string | null; icon?: 'star' | 'megaphone' | 'funnel
 const menuSections: MenuSection[] = [
   {
     label: null,
-    items: [{ href: '/', label: 'トップ' }],
+    items: [{ href: '/', label: 'ホーム' }],
   },
   {
     label: '1対1トーク',

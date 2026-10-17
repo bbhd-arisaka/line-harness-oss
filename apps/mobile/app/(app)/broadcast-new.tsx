@@ -247,7 +247,6 @@ function BroadcastNewScreen() {
       <SectionTitle>送る公式アカウント</SectionTitle>
       <Card>
         <Text style={{ color: c.text, fontSize: 16, fontWeight: '700' }}>{accountName}</Text>
-        <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 2 }}>別のアカウントに送るときは、トークの画面で、アカウントを切り替えてから開いてください。</Text>
       </Card>
 
       <SectionTitle>メッセージ</SectionTitle>
@@ -332,9 +331,6 @@ function BroadcastNewScreen() {
                 </Pressable>
               ))}
             </View>
-            <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18, marginTop: 8 }}>
-              ブロック中の人には送りません。友だち情報は、複数選んだ項目(「A、B」のように保存されたもの)には、完全一致しません。
-            </Text>
           </View>
         ) : null}
 
@@ -382,19 +378,13 @@ function BroadcastNewScreen() {
                 <Text style={{ color: c.text, fontSize: 16, fontWeight: '700' }}>{schedule.timeId}</Text>
               </Pressable>
             </View>
-            <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19 }}>
-              {formatScheduled(toScheduledAt(schedule.dateId, schedule.timeId))} に配信します(日本時間)。送る人は、その時刻の時点の対象になります。予約は、配信の画面から取り消せます。
-            </Text>
           </View>
         ) : null}
       </Card>
 
       <SectionTitle>テスト送信</SectionTitle>
       <Card>
-        <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18 }}>
-          本番の前に、選んだ友だちだけに送って確認できます(最大{MAX_TEST_FRIENDS}人)。前回使った人は、選ぶ画面の上に並びます。
-        </Text>
-        <Text style={{ color: testFriends.length > 0 ? c.text : c.textMuted, fontSize: 15, marginTop: 8, lineHeight: 22 }}>
+        <Text style={{ color: testFriends.length > 0 ? c.text : c.textMuted, fontSize: 15, lineHeight: 22 }}>
           {testFriends.length > 0 ? `送る相手: ${testFriends.map((f) => f.name).join('、')}` : '送る友だちが選ばれていません'}
         </Text>
         <Button
@@ -415,9 +405,6 @@ function BroadcastNewScreen() {
           onPress={() => void onTest()}
         />
         <Button title={when === 'scheduled' ? '予約する' : 'いますぐ送る'} loading={busy === 'send'} disabled={busyAny && busy !== 'send'} onPress={() => void onSend()} />
-        <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' }}>
-          {when === 'scheduled' ? '予約する前に、内容の確認が出ます。予約は、配信の画面から取り消せます。' : '送る前に、人数の確認が出ます。送ったあとは取り消せません。'}
-        </Text>
       </View>
 
       <FriendMultiPickModal

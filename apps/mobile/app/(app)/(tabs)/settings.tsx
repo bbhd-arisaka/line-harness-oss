@@ -187,13 +187,9 @@ function SettingsScreen() {
 
           <SectionTitle>{acc.selected ? `「${accountLabel(acc.selected)}」の通知` : '公式アカウントの通知'}</SectionTitle>
           <Card>
-            <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginBottom: 6 }}>
-              ここは、いま見ている公式アカウントの通知の設定です(このスマートフォンだけの設定。Web版の設定は要りません)。ほかの公式アカウントの通知は、そのアカウントに切り替えて設定します。
-            </Text>
             <View style={styles.accountRow}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={{ color: c.text, fontSize: 15, fontWeight: '700' }}>このアカウントの通知</Text>
-                <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 1 }}>オフにすると、このアカウントの通知はすべて届きません</Text>
               </View>
               <Switch
                 accessibilityLabel="このアカウントの通知"
@@ -251,8 +247,7 @@ function SettingsScreen() {
       <SectionTitle>アカウントの削除</SectionTitle>
       <Card>
         <Text style={{ color: c.textSub, fontSize: 13, lineHeight: 19 }}>
-          アカウントの削除を申請できます。申請するとすべての端末からログアウトされ、以後ログインできなくなります。
-          {staff?.role === 'owner' ? '\nオーナーのアカウントは、beyond admin の管理画面から、または別のオーナーに依頼して削除します。' : ''}
+          {staff?.role === 'owner' ? 'オーナーのアカウントは、beyond admin の管理画面から、または別のオーナーに依頼して削除します。' : 'アカウントの削除を申請できます。'}
         </Text>
         {staff?.role !== 'owner' ? (
           <Button title="アカウントの削除を申請" variant="secondary" loading={deleting} onPress={() => void requestDeletion()} style={{ marginTop: 10 }} />

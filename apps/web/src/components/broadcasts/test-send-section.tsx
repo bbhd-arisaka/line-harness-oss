@@ -106,7 +106,6 @@ export default function TestSendSection({ broadcastId, accountId, disabled }: Te
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
       <h3 className="text-sm font-semibold text-gray-700 mb-2">テスト送信</h3>
-      <p className="text-xs text-gray-500 mb-2">送りたい友だちを検索して、チェックを入れてください(最大{MAX_PICK}人)。</p>
 
       <Input
         aria-label="テスト送信する友だちを検索"
@@ -122,7 +121,7 @@ export default function TestSendSection({ broadcastId, accountId, disabled }: Te
       <ul className="max-h-56 overflow-y-auto rounded-md border border-gray-100 divide-y divide-gray-100">
         {list.length === 0 ? (
           <li className="px-3 py-3 text-xs text-gray-400">
-            {searchMode ? (searching ? '' : '見つかりません') : '履歴はまだありません。名前で検索してください。'}
+            {searchMode ? (searching ? '' : '見つかりません') : '履歴はありません'}
           </li>
         ) : list.map(friend => {
           const checked = picked.has(friend.id)

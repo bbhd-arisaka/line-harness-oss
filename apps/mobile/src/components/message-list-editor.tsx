@@ -99,8 +99,6 @@ export function MessageListEditor({
 
   return (
     <View style={{ gap: 12 }}>
-      <Text style={{ color: c.textMuted, fontSize: 12 }}>上から順に届きます(最大{MAX_BROADCAST_MESSAGES}通)。</Text>
-
       {messages.map((m, index) => (
         <View key={m.key} style={[styles.card, { borderColor: c.border, backgroundColor: c.card }]}>
           <View style={styles.head}>
@@ -155,9 +153,6 @@ export function MessageListEditor({
                   }}
                 />
               </View>
-              <Text style={{ color: c.textMuted, fontSize: 12, lineHeight: 17, marginTop: 6 }}>
-                ボックスは、バックスペースで消せます。本名が未登録の人には、LINE名が入ります。
-              </Text>
               <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'right', marginTop: 2 }}>
                 {Array.from(m.text).length.toLocaleString('ja-JP')} / {MAX_MESSAGE_LENGTH.toLocaleString('ja-JP')}
               </Text>
@@ -193,7 +188,6 @@ export function MessageListEditor({
                   onPress={() => void choosePhoto(m)}
                 />
               )}
-              <Text style={{ color: c.textMuted, fontSize: 12 }}>写真アプリから選びます。大きい写真は、自動で小さくして送ります(JPEG)。</Text>
             </View>
           )}
         </View>
@@ -203,9 +197,7 @@ export function MessageListEditor({
 
       {messages.length < MAX_BROADCAST_MESSAGES ? (
         <Button title={`＋ メッセージを追加(${messages.length}/${MAX_BROADCAST_MESSAGES})`} variant="secondary" disabled={disabled} onPress={() => onChange([...messages, newDraftMessage('text')])} />
-      ) : (
-        <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'center' }}>メッセージは{MAX_BROADCAST_MESSAGES}通までです(LINEの1回の配信の上限)</Text>
-      )}
+      ) : null}
 
       <PickModal
         visible={pickFor !== null}
