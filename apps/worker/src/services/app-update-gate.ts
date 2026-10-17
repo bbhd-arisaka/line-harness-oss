@@ -85,11 +85,12 @@ export async function getStoreVersion(fetchImpl: typeof fetch = fetch, now = Dat
   let version: string | null = null;
   try {
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), 3000) : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 6000) : null;
     try {
       // 末尾の t= は、Apple の配信網(CDN)が古い答えを返し続けるのを避けるため(2026-10-17 実測: 付けないと、公開から半日たっても
-      // 旧版 1.1.0 が返った。付けると新版 1.1.2 が返る)。毎回違う値にして、キャッシュに当たらないようにする
-      const res = await fetchImpl(`https://itunes.apple.com/lookup?id=${APP_STORE_ID}&country=jp&t=${now}`, { signal: ctrl?.signal });
+      // 旧版 1.1.0 が返った。付けると新版 1.1.2 が返る)。値は10分ごとに変える。毎回違う値だと、Apple 側で作り直しになって
+      // 遅いときに時間切れが続くため(同じ10分の中なら、1回目の結果が Apple 側に残って、2回目以降は速い)
+      const res = await fetchImpl(`https://itunes.apple.com/lookup?id=${APP_STORE_ID}&country=jp&t=${Math.floor(now / 600_000)}`, { signal: ctrl?.signal });
       if (res.ok) {
         const json = (await res.json()) as { results?: Array<{ version?: string }> };
         const v = json.results?.[0]?.version;
