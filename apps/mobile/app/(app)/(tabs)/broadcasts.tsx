@@ -21,7 +21,6 @@ export default function BroadcastsScreen() {
   const staff = useAuth().staff;
   const accountId = selected?.id ?? null;
   const allowed = staff?.role === 'owner' || staff?.role === 'admin';
-  const parallel = !!selected?.lstepForwardUrl;
 
   const [items, setItems] = useState<BroadcastItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,13 +84,7 @@ export default function BroadcastsScreen() {
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <AccountBar />
       <View style={styles.top}>
-        {parallel ? (
-          <Text style={{ color: c.warning, fontSize: 13, lineHeight: 19 }}>
-            このアカウントは、Lステップと並行運用中のため、一斉配信はできません(お客様に二重で届くのを防ぐため)。本番に切り替えたあと、使えるようになります。
-          </Text>
-        ) : (
-          <Button title="新しい配信を作る" onPress={() => router.push('/broadcast-new')} />
-        )}
+        <Button title="新しい配信を作る" onPress={() => router.push('/broadcast-new')} />
       </View>
       {loading ? (
         <LoadingView />

@@ -49,7 +49,6 @@ function BroadcastNewScreen() {
   const accountId = selected?.id ?? null;
   const accountName = selected ? accountLabel(selected) : '';
   const allowed = staff?.role === 'owner' || staff?.role === 'admin';
-  const parallel = !!selected?.lstepForwardUrl;
 
   // 配信するメッセージ(1〜5通・上から順に届く)
   const [messages, setMessages] = useState<DraftMessage[]>(() => [newDraftMessage('text')]);
@@ -232,17 +231,12 @@ function BroadcastNewScreen() {
     }
   }
 
-  if (!allowed || parallel || !accountId) {
+  if (!allowed || !accountId) {
     return (
       <View style={{ flex: 1, backgroundColor: c.background, padding: 24, justifyContent: 'center' }}>
         <Text style={{ color: c.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
-          {!allowed ? '一斉配信は、オーナーまたは管理者だけが使えます' : parallel ? 'このアカウントでは、いま一斉配信できません' : '公式アカウントが選ばれていません'}
+          {!allowed ? '一斉配信は、オーナーまたは管理者だけが使えます' : '公式アカウントが選ばれていません'}
         </Text>
-        {parallel ? (
-          <Text style={{ color: c.textSub, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 8 }}>
-            Lステップと並行運用中のため、お客様に二重で届くのを防ぐために、止めています。本番に切り替えたあと、使えるようになります。
-          </Text>
-        ) : null}
       </View>
     );
   }

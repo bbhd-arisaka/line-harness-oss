@@ -32,7 +32,7 @@ export interface LineAccount {
   displayName: string;
   pictureUrl: string | null;
   basicId: string | null;
-  /** Lステップと並行運用中のとき、転送先の URL(一斉配信などの送信ができない) */
+  /** Lステップと並行運用中のとき、転送先の URL(自動送信はしない。一斉配信は送れる) */
   lstepForwardUrl?: string | null;
   stats?: { friendCount: number; activeScenarios: number; messagesThisMonth: number };
 }

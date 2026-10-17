@@ -48,12 +48,12 @@ export default function LstepForwardSetting({
     <div className="mt-3 rounded-lg border border-kumo-line p-3">
       <div className="mb-1 flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold text-kumo-strong">Lステップとの並行運用</h4>
-        <span className={`text-xs font-semibold ${active ? 'text-kumo-warning' : 'text-kumo-subtle'}`}>{active ? '並行運用中(送信停止)' : '使っていない'}</span>
+        <span className={`text-xs font-semibold ${active ? 'text-kumo-warning' : 'text-kumo-subtle'}`}>{active ? '並行運用中(自動送信は停止)' : '使っていない'}</span>
       </div>
       <p className="mb-2 text-xs leading-5 text-kumo-subtle">
         LINEのWebhook URLを、このシステムのURL(https://beyond-line.cms-manager.jp/webhook)にして、下に
         <b>Lステップの受信URL</b>(切り替える前にLINE Developersで控えたもの)を入れると、受け取った内容をLステップにも転送します。
-        並行運用中は、このアカウントからの自動送信(自動応答・あいさつ・シナリオ・一斉配信)は行いません。
+        並行運用中は、このアカウントからの自動送信(自動応答・あいさつ・シナリオ)は行いません。一斉配信は、並行運用中でも送れます(Lステップからも同じ内容を送ると、お客様に二重で届くので、送る側で調整してください)。
       </p>
       <div className="flex items-start gap-2">
         <Input

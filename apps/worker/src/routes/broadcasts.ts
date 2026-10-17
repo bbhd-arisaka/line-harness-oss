@@ -12,7 +12,7 @@ import type { Broadcast as DbBroadcast, BroadcastMessageType, BroadcastTargetTyp
 import { LineClient } from '@line-crm/line-sdk';
 import { processBroadcastSend, buildMessage, processQueuedBroadcasts } from '../services/broadcast.js';
 import { BroadcastSenderError, resolveBroadcastSender } from '../services/broadcast-sender.js';
-import { appBroadcastDenied, isParallelAccount, PARALLEL_BROADCAST_BLOCKED_MESSAGE } from '../services/broadcast-guard.js';
+import { appBroadcastDenied } from '../services/broadcast-guard.js';
 import { LinePlanQuotaError } from '../services/quota-alert.js';
 import {
   getQuotaUsage,
@@ -449,14 +449,6 @@ broadcasts.post('/api/broadcasts', async (c) => {
     // アプリからは、オーナー・管理者だけ。公式アカウントの指定が必要
     const denied = appDenied(c, body.lineAccountId);
     if (denied) return denied;
-    // Lステップと並行運用中のアカウントでは、一斉配信を作らない(送信側でも止めるが、作る時点で分かるようにする)
-    if (body.lineAccountId) {
-      const target = await getLineAccountById(c.env.DB, body.lineAccountId);
-      if (isParallelAccount(target as unknown as { lstep_forward_url?: string | null } | null)) {
-        return c.json({ success: false, error: PARALLEL_BROADCAST_BLOCKED_MESSAGE }, 400);
-      }
-    }
-
     if (body.targetType === 'tag' && !body.targetTagId) {
       return c.json(
         { success: false, error: 'targetTagId is required when targetType is "tag"' },

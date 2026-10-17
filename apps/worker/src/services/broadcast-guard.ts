@@ -27,10 +27,3 @@ export function appBroadcastDenied(c: AppBroadcastCheck): string | null {
   return null;
 }
 
-/** Lステップと並行運用中の公式アカウントからは、一斉配信しない(二重配信を防ぐ) */
-export const PARALLEL_BROADCAST_BLOCKED_MESSAGE =
-  'このアカウントは、Lステップと並行運用中のため、beyond line からは一斉配信できません(お客様に二重で届くのを防ぐため)。本番に切り替えたあと、使えるようになります。';
-
-export function isParallelAccount(account: { lstep_forward_url?: string | null } | null | undefined): boolean {
-  return !!account?.lstep_forward_url;
-}
