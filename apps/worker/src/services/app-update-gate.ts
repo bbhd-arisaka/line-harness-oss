@@ -80,27 +80,34 @@ export function resetStoreVersionCache(): void {
   storeCache = null;
 }
 
+/** Apple の公開API(iTunes Lookup)に1回聞いて、版を返す。読めなければ null */
+async function lookupOnce(fetchImpl: typeof fetch, url: string): Promise<string | null> {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 6000) : null;
+  try {
+    const res = await fetchImpl(url, { signal: ctrl?.signal });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { results?: Array<{ version?: string }> };
+    const v = json.results?.[0]?.version;
+    return parseVersion(v) ? (v as string) : null;
+  } catch {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function getStoreVersion(fetchImpl: typeof fetch = fetch, now = Date.now()): Promise<string | null> {
   if (storeCache && now - storeCache.at < (storeCache.version ? STORE_TTL_OK_MS : STORE_TTL_FAIL_MS)) return storeCache.version;
+  // Apple の配信網(CDN)は、同じURLだと公開後も古い答えを返し続けた(2026-10-17 実測: 公開から半日たっても旧版 1.1.0)。
+  // 答えが古いURLに当たっても新しい版が分かるよう、キャッシュの鍵が違う3通りで同時に聞き、いちばん新しい版を採る
+  // (App Store の版は、下がらない)。t= の値は10分ごとに変える。どれかが時間切れ・失敗でも、ほかで取れればよい
+  const base = `https://itunes.apple.com/lookup?id=${APP_STORE_ID}&country=jp`;
+  const urls = [base, `https://itunes.apple.com/jp/lookup?id=${APP_STORE_ID}`, `${base}&t=${Math.floor(now / 600_000)}`];
+  const found = (await Promise.all(urls.map((u) => lookupOnce(fetchImpl, u)))).filter((v): v is string => v !== null);
   let version: string | null = null;
-  try {
-    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), 6000) : null;
-    try {
-      // 末尾の t= は、Apple の配信網(CDN)が古い答えを返し続けるのを避けるため(2026-10-17 実測: 付けないと、公開から半日たっても
-      // 旧版 1.1.0 が返った。付けると新版 1.1.2 が返る)。値は10分ごとに変える。毎回違う値だと、Apple 側で作り直しになって
-      // 遅いときに時間切れが続くため(同じ10分の中なら、1回目の結果が Apple 側に残って、2回目以降は速い)
-      const res = await fetchImpl(`https://itunes.apple.com/lookup?id=${APP_STORE_ID}&country=jp&t=${Math.floor(now / 600_000)}`, { signal: ctrl?.signal });
-      if (res.ok) {
-        const json = (await res.json()) as { results?: Array<{ version?: string }> };
-        const v = json.results?.[0]?.version;
-        version = parseVersion(v) ? (v as string) : null;
-      }
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  } catch {
-    version = null;
+  for (const v of found) {
+    if (version === null || (compareVersions(v, version) ?? 0) > 0) version = v;
   }
   storeCache = { at: now, version };
   return version;

@@ -62,12 +62,20 @@ describe('App Store の最新版の確認', () => {
     const f = vi.fn(async () => storeJson('1.1.2'));
     expect(await getStoreVersion(f as never, 1_000)).toBe('1.1.2');
     expect(await getStoreVersion(f as never, 2_000)).toBe('1.1.2');
-    expect(f).toHaveBeenCalledTimes(1);
+    expect(f).toHaveBeenCalledTimes(3); // 1回の確認=3通り。2回目は覚えている結果を使う
   });
-  it('Apple の配信網の古い答えに当たらないよう、10分ごとに変わる値(t=)を付けて聞く', async () => {
-    const f = vi.fn(async (_url: string) => storeJson('1.1.2'));
-    await getStoreVersion(f as never, 5_000_000);
-    expect(f.mock.calls[0][0]).toContain('country=jp&t=8');
+  it('Apple の配信網の古い答えに当たらないよう、鍵の違う3通りで聞き、いちばん新しい版を採る', async () => {
+    const f = vi.fn(async (url: string) => storeJson(url.includes('&t=') ? '1.1.2' : '1.1.0'));
+    expect(await getStoreVersion(f as never, 5_000_000)).toBe('1.1.2');
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(f.mock.calls.map((c) => c[0]).some((u) => u.includes('country=jp&t=8'))).toBe(true);
+  });
+  it('1つが失敗しても、取れた分から版を決める', async () => {
+    const f = vi.fn(async (url: string) => {
+      if (url.includes('&t=')) throw new Error('timeout');
+      return storeJson('1.1.2');
+    });
+    expect(await getStoreVersion(f as never, 5_000_000)).toBe('1.1.2');
   });
   it('通信に失敗・結果が空のときは null(止めない側に倒す)。失敗は短い時間で取り直す', async () => {
     const bad = vi.fn(async () => { throw new Error('down'); });
