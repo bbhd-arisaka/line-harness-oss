@@ -6,18 +6,11 @@ import { pickAndUploadImage } from '../state/image-upload';
 import { Button } from './ui';
 import { PickModal, type PickItem } from './pick-modal';
 import { formTag, MAX_BROADCAST_MESSAGES, MAX_MESSAGE_LENGTH, NAME_TAG, newDraftMessage, REAL_NAME_TAG, type DraftKind, type DraftMessage } from '../lib/broadcast';
-import { appendTag, applyEdit, displayOf, insertTag, segDisplay, segsToText, tagTone, toSegs, type TagTone } from '../lib/tag-editor';
+import { appendTag, insertTag, segsToText, toSegs } from '../lib/tag-editor';
+import { InsertButton, TagTextInput } from './tag-text-input';
 import { describeError } from '../lib/errors';
 import type { FormOption } from '../lib/types';
 import { MIN_TAP, useColors } from '../theme/theme';
-
-/** ボックス(タグ)の色。Web版と同じ系統: LINE名=水色、本名=緑、フォーム=青、そのほか=紫 */
-const CHIP: Record<TagTone, { fg: string; bg: string; border: string }> = {
-  name: { fg: '#075985', bg: '#e0f2fe', border: '#7dd3fc' },
-  realName: { fg: '#065f46', bg: '#d1fae5', border: '#6ee7b7' },
-  form: { fg: '#1d5f92', bg: '#e3f0fb', border: '#93c5fd' },
-  other: { fg: '#5b21b6', bg: '#ede9fe', border: '#c4b5fd' },
-};
 
 /**
  * 一斉配信のメッセージを、最大5通まで並べて作る。上から順に届く。
@@ -230,68 +223,6 @@ export function MessageListEditor({
   );
 }
 
-/**
- * 色付きのボックスが、文章の中に並ぶ入力欄。
- * 入力欄の文字は「文字+ボックスの日本語名」。ボックスの部分だけに、色(背景)を付ける。
- * 打つ・消すたびに、前の表示といまの表示の差から、ボックスを壊さずに本文へ戻す(lib/tag-editor.ts)。
- */
-function TagTextInput({
-  text,
-  formNames,
-  disabled,
-  label,
-  forcedPos,
-  onChangeText,
-  onSelection,
-}: {
-  text: string;
-  formNames: ReadonlyMap<string, string>;
-  disabled: boolean;
-  label: string;
-  forcedPos: number | null;
-  onChangeText: (text: string) => void;
-  onSelection: (sel: { start: number; end: number }) => void;
-}) {
-  const c = useColors();
-  const segs = useMemo(() => toSegs(text), [text]);
-  const shown = useMemo(() => displayOf(segs, formNames), [segs, formNames]);
-  return (
-    <TextInput
-      multiline
-      editable={!disabled}
-      onChangeText={(next) => onChangeText(segsToText(applyEdit(segs, shown, next, formNames)))}
-      onSelectionChange={(e) => onSelection(e.nativeEvent.selection)}
-      selection={forcedPos !== null ? { start: forcedPos, end: forcedPos } : undefined}
-      placeholder="送るメッセージを入力"
-      placeholderTextColor={c.textMuted}
-      scrollEnabled={false}
-      style={[styles.composer, { color: c.text, borderColor: c.border }]}
-      accessibilityLabel={label}
-    >
-      <Text>
-        {segs.map((s, i) =>
-          s.kind === 'text' ? (
-            <Text key={i}>{s.text}</Text>
-          ) : (
-            <Text key={i} style={{ backgroundColor: CHIP[tagTone(s.code)].bg, color: CHIP[tagTone(s.code)].fg, fontWeight: '700' }}>
-              {segDisplay(s, formNames)}
-            </Text>
-          ),
-        )}
-      </Text>
-    </TextInput>
-  );
-}
-
-function InsertButton({ label, tone, disabled, onPress }: { label: string; tone: TagTone; disabled: boolean; onPress: () => void }) {
-  const t = CHIP[tone];
-  return (
-    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.insertBtn, { borderColor: t.border, backgroundColor: t.bg }]}>
-      <Text style={{ color: t.fg, fontWeight: '700', fontSize: 13 }}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function IconButton({ icon, label, onPress, disabled, danger }: { icon: 'arrow-up' | 'arrow-down' | 'trash'; label: string; onPress: () => void; disabled?: boolean; danger?: boolean }) {
   const c = useColors();
   return (
@@ -315,9 +246,7 @@ const styles = StyleSheet.create({
   iconBtn: { width: MIN_TAP - 4, height: MIN_TAP - 4, alignItems: 'center', justifyContent: 'center' },
   segmented: { flexDirection: 'row', gap: 8 },
   segment: { flex: 1, minHeight: 40, borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  composer: { minHeight: 140, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, lineHeight: 24, textAlignVertical: 'top' },
   insertRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  insertBtn: { minHeight: 38, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
   thumb: { width: '100%', height: 200, borderRadius: 10 },
   removeX: { position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.65)', alignItems: 'center', justifyContent: 'center' },
   uploading: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: MIN_TAP },

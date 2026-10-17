@@ -1,13 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../state/services';
+import { pickAndUploadImage } from '../state/image-upload';
+import { InsertButton, TagTextInput } from './tag-text-input';
+import { PickModal, type PickItem } from './pick-modal';
+import { appendTag, insertTag, segsToText, toSegs } from '../lib/tag-editor';
+import { findUnsupportedTag, formTag, NAME_TAG, REAL_NAME_TAG } from '../lib/broadcast';
+import { appendTemplateText, imageContent, planCompose, templateNote } from '../lib/chat-compose';
 import { useInterval } from '../state/hooks';
 import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow, type FormAnswerCard } from '../lib/format';
 import { STATUS_LABEL } from '../lib/format';
-import type { ChatDetail, ChatStatus } from '../lib/types';
+import type { ChatDetail, ChatStatus, FormOption, TemplateOption } from '../lib/types';
 import { ImageViewer } from '../components/image-viewer';
 import { ErrorView, LoadingView } from '../components/ui';
 import { MIN_TAP, useColors } from '../theme/theme';
@@ -16,7 +22,6 @@ import { ACTIVITY_RETRY_MS, isActivityForChat, subscribeChatActivity } from '../
 import { useUnread } from '../state/unread';
 
 const POLL_MS = 10_000;
-const MAX_LENGTH = 5000; // LINE のテキストメッセージの上限
 /** API は新しい順に 1000 件までしか返さない(それより古い履歴は表示できない) */
 const HISTORY_LIMIT = 1000;
 
@@ -176,6 +181,16 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  // 入力欄の道具: 色付きボックス(LINE名・本名・フォーム)・テンプレート・写真
+  const [forms, setForms] = useState<FormOption[] | null>(null);
+  const [pickForm, setPickForm] = useState(false);
+  const [templates, setTemplates] = useState<TemplateOption[] | null>(null);
+  const [pickTemplate, setPickTemplate] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  // 入力欄のカーソル位置(まだ一度も触っていないときは null → ボックスは最後に足す)
+  const selection = useRef<{ start: number; end: number } | null>(null);
+  const [forcedPos, setForcedPos] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -267,16 +282,113 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
     };
   }, [id, load]);
 
-  async function send() {
-    const body = text.trim();
-    if (!body || !id || sendLock.current) return;
+  const formNames = useMemo(() => new Map((forms ?? []).map((f) => [f.id, f.name])), [forms]);
+  const formItems: PickItem[] = useMemo(() => (forms ?? []).map((f) => ({ id: f.id, label: f.name })), [forms]);
+  const templateItems: PickItem[] = useMemo(() => (templates ?? []).map((t) => ({ id: t.id, label: t.name, note: templateNote(t) })), [templates]);
+
+  const loadForms = useCallback(async () => {
+    if (forms) return;
+    try {
+      setForms((await api.listForms()).filter((f) => f.isActive !== false));
+    } catch (e) {
+      setSendError(describeError(e, 'フォームの一覧を読み込めませんでした'));
+    }
+  }, [forms]);
+  const loadTemplates = useCallback(async () => {
+    if (templates) return;
+    try {
+      setTemplates(await api.listTemplates());
+    } catch (e) {
+      setSendError(describeError(e, 'テンプレートの一覧を読み込めませんでした'));
+    }
+  }, [templates]);
+  // 本文にフォームのボックスがあるときは、ボックスに出す名前のために、フォーム一覧を読む
+  const needForms = text.includes('{{form_url:');
+  useEffect(() => {
+    if (needForms) queueMicrotask(() => void loadForms());
+  }, [needForms, loadForms]);
+
+  /** カーソル位置に、ボックスを入れる(選択範囲があれば置き換える)。カーソルが分からないときは、最後に足す */
+  function insertCode(code: string) {
+    const segs = toSegs(text);
+    const sel = selection.current;
+    const r = sel ? insertTag(segs, sel.start, sel.end, code, formNames) : appendTag(segs, code, formNames);
+    setText(segsToText(r.segs));
+    selection.current = { start: r.cursor, end: r.cursor };
+    setForcedPos(r.cursor);
+  }
+
+  async function choosePhoto() {
+    if (uploading || sending) return;
+    setUploading(true);
+    setSendError(null);
+    try {
+      const url = await pickAndUploadImage();
+      if (url) setPendingImage(url);
+    } catch (e) {
+      setSendError(describeError(e, '画像を送れませんでした'));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function onTemplatePicked(item: PickItem) {
+    const t = (templates ?? []).find((x) => x.id === item.id);
+    setPickTemplate(false);
+    if (!t) return;
+    if (t.messageType === 'text') {
+      // テキストは入力欄に入れる(直してから送れる)
+      setText((prev) => appendTemplateText(prev, t.messageContent));
+      setForcedPos(null);
+      return;
+    }
+    // 画像・Flex は、すぐ送ることになるので、送る前に確認する
+    Alert.alert('このテンプレートを送りますか?', `「${t.name}」を、${chat?.friendName || 'この相手'}に送ります。送ったあとは取り消せません。`, [
+      { text: 'やめる', style: 'cancel' },
+      { text: '送る', onPress: () => void sendTemplateNow(t) },
+    ]);
+  }
+
+  async function sendTemplateNow(t: TemplateOption) {
+    if (!id || sendLock.current) return;
     sendLock.current = true;
     setSending(true);
     setSendError(null);
     try {
-      await api.sendChatText(id, body);
+      await api.sendChatMessage(id, t.messageType === 'image' ? 'image' : 'flex', t.messageContent);
       refreshUnread();
-      setText('');
+      await load(true);
+      onChanged?.();
+    } catch (e) {
+      setSendError(describeError(e, '送信できませんでした'));
+    } finally {
+      sendLock.current = false;
+      setSending(false);
+    }
+  }
+
+  async function send() {
+    if (!id || sendLock.current) return;
+    const plan = planCompose({ text, imageUrl: pendingImage, unsupportedTag: findUnsupportedTag(text) });
+    if (!plan.ok) {
+      if (text.trim() || pendingImage) setSendError(plan.reason);
+      return;
+    }
+    sendLock.current = true;
+    setSending(true);
+    setSendError(null);
+    try {
+      // 画像が先、テキストが後(両方あるとき)。画像を送れたら、すぐ添付を外す(やり直しで二重に送らない)
+      if (plan.image) {
+        await api.sendChatMessage(id, 'image', imageContent(plan.image));
+        setPendingImage(null);
+      }
+      if (plan.text) {
+        await api.sendChatText(id, plan.text);
+        setText('');
+        selection.current = null;
+      }
+      refreshUnread();
       await load(true);
       onChanged?.();
     } catch (e) {
@@ -311,7 +423,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
 
   // 一覧は新しい順に並べて inverted で表示する(開いたとき自動で一番下=最新が見える)
   const items: ChatListItem[] = useMemo(() => (chat ? buildChatItems(chat.messages, chat.events).reverse() : []), [chat]);
-  const canSend = text.trim().length > 0 && !sending;
+  const canSend = (text.trim().length > 0 || !!pendingImage) && !sending && !uploading;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.chatBackground }}>
@@ -429,28 +541,103 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
             </View>
           ) : null}
           <View style={[styles.composer, { backgroundColor: c.card, borderTopColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              placeholder="メッセージを入力"
-              placeholderTextColor={c.textMuted}
-              multiline
-              maxLength={MAX_LENGTH}
-              editable={!sending}
-              accessibilityLabel="メッセージ"
-              style={[styles.input, { backgroundColor: c.inputBackground, color: c.text }]}
-            />
-            <Pressable
-              onPress={() => void send()}
-              disabled={!canSend}
-              accessibilityRole="button"
-              accessibilityLabel="送信"
-              accessibilityState={{ disabled: !canSend, busy: sending }}
-              style={[styles.sendButton, { backgroundColor: canSend ? c.primaryButton : c.border }]}
-            >
-              <Ionicons name={sending ? 'hourglass-outline' : 'arrow-up'} size={22} color="#ffffff" />
-            </Pressable>
+            {pendingImage ? (
+              <View style={styles.pendingRow}>
+                <Image source={{ uri: pendingImage }} style={[styles.pendingThumb, { backgroundColor: c.border }]} resizeMode="cover" accessibilityLabel="送る写真" />
+                {/* 写真を消す(✕)。消したあとは、また選べる */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="送る写真を削除"
+                  disabled={sending}
+                  onPress={() => setPendingImage(null)}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.pendingX, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Ionicons name="close" size={16} color="#ffffff" />
+                </Pressable>
+              </View>
+            ) : null}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.toolRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={pendingImage ? '写真を選び直す' : '写真を選ぶ'}
+                disabled={sending || uploading}
+                onPress={() => void choosePhoto()}
+                style={[styles.toolBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              >
+                {uploading ? <ActivityIndicator size="small" color={c.primary} /> : <Ionicons name="image-outline" size={18} color={c.text} />}
+                <Text style={{ color: c.text, fontWeight: '700', fontSize: 13 }}>{uploading ? '送っています…' : '写真'}</Text>
+              </Pressable>
+              <InsertButton label="＋ LINE名" tone="name" disabled={sending} onPress={() => insertCode(NAME_TAG)} />
+              <InsertButton label="＋ 本名" tone="realName" disabled={sending} onPress={() => insertCode(REAL_NAME_TAG)} />
+              <InsertButton
+                label="＋ フォーム"
+                tone="form"
+                disabled={sending}
+                onPress={() => {
+                  setPickForm(true);
+                  void loadForms();
+                }}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="テンプレートから送る"
+                disabled={sending}
+                onPress={() => {
+                  setPickTemplate(true);
+                  void loadTemplates();
+                }}
+                style={[styles.toolBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+              >
+                <Ionicons name="document-text-outline" size={18} color={c.text} />
+                <Text style={{ color: c.text, fontWeight: '700', fontSize: 13 }}>テンプレート</Text>
+              </Pressable>
+            </ScrollView>
+            <View style={styles.composerRow}>
+              <TagTextInput
+                text={text}
+                formNames={formNames}
+                disabled={sending}
+                label="メッセージ"
+                placeholder="メッセージを入力"
+                forcedPos={forcedPos}
+                scrollEnabled
+                onChangeText={setText}
+                onSelection={(sel) => {
+                  selection.current = sel;
+                  setForcedPos(null);
+                }}
+                style={[styles.input, { backgroundColor: c.inputBackground }]}
+              />
+              <Pressable
+                onPress={() => void send()}
+                disabled={!canSend}
+                accessibilityRole="button"
+                accessibilityLabel="送信"
+                accessibilityState={{ disabled: !canSend, busy: sending }}
+                style={[styles.sendButton, { backgroundColor: canSend ? c.primaryButton : c.border }]}
+              >
+                <Ionicons name={sending ? 'hourglass-outline' : 'arrow-up'} size={22} color="#ffffff" />
+              </Pressable>
+            </View>
           </View>
+          <PickModal
+            visible={pickForm}
+            title={forms === null ? '回答フォームを選ぶ(読み込み中…)' : '回答フォームを選ぶ'}
+            items={formItems}
+            onPick={(item) => {
+              setPickForm(false);
+              insertCode(formTag(item.id));
+            }}
+            onClose={() => setPickForm(false)}
+          />
+          <PickModal
+            visible={pickTemplate}
+            title={templates === null ? 'テンプレートから送る(読み込み中…)' : 'テンプレートから送る'}
+            items={templateItems}
+            onPick={onTemplatePicked}
+            onClose={() => setPickTemplate(false)}
+          />
         </KeyboardAvoidingView>
       )}
       <ImageViewer uri={viewerUri} onClose={() => setViewerUri(null)} />
@@ -481,8 +668,14 @@ const styles = StyleSheet.create({
   dateLabel: { fontSize: 12, fontWeight: '600', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
   eventWrap: { alignItems: 'center', marginVertical: 6, paddingHorizontal: 16 },
   eventLabel: { fontSize: 11, textAlign: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  input: { flex: 1, minHeight: MIN_TAP, maxHeight: 140, borderRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 16 },
+  composer: { gap: 6, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  input: { flex: 1, minHeight: MIN_TAP, maxHeight: 140, borderRadius: 22, borderWidth: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 16, lineHeight: 22 },
+  toolRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
+  toolBtn: { minHeight: 38, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pendingRow: { alignSelf: 'flex-start' },
+  pendingThumb: { width: 72, height: 72, borderRadius: 10 },
+  pendingX: { position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: MIN_TAP, height: MIN_TAP, borderRadius: MIN_TAP / 2, alignItems: 'center', justifyContent: 'center' },
   sendError: { paddingHorizontal: 12, paddingVertical: 8 },
 });

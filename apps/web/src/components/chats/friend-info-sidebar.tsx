@@ -51,6 +51,8 @@ interface Props {
   onNotesChange?: (value: string) => void
   onSaveNotes?: () => void
   savingNotes?: boolean
+  /** 横幅を外側が決める(ドラッグで変えられる枠の中に入れるとき) */
+  fluid?: boolean
 }
 
 function formatDate(iso: string | null): string {
@@ -99,7 +101,7 @@ function renderValue(value: unknown): string {
   }
 }
 
-export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus, operatorName, notesValue, onNotesChange, onSaveNotes, savingNotes }: Props) {
+export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus, operatorName, notesValue, onNotesChange, onSaveNotes, savingNotes, fluid = false }: Props) {
   const [friend, setFriend] = useState<FriendDetail | null>(null)
   const [nameDialogOpen, setNameDialogOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -244,7 +246,8 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
   if (!friendId) return null
 
   return (
-    <div className="w-full lg:w-72 xl:w-80 2xl:w-96 lg:flex-shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-hidden">
+    // fluid: 横幅は、外側(ドラッグで変えられる枠)が決める。そうでなければ、画面の大きさに合わせた既定の幅
+    <div className={`${fluid ? 'w-full' : 'w-full lg:w-72 xl:w-80 2xl:w-96 lg:flex-shrink-0'} bg-white border-l border-gray-200 lg:border-l-0 flex flex-col overflow-hidden`}>
       <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
         <h3 className="text-sm font-semibold text-gray-700">友だち詳細</h3>
       </div>

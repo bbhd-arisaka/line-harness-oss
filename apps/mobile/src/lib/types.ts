@@ -75,6 +75,17 @@ export interface FormOption {
   isActive?: boolean;
 }
 
+/** GET /api/templates の1件(トークから送れるテンプレート) */
+export interface TemplateOption {
+  id: string;
+  name: string;
+  category?: string;
+  /** text / flex / image */
+  messageType: string;
+  /** text=本文(差し込みのタグコードつき)・image=LINE が求める JSON の文字列・flex=Flex の JSON */
+  messageContent: string;
+}
+
 /** GET /api/tags の1件 */
 export interface TagItem {
   id: string;

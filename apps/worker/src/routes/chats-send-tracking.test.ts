@@ -51,6 +51,37 @@ describe('chat reply tracking and delivery logs', () => {
     }, { DB: fixture.db, LINE_CHANNEL_ACCESS_TOKEN: 'synthetic-unrelated-default', ...(workerUrl === undefined ? {} : { WORKER_URL: workerUrl }) });
   }
 
+  it('差し込み語は、このトークの相手の内容に置き換えて送る({{name}}=LINE名・{{real_name}}=本名)', async () => {
+    fixture.sqlite.exec("UPDATE friends SET display_name='はなこ', real_name='山田 花子' WHERE id='friend-a'");
+    expect((await send({ content: '{{name}}さん({{real_name}}様)こんにちは', trackLinks: false })).status).toBe(200);
+    expect((requests[0].messages[0] as { text: string }).text).toBe('はなこさん(山田 花子様)こんにちは');
+  });
+  it('本名が未登録の相手には、{{real_name}} にLINE名を入れる。LINE名も空なら「お客様」', async () => {
+    fixture.sqlite.exec("UPDATE friends SET display_name='はなこ', real_name=NULL WHERE id='friend-a'");
+    expect((await send({ content: '{{real_name}}様', trackLinks: false })).status).toBe(200);
+    expect((requests[0].messages[0] as { text: string }).text).toBe('はなこ様');
+    fixture.sqlite.exec("UPDATE friends SET display_name='', real_name=NULL WHERE id='friend-b'");
+    expect((await send({ content: '{{name}}さん/{{real_name}}様', trackLinks: false }, 'chat-b')).status).toBe(200);
+    expect((requests[1].messages[0] as { text: string }).text).toBe('お客様さん/お客様様');
+  });
+  it('使えない {{…}} が含まれるときは、送らずに理由を返す', async () => {
+    const res = await send({ content: 'こんにちは{{foo}}', trackLinks: false });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('{{foo}}');
+    expect(requests).toHaveLength(0);
+  });
+  it('Flexメッセージの中の差し込み語も置き換える(名前に引用符があっても壊れない)', async () => {
+    fixture.sqlite.exec("UPDATE friends SET display_name='は\"な\"こ' WHERE id='friend-a'");
+    const flex = { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [{ type: 'text', text: '{{name}}さん' }] } };
+    expect((await send({ messageType: 'flex', content: JSON.stringify(flex), trackLinks: false })).status).toBe(200);
+    const sent = requests[0].messages[0] as unknown as { contents: { body: { contents: Array<{ text: string }> } } };
+    expect(sent.contents.body.contents[0].text).toBe('は"な"こさん');
+  });
+  it('画像は、差し込みの処理をしない(そのまま送る)', async () => {
+    const payload = JSON.stringify({ originalContentUrl: 'https://example.test/a.jpg', previewImageUrl: 'https://example.test/a.jpg' });
+    expect((await send({ messageType: 'image', content: payload })).status).toBe(200);
+    expect(requests[0].messages[0]).toMatchObject({ type: 'image', originalContentUrl: 'https://example.test/a.jpg' });
+  });
   it('フォームのタグコードは、送信先の友だちのアカウントのLIFFリンクに変換して送る', async () => {
     fixture.sqlite.exec("UPDATE line_accounts SET liff_id='LIFF-A' WHERE id='account-a'; UPDATE line_accounts SET liff_id='LIFF-B' WHERE id='account-b'");
     expect((await send({ content: '記入をお願いします {{form_url:form-1}}', trackLinks: false }, 'chat-a', WORKER)).status).toBe(200);

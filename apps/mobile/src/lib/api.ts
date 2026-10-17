@@ -18,6 +18,7 @@ import type {
   TagItem,
   UpdatedChat,
   FormOption,
+  TemplateOption,
 } from './types';
 import type { ApiMessage, SegmentCondition } from './broadcast';
 import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
@@ -182,6 +183,13 @@ export function createApiClient(options: ApiClientOptions) {
       request<{ sent: boolean; messageId: string }>('POST', `/api/chats/${encodeURIComponent(id)}/send`, {
         body: { messageType: 'text', content },
       }),
+    /** トークに、画像・Flex など(テキスト以外)を送る。image の content は LINE が求める JSON の文字列 */
+    sendChatMessage: (id: string, messageType: 'text' | 'image' | 'flex', content: string) =>
+      request<{ sent: boolean; messageId: string }>('POST', `/api/chats/${encodeURIComponent(id)}/send`, {
+        body: { messageType, content },
+      }),
+    /** トークから送れるテンプレートの一覧 */
+    listTemplates: () => request<TemplateOption[]>('GET', '/api/templates'),
 
     /** 対応状態の変更(未対応/対応中/対応済み)。id は friendId(chats.id でも可) */
     updateChatStatus: (id: string, status: ChatStatus) =>

@@ -5,6 +5,10 @@ import { mergeTimeline, eventToneClass, eventActorSuffix, timelineSignature, typ
 import { TaggedText } from '@/components/forms/tagged-text'
 import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
 import { FormTagPicker } from '@/components/forms/form-tag-picker'
+import { TemplatePicker, TemplateImagePreview, templatePreview, type ChatTemplate } from '@/components/chats/template-picker'
+import { PaneResizeHandle } from '@/components/chats/pane-resize-handle'
+import { Modal } from '@/components/ui/modal'
+import { PANE_STORAGE_KEY, clampPaneWidth, parsePaneWidths, serializePaneWidths, type PaneKind, type PaneLayout, type PaneWidths } from '@/lib/pane-widths'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { parseStickerMessageContent, stickerFallback } from '@line-crm/shared'
 import { api, fetchApi, ApiError } from '@/lib/api'
@@ -373,6 +377,16 @@ export default function ChatsPage() {
   const messagesScrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<TagTextEditorHandle>(null)
   const [showFormPicker, setShowFormPicker] = useState(false)
+  // テンプレートから送る: 選ぶ画面と、(画像・Flex は)送る前の確認
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [templateToSend, setTemplateToSend] = useState<ChatTemplate | null>(null)
+  const [sendingTemplate, setSendingTemplate] = useState(false)
+  // 3つの列(一覧・やりとり・友だち詳細)の横幅。左と右だけドラッグで変えられる(この端末に保存)
+  const [paneWidths, setPaneWidths] = useState<PaneWidths>({ list: null, side: null })
+  const paneLoadedRef = useRef(false)
+  const layoutRef = useRef<HTMLDivElement | null>(null)
+  const listPaneRef = useRef<HTMLDivElement | null>(null)
+  const sidePaneRef = useRef<HTMLDivElement | null>(null)
   // OAM(公式LINEマネージャー)風レイアウト: 添付・設定・メモは折りたたみ、
   // メッセージ表示領域を最大化する
   const [showImagePicker, setShowImagePicker] = useState(false)
@@ -403,6 +417,36 @@ export default function ChatsPage() {
       // localStorage unavailable
     }
   }, [showLoadingIndicator, loadingSeconds])
+
+  useEffect(() => {
+    try {
+      setPaneWidths(parsePaneWidths(localStorage.getItem(PANE_STORAGE_KEY)))
+    } catch {
+      // localStorage unavailable
+    }
+    paneLoadedRef.current = true
+  }, [])
+  useEffect(() => {
+    if (!paneLoadedRef.current) return
+    try {
+      localStorage.setItem(PANE_STORAGE_KEY, serializePaneWidths(paneWidths))
+    } catch {
+      // localStorage unavailable
+    }
+  }, [paneWidths])
+
+  /** ドラッグの計算に使う、いまの画面の大きさ(全体・もう片方の列・右の列が出ているか) */
+  const paneLayout = (kind: PaneKind): PaneLayout => {
+    const sideEl = sidePaneRef.current
+    const sideVisible = !!sideEl && sideEl.offsetWidth > 0
+    return {
+      container: layoutRef.current?.clientWidth ?? 0,
+      other: kind === 'list' ? (sideVisible ? sideEl!.offsetWidth : 0) : (listPaneRef.current?.offsetWidth ?? 0),
+      sideVisible,
+    }
+  }
+  const resizePane = (kind: PaneKind, desired: number) =>
+    setPaneWidths((p) => ({ ...p, [kind]: clampPaneWidth(kind, desired, paneLayout(kind)) }))
 
   // ページング用カーソル。表示リストは楽観更新で並び替わるため、
   // 「サーバから最後に受け取った行」を ref で保持して次ページの起点にする
@@ -1012,6 +1056,42 @@ export default function ChatsPage() {
     setSidebarKey((k) => k + 1)
   }
 
+  /** テンプレートを選んだ。テキストは入力欄に入れる(直してから送れる)。画像・Flex は、送る前の確認へ */
+  const handlePickTemplate = (t: ChatTemplate) => {
+    if (t.messageType === 'text') {
+      setMessageContent((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}
+${t.messageContent}` : t.messageContent))
+      setTimeout(() => textareaRef.current?.focus(), 0)
+      return
+    }
+    setTemplateToSend(t)
+  }
+
+  /** 画像・Flex のテンプレートを、いま開いているトークに送る */
+  const sendTemplateNow = async () => {
+    const t = templateToSend
+    const chatId = selectedChatId
+    if (!t || !chatId || sendLockRef.current) return
+    sendLockRef.current = true
+    setSendingTemplate(true)
+    try {
+      await api.chats.send(chatId, { messageType: t.messageType, content: t.messageContent })
+      setTemplateToSend(null)
+      nearBottomRef.current = true
+      lastLocalChangeAtRef.current = Date.now()
+      loadChatDetail(chatId)
+      loadChats()
+      window.dispatchEvent(new Event(UNANSWERED_REFRESH_EVENT))
+    } catch (err) {
+      const reason = err instanceof ApiError && err.status === 400 ? (err.serverMessage ?? '') : ''
+      setTemplateToSend(null)
+      setError(reason ? `テンプレートを送信できませんでした: ${reason}` : 'テンプレートの送信に失敗しました。')
+    } finally {
+      setSendingTemplate(false)
+      sendLockRef.current = false
+    }
+  }
+
   const handleStatusUpdate = async (newStatus: Chat['status']) => {
     if (!selectedChatId) return
     try {
@@ -1064,9 +1144,13 @@ export default function ChatsPage() {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0">
-        {/* Left Panel: Chat List */}
-        <div className={`w-full lg:w-80 xl:w-96 lg:flex-shrink-0 bg-white border-r border-gray-200 flex-col overflow-hidden ${selectedChatId ? 'hidden lg:flex' : 'flex'}`}>
+      <div ref={layoutRef} className="flex flex-1 min-h-0">
+        {/* Left Panel: Chat List(PC では、右の境目をドラッグして幅を変えられる) */}
+        <div
+          ref={listPaneRef}
+          style={paneWidths.list !== null ? ({ '--chat-list-w': `${paneWidths.list}px` } as React.CSSProperties) : undefined}
+          className={`w-full ${paneWidths.list !== null ? 'lg:w-[var(--chat-list-w)]' : 'lg:w-80 xl:w-96'} lg:flex-shrink-0 bg-white border-r border-gray-200 lg:border-r-0 flex-col overflow-hidden ${selectedChatId ? 'hidden lg:flex' : 'flex'}`}
+        >
           {/* タブ (全て / 未読 / 対応中 / 解決済) は意図的に削除。直近メッセージが見やすい LINE 風一覧を優先。 */}
 
           {/* 名前検索 */}
@@ -1216,6 +1300,15 @@ export default function ChatsPage() {
             )}
           </div>
         </div>
+
+        <PaneResizeHandle
+          label="トーク一覧の幅"
+          grow="right"
+          getWidth={() => listPaneRef.current?.offsetWidth ?? 0}
+          onResize={(w) => resizePane('list', w)}
+          onCommit={() => {}}
+          onReset={() => setPaneWidths((p) => ({ ...p, list: null }))}
+        />
 
         {/* Center Panel: Chat Detail */}
         <div className={`flex-1 min-w-0 bg-white flex-col overflow-hidden ${selectedChatId || selectedFriendId ? 'flex' : 'hidden lg:flex'}`}>
@@ -1588,7 +1681,7 @@ export default function ChatsPage() {
                     placeholder="メッセージを入力..."
                     className="block w-full bg-transparent px-4 pt-3 pb-1 text-sm text-gray-900"
                   />
-                  <div className="flex items-center gap-0.5 px-2 pb-2">
+                  <div className="flex flex-wrap items-center gap-0.5 px-2 pb-2">
                     <Button
                       type="button"
                       size="sm"
@@ -1611,6 +1704,38 @@ export default function ChatsPage() {
                       aria-label="回答フォームを挿入"
                     >
                       フォーム
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-sky-700"
+                      onClick={() => textareaRef.current?.insertTag('{{name}}')}
+                      title="LINE名を挿入(送信時に、この相手のLINE名に変わります)"
+                      aria-label="LINE名を挿入"
+                    >
+                      LINE名
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-emerald-700"
+                      onClick={() => textareaRef.current?.insertTag('{{real_name}}')}
+                      title="本名を挿入(送信時に、この相手の本名に変わります。未登録ならLINE名)"
+                      aria-label="本名を挿入"
+                    >
+                      本名
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setShowTemplatePicker(true)}
+                      title="テンプレートから送る"
+                      aria-label="テンプレートから送る"
+                    >
+                      テンプレート
                     </Button>
                     <Button
                       type="button"
@@ -1657,8 +1782,20 @@ export default function ChatsPage() {
         {(selectedChatId || selectedFriendId) && (
           // xl 未満で 3 カラムにすると中央のチャット列が 160px 前後まで潰れ、
           // コンポーザーが収まらなくなる。サイドバーは xl 以上でのみ出す。
-          <div className="hidden xl:flex">
+          // 左の境目をドラッグして、幅を変えられる(PaneResizeHandle)。
+          <>
+            <PaneResizeHandle
+              label="友だち詳細の幅"
+              grow="left"
+              className="max-xl:hidden!"
+              getWidth={() => sidePaneRef.current?.offsetWidth ?? 0}
+              onResize={(w) => resizePane('side', w)}
+              onCommit={() => {}}
+              onReset={() => setPaneWidths((p) => ({ ...p, side: null }))}
+            />
+          <div ref={sidePaneRef} className="hidden xl:flex shrink-0" style={paneWidths.side !== null ? { width: paneWidths.side } : undefined}>
             <FriendInfoSidebar
+              fluid={paneWidths.side !== null}
               key={sidebarKey}
               friendId={selectedFriendId || selectedChatId}
               onNameChanged={handleNameChanged}
@@ -1677,12 +1814,45 @@ export default function ChatsPage() {
                 : {})}
             />
           </div>
+          </>
         )}
       </div>
       {/* コンポーザーが画面下端まで来るレイアウトなので、既定位置 (bottom-6 right-6) だと
           送信ボタンに重なってクリックを奪う。xl 以上では友だち詳細サイドバーの上に
           浮くので無害だが、サイドバーが消える xl 未満では入力欄の真上に来てしまい、
           複数行入力で伸びた textarea のクリックを奪う。xl 未満では表示しない。 */}
+      <TemplatePicker
+        open={showTemplatePicker}
+        onClose={() => setShowTemplatePicker(false)}
+        onPick={handlePickTemplate}
+      />
+      <Modal open={templateToSend !== null} onClose={() => (sendingTemplate ? undefined : setTemplateToSend(null))} maxWidthClass="max-w-md" align="center">
+        {templateToSend ? (
+          <div className="p-5">
+            <h2 className="text-base font-bold text-[#333]">このテンプレートを送りますか?</h2>
+            <p className="mt-1 text-xs text-[#757578]">
+              「{templateToSend.name}」を、いま開いているトークの相手に送ります。送ったあとは取り消せません。
+            </p>
+            <div className="mt-3 max-h-72 overflow-y-auto rounded border border-[#e0e0e3] bg-[#f7f7f9] p-3">
+              {templateToSend.messageType === 'flex' ? (
+                <FlexPreviewComponent content={templateToSend.messageContent} />
+              ) : templateToSend.messageType === 'image' ? (
+                <TemplateImagePreview content={templateToSend.messageContent} />
+              ) : (
+                <p className="whitespace-pre-wrap break-words text-sm text-[#333]">{templatePreview(templateToSend)}</p>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" disabled={sendingTemplate} onClick={() => setTemplateToSend(null)} className="rounded border border-[#cacace] px-4 py-1.5 text-sm text-[#333] hover:bg-[#f1f1f4] disabled:opacity-50">
+                キャンセル
+              </button>
+              <Button type="button" variant="primary" loading={sendingTemplate} disabled={sendingTemplate} onClick={() => void sendTemplateNow()}>
+                送る
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
       <FormTagPicker
         open={showFormPicker}
         onClose={() => setShowFormPicker(false)}

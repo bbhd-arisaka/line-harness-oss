@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
+import { getUnsupportedBroadcastVariables, renderBroadcastMessageContent } from '../services/render-message.js';
 import { notifyEvent } from '../services/notifications.js';
 import { publishChatEventInBackground } from '../services/chat-events.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
@@ -711,9 +712,29 @@ chats.post('/api/chats/:id/send', async (c) => {
     if (messageType !== 'image' && hasFormTag(sendContent)) {
       return c.json({ success: false, error: FORM_LINK_UNAVAILABLE_MESSAGE }, 400);
     }
-    let tracked = { messageType, content: sendContent };
+    // 差し込み語({{name}}=LINE名・{{real_name}}=本名・{{liff_id}})を、このトークの相手の内容に置き換える。
+    // 本名が未登録の人には、{{real_name}} にLINE名が入る(一斉配信と同じ)。使えない {{…}} が残るときは送らない
+    let renderedContent = sendContent;
+    if (messageType !== 'image') {
+      const unsupported = getUnsupportedBroadcastVariables(sendContent);
+      if (unsupported.length > 0) {
+        return c.json({ success: false, error: `使えない差し込みがあります: ${unsupported.map((v) => `{{${v}}}`).join('、')}` }, 400);
+      }
+      const account = lineAccountId ? await getLineAccountById(c.env.DB, lineAccountId) : null;
+      try {
+        renderedContent = renderBroadcastMessageContent(messageType, sendContent, {
+          liffId: account?.liff_id ?? null,
+          // LINE名が空の相手でも、{{name}} が文字のまま届かないよう、本名→「お客様」の順に代わりを入れる
+          displayName: friend.display_name?.trim() || friend.real_name?.trim() || 'お客様',
+          realName: friend.real_name ?? null,
+        });
+      } catch {
+        return c.json({ success: false, error: 'メッセージの内容(Flex)を読み取れませんでした' }, 400);
+      }
+    }
+    let tracked = { messageType, content: renderedContent };
     if (body.trackLinks !== false) {
-      tracked = await autoTrackContent(c.env.DB, messageType, sendContent, sendWorkerUrl, { lineAccountId });
+      tracked = await autoTrackContent(c.env.DB, messageType, renderedContent, sendWorkerUrl, { lineAccountId });
     }
     // Opt-out disables raw URL wrapping, but existing tracked links still get
     // this 1:1 recipient. Image URLs are media and must remain untouched.
