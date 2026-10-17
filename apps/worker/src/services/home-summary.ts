@@ -193,11 +193,14 @@ export function buildAlerts(input: AlertInput): HomeAlert[] {
     out.push({ id: 'no-new-friends', severity: 'info', title: `新しい友だちが${input.lastAddedDaysAgo}日間いません` });
   }
 
-  if (input.tokenExpiresInDays !== null && input.tokenExpiresInDays <= 14) {
+  // LINEの接続(トークン)は、期限の7日前から自動で更新される(services/token-refresh.ts)。
+  // 3日前になっても残っているときだけ、自動更新が失敗しているとみなして知らせる(7〜14日前に出すと、ただの雑音になる)
+  if (input.tokenExpiresInDays !== null && input.tokenExpiresInDays <= 3) {
     out.push({
       id: 'token-expiring',
-      severity: input.tokenExpiresInDays <= 3 ? 'critical' : 'warning',
+      severity: 'critical',
       title: input.tokenExpiresInDays <= 0 ? 'LINEの接続の有効期限が切れています' : `LINEの接続の有効期限まで、あと${input.tokenExpiresInDays}日`,
+      detail: '自動で更新できていません',
     });
   }
 

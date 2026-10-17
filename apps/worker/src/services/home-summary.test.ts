@@ -71,8 +71,10 @@ describe('重要なお知らせ', () => {
     expect(buildAlerts({ ...base, lastAddedDaysAgo: 9 })[0]).toMatchObject({ id: 'no-new-friends', severity: 'info' });
     expect(buildAlerts({ ...base, totalFriends: 10, lastAddedDaysAgo: 9 })).toEqual([]);
     expect(buildAlerts({ ...base, tokenExpiresInDays: 2 })[0]).toMatchObject({ id: 'token-expiring', severity: 'critical' });
-    expect(buildAlerts({ ...base, tokenExpiresInDays: 10 })[0]).toMatchObject({ severity: 'warning' });
-    expect(buildAlerts({ ...base, tokenExpiresInDays: 60 })).toEqual([]);
+    expect(buildAlerts({ ...base, tokenExpiresInDays: -1 })[0]).toMatchObject({ id: 'token-expiring', title: 'LINEの接続の有効期限が切れています' });
+    // 7日前から自動で更新される。3日より前は、知らせない
+    expect(buildAlerts({ ...base, tokenExpiresInDays: 10 })).toEqual([]);
+    expect(buildAlerts({ ...base, tokenExpiresInDays: 5 })).toEqual([]);
     expect(buildAlerts({ ...base, brokenBroadcasts: 2 })[0]).toMatchObject({ id: 'broadcast-problem', target: { kind: 'broadcasts' } });
   });
   it('重要度の高い順に並ぶ', () => {
