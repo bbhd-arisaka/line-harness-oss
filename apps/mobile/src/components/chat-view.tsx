@@ -1,11 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../state/services';
 import { pickAndUploadImage } from '../state/image-upload';
-import { InsertButton, TagTextInput } from './tag-text-input';
+import { TagTextInput } from './tag-text-input';
+import { ChatAttachPanel } from './chat-attach-panel';
 import { PickModal, type PickItem } from './pick-modal';
 import { appendTag, insertTag, segsToText, toSegs } from '../lib/tag-editor';
 import { findUnsupportedTag, formTag, NAME_TAG, REAL_NAME_TAG } from '../lib/broadcast';
@@ -188,6 +189,8 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
   const [pickTemplate, setPickTemplate] = useState(false);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // 左の「＋」で開く、選択のパネル(普通のLINEと同じ)
+  const [panelOpen, setPanelOpen] = useState(false);
   // 入力欄のカーソル位置(まだ一度も触っていないときは null → ボックスは最後に足す)
   const selection = useRef<{ start: number; end: number } | null>(null);
   const [forcedPos, setForcedPos] = useState<number | null>(null);
@@ -557,51 +560,41 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
                 </Pressable>
               </View>
             ) : null}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.toolRow}>
+            {/* 普通のLINEと同じ並び: 「＋」(開くと×)・写真・入力欄・送信。道具は、入力欄の上に並べない */}
+            <View style={styles.composerRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={panelOpen ? '選ぶパネルを閉じる' : 'テンプレートなどを選ぶ'}
+                accessibilityState={{ expanded: panelOpen, disabled: sending }}
+                disabled={sending}
+                onPress={() => {
+                  if (!panelOpen) Keyboard.dismiss();
+                  setPanelOpen((v) => !v);
+                }}
+                hitSlop={4}
+                style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Ionicons name={panelOpen ? 'close' : 'add'} size={30} color={c.text} />
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={pendingImage ? '写真を選び直す' : '写真を選ぶ'}
                 disabled={sending || uploading}
                 onPress={() => void choosePhoto()}
-                style={[styles.toolBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
+                hitSlop={4}
+                style={({ pressed }) => [styles.iconBtn, { opacity: sending || uploading ? 0.4 : pressed ? 0.6 : 1 }]}
               >
-                {uploading ? <ActivityIndicator size="small" color={c.primary} /> : <Ionicons name="image-outline" size={18} color={c.text} />}
-                <Text style={{ color: c.text, fontWeight: '700', fontSize: 13 }}>{uploading ? '送っています…' : '写真'}</Text>
+                {uploading ? <ActivityIndicator color={c.primary} /> : <Ionicons name="image-outline" size={26} color={c.text} />}
               </Pressable>
-              <InsertButton label="＋ LINE名" tone="name" disabled={sending} onPress={() => insertCode(NAME_TAG)} />
-              <InsertButton label="＋ 本名" tone="realName" disabled={sending} onPress={() => insertCode(REAL_NAME_TAG)} />
-              <InsertButton
-                label="＋ フォーム"
-                tone="form"
-                disabled={sending}
-                onPress={() => {
-                  setPickForm(true);
-                  void loadForms();
-                }}
-              />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="テンプレートから送る"
-                disabled={sending}
-                onPress={() => {
-                  setPickTemplate(true);
-                  void loadTemplates();
-                }}
-                style={[styles.toolBtn, { borderColor: c.border, backgroundColor: c.inputBackground }]}
-              >
-                <Ionicons name="document-text-outline" size={18} color={c.text} />
-                <Text style={{ color: c.text, fontWeight: '700', fontSize: 13 }}>テンプレート</Text>
-              </Pressable>
-            </ScrollView>
-            <View style={styles.composerRow}>
               <TagTextInput
                 text={text}
                 formNames={formNames}
                 disabled={sending}
                 label="メッセージ"
-                placeholder="メッセージを入力"
+                placeholder="Aa"
                 forcedPos={forcedPos}
                 scrollEnabled
+                onFocus={() => setPanelOpen(false)}
                 onChangeText={setText}
                 onSelection={(sel) => {
                   selection.current = sel;
@@ -620,6 +613,25 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
                 <Ionicons name={sending ? 'hourglass-outline' : 'arrow-up'} size={22} color="#ffffff" />
               </Pressable>
             </View>
+            {panelOpen ? (
+              <ChatAttachPanel
+                disabled={sending}
+                onTemplate={() => {
+                  setPanelOpen(false);
+                  setPickTemplate(true);
+                  void loadTemplates();
+                }}
+                onInsert={(kind) => {
+                  setPanelOpen(false);
+                  if (kind === 'form') {
+                    setPickForm(true);
+                    void loadForms();
+                  } else {
+                    insertCode(kind === 'name' ? NAME_TAG : REAL_NAME_TAG);
+                  }
+                }}
+              />
+            ) : null}
           </View>
           <PickModal
             visible={pickForm}
@@ -669,10 +681,9 @@ const styles = StyleSheet.create({
   eventWrap: { alignItems: 'center', marginVertical: 6, paddingHorizontal: 16 },
   eventLabel: { fontSize: 11, textAlign: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
   composer: { gap: 6, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   input: { flex: 1, minHeight: MIN_TAP, maxHeight: 140, borderRadius: 22, borderWidth: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 16, lineHeight: 22 },
-  toolRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 8 },
-  toolBtn: { minHeight: 38, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  iconBtn: { width: 40, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
   pendingRow: { alignSelf: 'flex-start' },
   pendingThumb: { width: 72, height: 72, borderRadius: 10 },
   pendingX: { position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },

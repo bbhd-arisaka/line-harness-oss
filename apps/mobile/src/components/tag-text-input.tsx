@@ -26,6 +26,7 @@ export function TagTextInput({
   forcedPos,
   onChangeText,
   onSelection,
+  onFocus,
   style,
   scrollEnabled = false,
 }: {
@@ -37,6 +38,7 @@ export function TagTextInput({
   forcedPos: number | null;
   onChangeText: (text: string) => void;
   onSelection: (sel: { start: number; end: number }) => void;
+  onFocus?: () => void;
   style?: StyleProp<TextStyle>;
   scrollEnabled?: boolean;
 }) {
@@ -49,6 +51,7 @@ export function TagTextInput({
       editable={!disabled}
       onChangeText={(next) => onChangeText(segsToText(applyEdit(segs, shown, next, formNames)))}
       onSelectionChange={(e) => onSelection(e.nativeEvent.selection)}
+      onFocus={onFocus}
       selection={forcedPos !== null ? { start: forcedPos, end: forcedPos } : undefined}
       placeholder={placeholder}
       placeholderTextColor={c.textMuted}
