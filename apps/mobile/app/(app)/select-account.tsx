@@ -38,7 +38,7 @@ function SelectAccountScreen() {
                 { backgroundColor: c.card, borderColor: active ? c.primary : c.border, borderWidth: active ? 2 : 1, opacity: pressed ? 0.8 : 1 },
               ]}
             >
-              <Avatar uri={item.pictureUrl} name={accountLabel(item)} size={48} />
+              <Avatar uri={item.pictureUrl} name={accountLabel(item)} size={48} fallback="initial" />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={[styles.name, { color: c.text }]} numberOfLines={1}>
                   {accountLabel(item)}

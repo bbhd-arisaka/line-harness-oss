@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { api } from '@/lib/api'
+import DefaultAvatar from '@/components/friends/default-avatar'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Checkbox } from '@cloudflare/kumo/components/checkbox'
 import { Input } from '@cloudflare/kumo/components/input'
@@ -130,7 +131,7 @@ export default function TestSendSection({ broadcastId, accountId, disabled }: Te
               {friend.pictureUrl ? (
                 <img src={friend.pictureUrl} alt="" className="h-6 w-6 rounded-full" />
               ) : (
-                <span className="h-6 w-6 rounded-full bg-gray-200" />
+                <DefaultAvatar size="h-6 w-6" />
               )}
               <Checkbox
                 label={friend.displayName}

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { MIN_TAP, useColors } from '../theme/theme';
 import { nameInitial, statusLabel } from '../lib/format';
+import { DefaultAvatar } from './default-avatar';
 
 export function Button({
   title,
@@ -38,12 +40,18 @@ export function Button({
   );
 }
 
-export function Avatar({ uri, name, size = 44 }: { uri?: string | null; name: string; size?: number }) {
+/**
+ * 友だち・アカウントのアイコン。画像がない(または読めない)ときは、
+ * 友だちは、普通のLINEと同じ「灰色の丸に白い人型」。アカウント(fallback='initial')は、名前の頭文字。
+ */
+export function Avatar({ uri, name, size = 44, fallback = 'person' }: { uri?: string | null; name: string; size?: number; fallback?: 'person' | 'initial' }) {
   const c = useColors();
+  const [failed, setFailed] = useState(false);
   const box = { width: size, height: size, borderRadius: size / 2 };
-  if (uri) {
-    return <Image source={{ uri }} style={[box, { backgroundColor: c.border }]} accessibilityIgnoresInvertColors />;
+  if (uri && !failed) {
+    return <Image source={{ uri }} style={[box, { backgroundColor: c.border }]} onError={() => setFailed(true)} accessibilityIgnoresInvertColors />;
   }
+  if (fallback === 'person') return <DefaultAvatar size={size} />;
   return (
     <View style={[box, styles.avatarFallback, { backgroundColor: c.primarySoft }]}>
       <Text style={{ color: c.primaryText, fontSize: size * 0.4, fontWeight: '700' }}>{nameInitial(name)}</Text>

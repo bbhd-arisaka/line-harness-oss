@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
+import DefaultAvatar from './default-avatar'
 
 // 画面を開いている間に、同じ友だちを何度も取り直さない
 const attempted = new Set<string>()
@@ -9,7 +10,7 @@ const attempted = new Set<string>()
 /**
  * 友だちのプロフィール画像。LINEの画像URLは時間がたつと見られなくなることがあるため、
  * 表示できなかった(または画像が未取得の)ときは、LINEから取り直して表示し直す。
- * それでも画像がなければ、名前の頭文字を出す。
+ * それでも画像がなければ、普通のLINEと同じ、灰色の丸に白い人型を出す。
  */
 export default function FriendAvatar({
   friendId,
@@ -58,9 +59,5 @@ export default function FriendAvatar({
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={src} alt="" className={`${size} flex-shrink-0 rounded-full object-cover ${className}`} onError={refresh} />
   }
-  return (
-    <span className={`flex ${size} flex-shrink-0 items-center justify-center rounded-full ${tone} ${textSize} ${className}`}>
-      {(name || '?').charAt(0)}
-    </span>
-  )
+  return <DefaultAvatar size={size} className={className} />
 }

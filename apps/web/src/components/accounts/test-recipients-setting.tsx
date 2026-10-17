@@ -6,6 +6,7 @@ import { Button } from '@cloudflare/kumo/components/button'
 import { Input } from '@cloudflare/kumo/components/input'
 import { Loader } from '@cloudflare/kumo/components/loader'
 import { api } from '@/lib/api'
+import DefaultAvatar from '@/components/friends/default-avatar'
 
 interface Friend {
   id: string
@@ -99,7 +100,7 @@ export default function TestRecipientsSetting({ accountId }: TestRecipientsSetti
         <div className="mb-2 flex flex-wrap gap-1.5">
           {recipients.map((recipient) => (
             <span key={recipient.id} className="inline-flex items-center gap-1 rounded-full bg-kumo-info-tint px-2 py-1 text-xs text-kumo-info">
-              {recipient.pictureUrl ? <img src={recipient.pictureUrl} alt="" className="h-4 w-4 rounded-full" /> : null}
+              {recipient.pictureUrl ? <img src={recipient.pictureUrl} alt="" className="h-4 w-4 rounded-full" /> : <DefaultAvatar size="h-4 w-4" />}
               {recipient.displayName}
               <Button
                 type="button"

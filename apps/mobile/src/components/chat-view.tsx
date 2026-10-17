@@ -7,6 +7,7 @@ import { api } from '../state/services';
 import { pickAndUploadImage } from '../state/image-upload';
 import { TagTextInput } from './tag-text-input';
 import { ChatAttachPanel } from './chat-attach-panel';
+import { DefaultAvatar } from './default-avatar';
 import { PickModal, type PickItem } from './pick-modal';
 import { appendTag, insertTag, segsToText, toSegs } from '../lib/tag-editor';
 import { findUnsupportedTag, formTag, NAME_TAG, REAL_NAME_TAG } from '../lib/broadcast';
@@ -30,9 +31,7 @@ const STATUS_ORDER: ChatStatus[] = ['unread', 'in_progress', 'resolved'];
 
 /** 相手のアイコン(丸)。タップすると友だち詳細へ。画像が無い・読めないときは名前の頭文字 */
 function Avatar({ uri, name, onPress }: { uri: string | null; name: string; onPress: () => void }) {
-  const c = useColors();
   const [failed, setFailed] = useState(false);
-  const initial = (name || '?').trim().slice(0, 1) || '?';
   return (
     <Pressable
       onPress={onPress}
@@ -44,9 +43,7 @@ function Avatar({ uri, name, onPress }: { uri: string | null; name: string; onPr
       {uri && !failed ? (
         <Image source={{ uri }} style={styles.avatarImage} onError={() => setFailed(true)} accessibilityIgnoresInvertColors />
       ) : (
-        <View style={[styles.avatarImage, styles.avatarFallback, { backgroundColor: c.border }]}>
-          <Text style={{ color: c.textSub, fontSize: 15, fontWeight: '600' }}>{initial}</Text>
-        </View>
+        <DefaultAvatar size={36} />
       )}
     </Pressable>
   );
@@ -670,7 +667,6 @@ const styles = StyleSheet.create({
   bubbleRow: { flexDirection: 'row', alignItems: 'flex-end', marginVertical: 3, gap: 6 },
   avatar: { width: 36, height: 36, marginBottom: 2 },
   avatarImage: { width: 36, height: 36, borderRadius: 18 },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   bubble: { maxWidth: '75%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   bubbleIn: { borderTopLeftRadius: 4 },
   bubbleOut: { borderTopRightRadius: 4 },

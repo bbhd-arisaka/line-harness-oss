@@ -9,6 +9,7 @@ import { Select } from '@cloudflare/kumo/components/select'
 import { FriendFieldPicker, type PickerFolder } from '@/components/forms/friend-field-picker'
 import { FieldValue } from '@/components/friends/field-value'
 import { FriendRichMenuView, useFriendRichMenu } from '@/components/friends/friend-rich-menu'
+import DefaultAvatar from '@/components/friends/default-avatar'
 import { FriendNameEditDialog, NameEditPencil, resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 
 interface FriendDetail {
@@ -272,9 +273,7 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
               {friend.pictureUrl ? (
                 <img src={friend.pictureUrl} alt="" className="w-12 h-12 rounded-full flex-shrink-0" />
               ) : (
-                <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
-                  <span className="text-gray-500 text-base">{(friend.displayName || '?').charAt(0)}</span>
-                </div>
+                <DefaultAvatar size="w-12 h-12" />
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1 min-w-0">

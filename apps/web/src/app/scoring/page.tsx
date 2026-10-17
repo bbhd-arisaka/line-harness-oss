@@ -11,6 +11,7 @@ import { Empty } from '@cloudflare/kumo/components/empty'
 import { Input } from '@cloudflare/kumo/components/input'
 import { LayerCard } from '@cloudflare/kumo/components/layer-card'
 import { Loader } from '@cloudflare/kumo/components/loader'
+import DefaultAvatar from '@/components/friends/default-avatar'
 import { Select } from '@cloudflare/kumo/components/select'
 import { Switch } from '@cloudflare/kumo/components/switch'
 import { Table } from '@cloudflare/kumo/components/table'
@@ -323,9 +324,7 @@ export default function MileagePage() {
                           {member.pictureUrl ? (
                             <img src={member.pictureUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
                           ) : (
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">
-                              {member.displayName.slice(0, 1)}
-                            </div>
+                            <DefaultAvatar size="h-9 w-9" />
                           )}
                           <div>
                             <p className="max-w-48 truncate text-sm font-medium text-gray-900">{member.displayName}</p>

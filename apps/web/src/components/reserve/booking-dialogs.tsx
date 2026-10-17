@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import DefaultAvatar from '@/components/friends/default-avatar'
 import { CalendarBlankIcon, CheckCircleIcon, ChatCircleIcon, ClockIcon, CurrencyJpyIcon, PencilSimpleIcon, StorefrontIcon, TrashIcon, UserIcon, XIcon } from '@phosphor-icons/react'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Loader } from '@cloudflare/kumo/components/loader'
@@ -59,7 +60,7 @@ function FriendPicker({ accountId, value, onChange }: { accountId: string; value
               {items.map((f) => (
                 <li key={f.id}>
                   <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-100" onClick={() => { onChange({ id: f.id, name: f.name }); setOpen(false) }}>
-                    {f.picture ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={f.picture} alt="" className="h-6 w-6 rounded-full" /> : <span className="h-6 w-6 rounded-full bg-gray-200" />}
+                    {f.picture ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={f.picture} alt="" className="h-6 w-6 rounded-full" /> : <DefaultAvatar size="h-6 w-6" />}
                     {f.name}
                   </button>
                 </li>
@@ -408,7 +409,7 @@ export function BookingDetail({
                     <div className={card}>
                       <div className={cardTitle}>友だち</div>
                       <div className="flex items-center gap-3">
-                        {picture ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={picture} alt="" className="h-12 w-12 rounded-full object-cover ring-1 ring-gray-200" /> : <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-500"><UserIcon size={22} /></span>}
+                        {picture ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={picture} alt="" className="h-12 w-12 rounded-full object-cover ring-1 ring-gray-200" /> : <DefaultAvatar size="h-12 w-12" />}
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-base font-bold text-gray-900">{b.friend || d.friend ? nm : b.guestName || '(友だち未選択)'}</div>
                           {d.friend && d.friend.display_name && d.friend.display_name !== nm ? <div className="truncate text-xs text-gray-500">LINE名: {d.friend.display_name}</div> : null}
