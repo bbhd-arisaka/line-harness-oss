@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, type StyleProp, type TextStyle } from 'react-native';
-import { applyEdit, displayOf, segDisplay, segsToText, tagTone, toSegs, type TagTone } from '../lib/tag-editor';
+import { applyEdit, CHIP_PAD, displayOf, segsToText, tagLabel, tagTone, toSegs, type TagTone } from '../lib/tag-editor';
 import { useColors } from '../theme/theme';
 
 /** ボックス(タグ)の色。Web版と同じ系統: LINE名=水色、本名=緑、フォーム=青、そのほか=紫 */
@@ -64,8 +64,13 @@ export function TagTextInput({
           s.kind === 'text' ? (
             <Text key={i}>{s.text}</Text>
           ) : (
-            <Text key={i} style={{ backgroundColor: CHIP[tagTone(s.code)].bg, color: CHIP[tagTone(s.code)].fg, fontWeight: '700' }}>
-              {segDisplay(s, formNames)}
+            // ボックスの両側の空白は、色を付けない文字にする。iPhone の入力欄は、打った文字に「直前の文字の見た目」を
+            // 引き継ぐので、ボックスの最後の空白に色があると、そのあとに打つ文字まで色が付いた(本番で確認)。
+            // 見える文字の並びは、これまでと同じ(空白+名前+空白)。色が付くのは、名前の部分だけ
+            <Text key={i}>
+              <Text>{CHIP_PAD}</Text>
+              <Text style={{ backgroundColor: CHIP[tagTone(s.code)].bg, color: CHIP[tagTone(s.code)].fg, fontWeight: '700' }}>{tagLabel(s.code, formNames)}</Text>
+              <Text>{CHIP_PAD}</Text>
             </Text>
           ),
         )}
