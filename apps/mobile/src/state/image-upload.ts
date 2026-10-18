@@ -14,7 +14,7 @@ function stepError(step: string, e: unknown): Error {
 }
 
 function errDetail(e: unknown): string {
-  return (e instanceof Error ? e.message : String(e)).replace(/\s+/g, ' ').slice(0, 70);
+  return (e instanceof Error ? e.message : String(e)).replace(/\s+/g, ' ').slice(0, 110);
 }
 
 /** ネイティブの送信で、画像ファイルを /api/images へ。サーバーの返事(JSON)から URL を取り出す */
@@ -86,10 +86,20 @@ export async function pickAndUploadImage(): Promise<string | null> {
   // 端末のネイティブの送信で、ファイルをそのままアップロードする(RN の fetch + Blob は、iPhone で通信エラーになることがあるため)。
   // 送れなかったら、従来の fetch で1回だけやり直す
   let url: string | undefined;
-  try {
-    url = await uploadNative(uri);
-  } catch (nativeErr) {
-    if (nativeErr instanceof ApiError && nativeErr.status !== 0) throw nativeErr;
+  let nativeErr: unknown = null;
+  // 通信の失敗(応答なし)は、間をあけて3回まで自動でやり直す(携帯回線で、ときどき途切れるため)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 1500));
+    try {
+      url = await uploadNative(uri);
+      nativeErr = null;
+      break;
+    } catch (e) {
+      if (e instanceof ApiError && e.status !== 0) throw e; // サーバーが理由を返したものは、やり直さない
+      nativeErr = e;
+    }
+  }
+  if (nativeErr) {
     let blob: Blob;
     try {
       blob = await (await fetch(uri)).blob();
