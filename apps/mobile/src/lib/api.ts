@@ -163,6 +163,8 @@ export function createApiClient(options: ApiClientOptions) {
     listChats: (params: {
       lineAccountId: string;
       status?: ChatStatus;
+      /** 名前で検索(LINE名・本名のどちらでも。空白は無視) */
+      search?: string;
       limit?: number;
       /** 続きの取得: 最後の行の lastMessageAt と id(friendId) */
       before?: { at: string; id: string };
@@ -171,6 +173,7 @@ export function createApiClient(options: ApiClientOptions) {
         query: {
           lineAccountId: params.lineAccountId,
           status: params.status,
+          search: params.search || undefined,
           limit: params.limit,
           beforeAt: params.before?.at,
           beforeId: params.before?.id,

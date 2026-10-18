@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { AccountBar } from '../../../src/components/account-bar';
 import { Avatar, EmptyView, ErrorView, LoadingView, StatusBadge } from '../../../src/components/ui';
 import { api } from '../../../src/state/services';
@@ -11,7 +12,7 @@ import { MIN_TAP, useColors } from '../../../src/theme/theme';
 import { describeError } from '../../../src/lib/errors';
 import { isSplitLayout, LIST_PANE_WIDTH } from '../../../src/lib/layout';
 import { ChatView } from '../../../src/components/chat-view';
-import { useInterval } from '../../../src/state/hooks';
+import { useDebounced, useInterval } from '../../../src/state/hooks';
 import { useUnread } from '../../../src/state/unread';
 import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
 import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
@@ -78,6 +79,9 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
     const f = parseChatFilter(params.filter);
     if (f) setFilter(f);
   }, [params.filter, params.t]);
+  // 名前の検索(LINE名・本名のどちらでも)。入力が止まって0.4秒後に、サーバーで探す
+  const [query, setQuery] = useState('');
+  const search = useDebounced(query.trim(), 400);
   const [items, setItems] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -97,7 +101,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
       }
       if (mode === 'refresh') setRefreshing(true);
       try {
-        const rows = await api.listChats({ lineAccountId: accountId, status: filter === 'all' ? undefined : filter, limit: PAGE_SIZE });
+        const rows = await api.listChats({ lineAccountId: accountId, status: filter === 'all' ? undefined : filter, search, limit: PAGE_SIZE });
         if (id !== seq.current) return;
         if (mode === 'silent') {
           // 裏の更新: 「続きを読み込む」で出した古い行は消さない
@@ -119,10 +123,10 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
         }
       }
     },
-    [accountId, filter],
+    [accountId, filter, search],
   );
 
-  // アカウント・絞り込みが変わったら最初から
+  // アカウント・絞り込み・検索が変わったら最初から
   useEffect(() => {
     queueMicrotask(() => void fetchFirst('initial'));
   }, [fetchFirst]);
@@ -151,6 +155,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
       const rows = await api.listChats({
         lineAccountId: accountId,
         status: filter === 'all' ? undefined : filter,
+        search,
         limit: PAGE_SIZE,
         before: { at: last.lastMessageAt, id: last.friendId },
       });
@@ -218,6 +223,23 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <AccountBar />
+      <View style={[styles.searchWrap, { backgroundColor: c.card }]}>
+        <View style={[styles.searchBox, { backgroundColor: c.inputBackground }]}>
+          <Ionicons name="search" size={18} color={c.textMuted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="名前で検索"
+            placeholderTextColor={c.textMuted}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            accessibilityLabel="トークを検索"
+            style={[styles.searchInput, { color: c.text }]}
+          />
+        </View>
+      </View>
       <View style={[styles.filters, { backgroundColor: c.card, borderBottomColor: c.border }]}>
         {FILTERS.map((f) => {
           const active = f.key === filter;
@@ -243,6 +265,8 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
         <FlatList
           data={items}
           keyExtractor={(it) => it.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           renderItem={({ item }) => <ChatRow chat={item} onPress={openChat} selected={item.friendId === selectedId} />}
           extraData={selectedId}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void fetchFirst('refresh')} tintColor={c.primary} />}
@@ -257,8 +281,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
           }
           ListEmptyComponent={
             <EmptyView
-              title={filter === 'all' ? 'トークはまだありません' : `${FILTERS.find((f) => f.key === filter)?.label}のトークはありません`}
-              message="下に引っ張ると更新できます"
+              title={search ? '見つかりませんでした' : filter === 'all' ? 'トークはまだありません' : `${FILTERS.find((f) => f.key === filter)?.label}のトークはありません`}
             />
           }
           ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}
@@ -294,6 +317,9 @@ export default function ChatListScreen() {
 }
 
 const styles = StyleSheet.create({
+  searchWrap: { paddingHorizontal: 12, paddingTop: 8 },
+  searchBox: { minHeight: 40, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  searchInput: { flex: 1, minHeight: 40, fontSize: 16 },
   filters: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   chip: { minHeight: 36, minWidth: MIN_TAP + 8, paddingHorizontal: 12, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   row: { minHeight: 72, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },

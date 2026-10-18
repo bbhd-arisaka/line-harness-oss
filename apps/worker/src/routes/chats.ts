@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
 import { getUnsupportedBroadcastVariables, renderBroadcastMessageContent } from '../services/render-message.js';
+import { FRIEND_NAME_COLUMNS, nameSearchCondition } from '../services/name-search.js';
 import { notifyEvent } from '../services/notifications.js';
 import { publishChatEventInBackground } from '../services/chat-events.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
@@ -277,6 +278,12 @@ chats.get('/api/chats', async (c) => {
     if (lineAccountId) {
       conditions.push('f.line_account_id = ?');
       conditionBindings.push(lineAccountId);
+    }
+    // 名前で検索(LINE名・本名・システム表示名のどれか。空白は無視)。トークがある人の中から探す
+    const nameCond = nameSearchCondition(FRIEND_NAME_COLUMNS, (c.req.query('search') ?? '').trim().slice(0, 100));
+    if (nameCond) {
+      conditions.push(nameCond.sql);
+      conditionBindings.push(...nameCond.binds);
     }
     // status / operator filter は chats を参照するので、その時だけ page CTE 側でも
     // chats を lookup する (無条件時は 全friend × chats lookup を省く)。

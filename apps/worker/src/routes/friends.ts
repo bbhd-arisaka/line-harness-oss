@@ -25,6 +25,7 @@ import { buildMessage } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
 import { buildFriendFilterPieces, FilterError, parseFriendFilter } from '../services/friend-filter.js';
 import { isDemoLineUserId } from '../services/demo-friend.js';
+import { nameSearchCondition } from '../services/name-search.js';
 
 const friends = new Hono<Env>();
 
@@ -149,8 +150,12 @@ friends.get('/api/friends', async (c) => {
     // 検索は、LINE名・本名・システム表示名のどれかに部分一致(LIKE のワイルドカードはエスケープ)
     const escapedSearch = search ? search.replace(/[\\%_]/g, (ch) => `\\${ch}`) : '';
     if (search) {
-      conditions.push(`(${SEARCH_NAME_COLUMNS.map((col) => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')})`);
-      for (let i = 0; i < SEARCH_NAME_COLUMNS.length; i++) binds.push(`%${escapedSearch}%`);
+      // 空白(半角・全角)は無視して比べる(services/name-search.ts)
+      const nameCond = nameSearchCondition(SEARCH_NAME_COLUMNS, search);
+      if (nameCond) {
+        conditions.push(nameCond.sql);
+        binds.push(...nameCond.binds);
+      }
     }
     // Unhandled filter: chats.status === 'unread'.
     //
