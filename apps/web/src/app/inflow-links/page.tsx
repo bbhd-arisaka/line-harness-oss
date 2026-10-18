@@ -272,7 +272,8 @@ export default function InflowRoutesPage() {
             </form>
           </div>
 
-          <div className="mt-3 overflow-x-auto">
+          {/* ⋮メニューが、横スクロールの枠で切れないよう、開いている間は下に余白をとる */}
+          <div className={`mt-3 overflow-x-auto ${rowMenuId ? 'pb-44' : ''}`}>
             <div className="min-w-[68rem]">
               <div className={`grid ${COLS} items-center bg-[#f1f1f4] px-2 text-xs text-[#757578]`} style={{ height: 40 }}>
                 <span />
