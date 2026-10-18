@@ -147,8 +147,7 @@ describe('/r/:ref — ?account= resolution', () => {
 
     expect(html).toContain('liff.line.me/2011177336-RWMDBXOl');
     expect(html).not.toContain('liff.line.me/3000000001-PoolAAAA');
-    // account pin short-circuits route/pool resolution entirely
-    expect(dbMocks.getEntryRouteByRefCode).not.toHaveBeenCalled();
+    // account pin short-circuits pool resolution entirely (the route is only read for 流入経路分析の設定)
     expect(dbMocks.getRandomPoolAccount).not.toHaveBeenCalled();
   });
 });

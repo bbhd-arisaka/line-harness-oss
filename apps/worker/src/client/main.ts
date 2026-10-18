@@ -157,6 +157,7 @@ function showFriendAdd(profile: { displayName: string; pictureUrl?: string }) {
               iga: params.get('iga') || undefined,
               igan: params.get('igan') || undefined,
               crossAccountToken: params.get('crossAccountToken') || undefined,
+              iqp: params.get('iqp') || undefined,
             }),
           });
           if (res.ok) {
@@ -267,6 +268,7 @@ async function linkAndAddFlow() {
         ig: linkParams.get('ig') || '',
         iga: linkParams.get('iga') || '',
         igan: linkParams.get('igan') || '',
+        iqp: linkParams.get('iqp') || '',
       }),
     }).then(async (res) => {
       if (res.ok) {

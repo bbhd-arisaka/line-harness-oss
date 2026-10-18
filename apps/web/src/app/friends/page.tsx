@@ -78,6 +78,9 @@ export default function FriendsPage() {
     const q = new URLSearchParams(window.location.search)
     const key = q.get('fieldKey')
     if (key) setFieldFilter({ key, label: q.get('fieldLabel') || key })
+    // 流入経路分析の集計の「友だちリストで表示」から来たとき: その流入経路の友だちに絞る
+    const inflow = q.get('inflow')
+    if (inflow) setFilter((f) => ({ ...f, and: [...f.and, { type: 'inflow', value: inflow }] }))
   }, [])
 
   // 保存した検索・条件の表示に使う、名前の一覧(タグ・友だち情報欄・シナリオ・フォーム)

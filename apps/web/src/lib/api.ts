@@ -37,6 +37,7 @@ import type {
 import { getApiBase } from './api-base'
 import type { FriendFilter } from './friend-filter'
 import type { FriendAddActionItem, FriendAddKindItem, FriendAddSettingItem } from './friend-add-actions'
+import type { InflowFolder, InflowRoute, InflowRouteInput, InflowStats } from './inflow-routes'
 
 /** ホーム(トップ)の集計。GET /api/home */
 export type HomeAlert = {
@@ -518,6 +519,35 @@ export const api = {
       }),
     delete: (id: string) =>
       fetchApi<ApiResponse<null>>(`/api/tags/${id}`, { method: 'DELETE' }),
+  },
+  inflow: {
+    folders: (lineAccountId: string) =>
+      fetchApi<ApiResponse<{ folders: InflowFolder[]; unfiledCount: number }>>(`/api/inflow/folders?lineAccountId=${encodeURIComponent(lineAccountId)}`),
+    createFolder: (lineAccountId: string, name: string) =>
+      fetchApi<ApiResponse<{ id: string; name: string }>>('/api/inflow/folders', { method: 'POST', body: JSON.stringify({ lineAccountId, name }) }),
+    renameFolder: (id: string, name: string) =>
+      fetchApi<ApiResponse<{ id: string; name: string }>>(`/api/inflow/folders/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    deleteFolder: (id: string) => fetchApi<ApiResponse<null>>(`/api/inflow/folders/${id}`, { method: 'DELETE' }),
+    reorderFolders: (ids: string[]) => fetchApi<ApiResponse<null>>('/api/inflow/folders/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
+    routes: (p: { lineAccountId: string; folder: string; q?: string; page?: number; pageSize?: number }) => {
+      const qs = new URLSearchParams({ lineAccountId: p.lineAccountId, folder: p.folder })
+      if (p.q) qs.set('q', p.q)
+      if (p.page) qs.set('page', String(p.page))
+      if (p.pageSize) qs.set('pageSize', String(p.pageSize))
+      return fetchApi<ApiResponse<{ items: InflowRoute[]; total: number; page: number; pageSize: number }>>(`/api/inflow/routes?${qs}`)
+    },
+    route: (id: string) => fetchApi<ApiResponse<InflowRoute>>(`/api/inflow/routes/${id}`),
+    createRoute: (data: InflowRouteInput) => fetchApi<ApiResponse<InflowRoute>>('/api/inflow/routes', { method: 'POST', body: JSON.stringify(data) }),
+    updateRoute: (id: string, data: Partial<InflowRouteInput>) =>
+      fetchApi<ApiResponse<InflowRoute>>(`/api/inflow/routes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteRoute: (id: string) => fetchApi<ApiResponse<null>>(`/api/inflow/routes/${id}`, { method: 'DELETE' }),
+    copyRoute: (id: string) => fetchApi<ApiResponse<InflowRoute>>(`/api/inflow/routes/${id}/copy`, { method: 'POST' }),
+    reorderRoutes: (ids: string[]) => fetchApi<ApiResponse<null>>('/api/inflow/routes/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
+    moveRoute: (id: string, folderId: string | null) =>
+      fetchApi<ApiResponse<null>>(`/api/inflow/routes/${id}/folder`, { method: 'PUT', body: JSON.stringify({ folderId }) }),
+    stats: (id: string, page: number, pageSize = 50) =>
+      fetchApi<ApiResponse<InflowStats>>(`/api/inflow/routes/${id}/stats?page=${page}&pageSize=${pageSize}`),
+    exportPath: (id: string) => `/api/inflow/routes/${id}/export`,
   },
   friendAddSettings: {
     get: (lineAccountId: string) =>

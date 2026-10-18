@@ -77,6 +77,8 @@ import { friendAddSettings } from './routes/friend-add-settings.js';
 import { reserve } from './routes/reserve.js';
 import { reservePublic } from './routes/reserve-public.js';
 import { bindNotificationEnv } from './services/notifications.js';
+import { checkPeriod, distanceMeters } from './services/inflow-route-input.js';
+import { adInsertScript, collectInflowQuery, encodeInflowQuery, geoRequestPage, injectHtml, outOfAreaPage, outOfPeriodPage } from './services/inflow-route-landing.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import { defaultCachePolicyMiddleware } from './middleware/cache-policy.js';
 import booking from './routes/booking.js';
@@ -376,6 +378,23 @@ app.get('/r/:ref', async (c) => {
     }
   }
 
+  // 流入経路分析で作った流入経路(アクション設定つき)は、?account= があっても読み込む。
+  // 有効期間の外・位置情報の範囲の外なら、LINEへ進めない。
+  const inflowCandidate = ref ? await getEntryRouteByRefCode(c.env.DB, ref) : null;
+  const inflow = inflowCandidate && typeof inflowCandidate.actions === 'string' ? inflowCandidate : null;
+  if (inflow) {
+    if (!checkPeriod(inflow, Date.now()).ok) return c.html(outOfPeriodPage(inflow));
+    if (typeof inflow.geo_lat === 'number' && typeof inflow.geo_lng === 'number' && typeof inflow.geo_radius === 'number') {
+      const latQ = c.req.query('_lat');
+      const lngQ = c.req.query('_lng');
+      const lat = latQ ? Number(latQ) : Number.NaN;
+      const lng = lngQ ? Number(lngQ) : Number.NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.html(geoRequestPage());
+      if (distanceMeters(inflow.geo_lat, inflow.geo_lng, lat, lng) > inflow.geo_radius) return c.html(outOfAreaPage());
+    }
+  }
+  const respondHtml = (html: string) => c.html(inflow ? injectHtml(html, inflow) : html);
+
   // 1. entry_route lookup. getTrafficPoolById (unlike getTrafficPoolBySlug)
   // does not filter on is_active, so we ignore disabled pools explicitly to
   // honor the operator's pause action.
@@ -482,6 +501,11 @@ app.get('/r/:ref', async (c) => {
     const value = c.req.query(key);
     if (value) liffParams.set(key, value);
   }
+  // 流入経路のURLのパラメータ(広告連携で設定したもの+広告の標準のもの)を、集計と友だち情報のために引き継ぐ
+  if (inflow) {
+    const iqp = encodeInflowQuery(collectInflowQuery(c.req.query(), inflow));
+    if (iqp) liffParams.set('iqp', iqp);
+  }
   const liffTarget = liffParams.toString() ? `${liffUrl}?${liffParams.toString()}` : liffUrl;
 
   // Help link carries the *resolved* liff target as `t=` so the help page
@@ -522,7 +546,7 @@ app.get('/r/:ref', async (c) => {
       ? '<p class="hint">※開かない場合はボタンを<strong>長押し</strong>して「LINEで開く」を選択</p>'
       : '';
 
-    return c.html(`<!DOCTYPE html>
+    return respondHtml(`<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -558,7 +582,7 @@ ${longPressHint}
   }
 
   // PC: show QR code page — QR encodes LIFF URL directly
-  return c.html(`<!DOCTYPE html>
+  return respondHtml(`<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -591,6 +615,15 @@ body{font-family:'Hiragino Sans','Helvetica Neue',system-ui,sans-serif;backgroun
 </div>
 </body>
 </html>`);
+});
+
+// /r/:ref/ad.js — 流入経路の「広告挿入タグ」。広告のリンク先ページに貼ると、そのページのURLにある広告パラメータを、この流入経路へのリンクに引き継ぐ
+app.get('/r/:ref/ad.js', async (c) => {
+  const route = await getEntryRouteByRefCode(c.env.DB, c.req.param('ref'));
+  const body = route && typeof route.actions === 'string' ? adInsertScript(route) : '';
+  return new Response(body, {
+    headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*' },
+  });
 });
 
 // /r/:ref/help — opt-in recovery page when "LINEで開く" didn't launch the app.

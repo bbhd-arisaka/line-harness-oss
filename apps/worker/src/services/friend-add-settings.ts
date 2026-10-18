@@ -36,40 +36,58 @@ export async function applyFriendAddSettings(
   if (!input.lineAccountId) return;
   try {
     const setting = (await getFriendAddSettings(db, input.lineAccountId))[input.kind];
-
-    if (setting.scenarioId) {
-      try {
-        // すでに登録されている(旧来の「友だち追加で始まるシナリオ」など)なら、二重には送らない
-        const already = await db
-          .prepare('SELECT 1 AS x FROM friend_scenarios WHERE friend_id = ? AND scenario_id = ?')
-          .bind(input.friendId, setting.scenarioId)
-          .first();
-        if (!already) {
-          const enrollment = await enrollFriendInScenario(db, input.friendId, setting.scenarioId);
-          if (enrollment && input.onEnrolled) await input.onEnrolled(setting.scenarioId, enrollment);
-        }
-      } catch (err) {
-        console.error('[friend-add-settings] scenario enrollment failed', err);
-      }
-    }
-
-    for (const action of setting.actions) {
-      try {
-        const runAt = action.type === 'text' || action.type === 'template' ? resolveDeferredRunAt(action.timing) : null;
-        if (runAt) {
-          await db
-            .prepare('INSERT INTO friend_add_deferred_actions (id, friend_id, line_account_id, action, run_at) VALUES (?, ?, ?, ?, ?)')
-            .bind(crypto.randomUUID(), input.friendId, input.lineAccountId, JSON.stringify(action), runAt)
-            .run();
-          continue;
-        }
-        await executeFriendAddAction(db, { friendId: input.friendId, lineAccountId: input.lineAccountId, lineAccessToken: input.lineAccessToken, workerUrl: input.workerUrl }, action);
-      } catch (err) {
-        console.error('[friend-add-settings] action failed', action.type, err instanceof Error ? err.message : err);
-      }
-    }
+    await applyScenarioAndActions(db, { ...input, scenarioId: setting.scenarioId, actions: setting.actions });
   } catch (err) {
     console.error('[friend-add-settings] failed', err);
+  }
+}
+
+/**
+ * シナリオの登録と、その他のアクションの実行(友だち追加時設定と、流入経路のアクションで共通)。
+ * 失敗しても止めない(記録だけ残す)。
+ */
+export async function applyScenarioAndActions(
+  db: D1Database,
+  input: {
+    friendId: string;
+    lineAccountId: string | null;
+    lineAccessToken?: string;
+    workerUrl?: string;
+    scenarioId: string | null;
+    actions: FriendAddAction[];
+    onEnrolled?: (scenarioId: string, enrollment: NonNullable<Awaited<ReturnType<typeof enrollFriendInScenario>>>) => Promise<void>;
+  },
+): Promise<void> {
+  if (input.scenarioId) {
+    try {
+      // すでに登録されている(旧来の「友だち追加で始まるシナリオ」など)なら、二重には送らない
+      const already = await db
+        .prepare('SELECT 1 AS x FROM friend_scenarios WHERE friend_id = ? AND scenario_id = ?')
+        .bind(input.friendId, input.scenarioId)
+        .first();
+      if (!already) {
+        const enrollment = await enrollFriendInScenario(db, input.friendId, input.scenarioId);
+        if (enrollment && input.onEnrolled) await input.onEnrolled(input.scenarioId, enrollment);
+      }
+    } catch (err) {
+      console.error('[friend-add-settings] scenario enrollment failed', err);
+    }
+  }
+
+  for (const action of input.actions) {
+    try {
+      const runAt = action.type === 'text' || action.type === 'template' ? resolveDeferredRunAt(action.timing) : null;
+      if (runAt) {
+        await db
+          .prepare('INSERT INTO friend_add_deferred_actions (id, friend_id, line_account_id, action, run_at) VALUES (?, ?, ?, ?, ?)')
+          .bind(crypto.randomUUID(), input.friendId, input.lineAccountId, JSON.stringify(action), runAt)
+          .run();
+        continue;
+      }
+      await executeFriendAddAction(db, { friendId: input.friendId, lineAccountId: input.lineAccountId, lineAccessToken: input.lineAccessToken, workerUrl: input.workerUrl }, action);
+    } catch (err) {
+      console.error('[friend-add-settings] action failed', action.type, err instanceof Error ? err.message : err);
+    }
   }
 }
 
@@ -189,7 +207,7 @@ async function sendText(db: D1Database, target: Target, text: string): Promise<v
 }
 
 /** 友だち情報欄の値を、代入・加算・減算する(friends.metadata のキー) */
-async function changeFriendField(db: D1Database, friendId: string, fieldKey: string, op: 'set' | 'add' | 'sub', value: string): Promise<void> {
+export async function changeFriendField(db: D1Database, friendId: string, fieldKey: string, op: 'set' | 'add' | 'sub', value: string): Promise<void> {
   const row = await db.prepare('SELECT metadata FROM friends WHERE id = ?').bind(friendId).first<{ metadata: string | null }>();
   if (!row) return;
   const meta = JSON.parse(row.metadata || '{}') as Record<string, unknown>;

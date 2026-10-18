@@ -1,680 +1,395 @@
 'use client'
 
-import { Fragment, useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { api, fetchApi } from '@/lib/api'
-import { getApiBase } from '@/lib/api-base'
-import Header from '@/components/layout/header'
-import { useAccount } from '@/contexts/account-context'
-import type { EntryRoute, TrafficPool, Scenario, Tag } from '@line-crm/shared'
-import EditRouteModal from './_components/edit-route-modal'
-import { Badge } from '@cloudflare/kumo/components/badge'
-import { Banner } from '@cloudflare/kumo/components/banner'
+import { Dialog } from '@cloudflare/kumo/components/dialog'
+import { Input } from '@cloudflare/kumo/components/input'
 import { Button } from '@cloudflare/kumo/components/button'
-import { Empty } from '@cloudflare/kumo/components/empty'
-import { LayerCard } from '@cloudflare/kumo/components/layer-card'
-import { Loader } from '@cloudflare/kumo/components/loader'
-import { Table } from '@cloudflare/kumo/components/table'
+import Header from '@/components/layout/header'
+import { useDialogs } from '@/components/ui/dialogs'
+import { Popover, DragHandle, FolderRow, btnBase, btnWhite, btnGreen } from '@/components/lstep/ui'
+import { useAccount } from '@/contexts/account-context'
+import { useActionLookups } from '@/components/friend-add/use-action-lookups'
+import { api } from '@/lib/api'
+import { errorText } from '@/lib/error-text'
+import { describeAction } from '@/lib/friend-add-actions'
+import type { InflowFolder, InflowRoute } from '@/lib/inflow-routes'
+import RouteQrDialog from './_components/route-qr-dialog'
 
-interface MessageTemplate {
-  id: string
-  name: string
-  messageType: string
-  messageContent: string
-}
+const UNFILED = 'none'
+const PAGE_SIZE = 50
 
-interface TrackedLinkRow {
-  id: string
-  name: string
-  scenarioId: string | null
-  isActive: boolean
-}
-
-interface RefRouteStats {
-  refCode: string
-  /** entry_routes に登録された name。未登録なら null。 */
-  name: string | null
-  friendCount: number
-  clickCount: number
-  latestAt: string | null
-}
-
-interface RefSummaryData {
-  routes: RefRouteStats[]
-  totalFriends: number
-  friendsWithRef: number
-  friendsWithoutRef: number
-}
-
-interface RefFriend {
-  id: string
-  displayName: string
-  trackedAt: string | null
-}
-
-interface RefDetail {
-  refCode: string
-  name: string
-  friends: RefFriend[]
-}
-
-// 呼び出し時 (call time) に解決する — モジュールスコープの定数にすると、静的
-// 書き出し（window 未定義）の時点で値が確定してしまい、共有ビルドではプレース
-// ホルダーが焼き付いたまま固定される（友だち追加 QR が壊れる原因になった）。
-function workerBase(): string {
-  return getApiBase() ?? ''
-}
-
-export default function InflowLinksPage() {
+/** Lステップの「流入経路分析」と同じ一覧: 左にフォルダ、右に流入経路(URL・QR、アクション、有効期間、集計) */
+export default function InflowRoutesPage() {
+  const dialogs = useDialogs()
   const { selectedAccountId } = useAccount()
-  const [routes, setRoutes] = useState<EntryRoute[]>([])
-  const [pools, setPools] = useState<TrafficPool[]>([])
-  const [scenarios, setScenarios] = useState<Scenario[]>([])
-  const [templates, setTemplates] = useState<MessageTemplate[]>([])
-  const [trackedLinks, setTrackedLinks] = useState<TrackedLinkRow[]>([])
-  const [tags, setTags] = useState<Tag[]>([])
-  const [summary, setSummary] = useState<RefSummaryData | null>(null)
+  const accountId = selectedAccountId ?? ''
+  const lookups = useActionLookups(accountId)
+
+  const [folders, setFolders] = useState<InflowFolder[]>([])
+  const [unfiledCount, setUnfiledCount] = useState(0)
+  const [routes, setRoutes] = useState<InflowRoute[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  // editing state:
-  //   - null       — modal closed
-  //   - 'new'      — blank "create" modal
-  //   - EntryRoute — edit existing registered route
-  //   - { register: refCode } — "register an unregistered ref" — opens create
-  //     modal with refCode pre-locked so the prior inflow stats stay attached.
-  const [editing, setEditing] = useState<
-    EntryRoute | 'new' | { register: string } | null
-  >(null)
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-  // Expanded-row state for showing friends acquired through a given ref.
-  // Mirrors the legacy /affiliates page UX — click row → load via
-  // /api/analytics/ref/:refCode → render friend list inline.
-  const [expandedRef, setExpandedRef] = useState<string | null>(null)
-  const [refDetail, setRefDetail] = useState<RefDetail | null>(null)
-  const [refDetailLoading, setRefDetailLoading] = useState(false)
-  // poolMembers[poolId] = lineAccountId のセット。pool_accounts を真実として
-  // 「この pool が選択中アカウントに配信するか」を判定するために使う。
-  // pool.activeAccountId はレガシーシングル所属。マルチアカ pool では不十分。
-  const [poolMembers, setPoolMembers] = useState<Record<string, Set<string>>>({})
+  const [folder, setFolder] = useState<string>(UNFILED)
+  const [search, setSearch] = useState('')
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const [rowMenuId, setRowMenuId] = useState<string | null>(null)
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false)
+  const [qrRoute, setQrRoute] = useState<InflowRoute | null>(null)
 
-  const load = async () => {
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false)
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null)
+  const [draftFolderName, setDraftFolderName] = useState('')
+  const [savingFolder, setSavingFolder] = useState(false)
+  const dragFolderId = useRef<string | null>(null)
+  const dragRouteId = useRef<string | null>(null)
+
+  const loadFolders = useCallback(async () => {
+    if (!accountId) return
+    const res = await api.inflow.folders(accountId)
+    if (res.success) {
+      setFolders(res.data.folders)
+      setUnfiledCount(res.data.unfiledCount)
+    }
+  }, [accountId])
+
+  const loadRoutes = useCallback(async () => {
+    if (!accountId) return
     setLoading(true)
     setError('')
-    // ref-summary は selectedAccountId を渡すと「そのアカで実流入があった
-    // ref_code のみ」に絞れる。pool_id NULL のリンクが多い現状ではアカ別の
-    // pool 紐付け判定よりも、こちらの実流入ベースの方が運用実態に合う。
-    const summaryQuery = selectedAccountId ? `?lineAccountId=${selectedAccountId}` : ''
-    const [r, p, s, t, tagRes, sum, tl] = await Promise.all([
-      api.entryRoutes.list(),
-      api.pools.list(),
-      api.scenarios.list(),
-      api.messageTemplates.list(),
-      api.tags.list().catch(() => ({ success: false, data: [] as Tag[] })),
-      fetchApi<{ success: boolean; data: RefSummaryData }>(
-        `/api/analytics/ref-summary${summaryQuery}`,
-      ).catch(() => ({ success: false, data: null })),
-      api.trackedLinks.list().catch(() => ({ success: false, data: null })),
-    ])
-    if (r.success) setRoutes(r.data)
-    else setError('リファラルリンクの取得に失敗しました')
-    if (p.success) setPools(p.data)
-    if (s.success) setScenarios(s.data)
-    if (t.success) setTemplates(t.data)
-    if (tagRes.success) setTags(tagRes.data)
-    if ('success' in sum && sum.success && sum.data) setSummary(sum.data)
-    if (tl.success && tl.data) {
-      setTrackedLinks(
-        tl.data.map((row) => ({
-          id: row.id,
-          name: row.name,
-          scenarioId: row.scenarioId,
-          isActive: row.isActive,
-        })),
-      )
+    try {
+      const res = await api.inflow.routes({ lineAccountId: accountId, folder: query ? 'all' : folder, q: query, page, pageSize: PAGE_SIZE })
+      if (res.success) {
+        setRoutes(res.data.items)
+        setTotal(res.data.total)
+      }
+    } catch (err) {
+      setError(errorText(err, '読み込めませんでした。時間をおいてもう一度お試しください'))
+    } finally {
+      setLoading(false)
     }
-
-    // Load pool→accounts mapping after we know the pool list. Done in a 2nd
-    // round-trip so the table can render with summary stats immediately; the
-    // filter just doesn't apply the pool-membership rule until this resolves
-    // (zero-inflow rows still pass through friendCount > 0 path).
-    if (p.success) {
-      const entries = await Promise.all(
-        p.data.map(async (pool) => {
-          const res = await api.pools.accounts.list(pool.id)
-          const ids = res.success
-            ? new Set(res.data.filter((a) => a.isActive).map((a) => a.lineAccountId))
-            : new Set<string>()
-          return [pool.id, ids] as const
-        }),
-      )
-      setPoolMembers(Object.fromEntries(entries))
-    }
-    setLoading(false)
-  }
+  }, [accountId, folder, query, page])
 
   useEffect(() => {
-    load()
-    // サイドバー側でアカウントを切り替えたら、開きっぱなしの「ref 詳細」も
-    // 持ち越さない (アカ A の友だちリストがアカ B の同じ ref 行に残ってしまう
-    // クロスアカウントの情報漏れ防止)。stale-response guard だけでは閉じる側を
-    // 担保できないので明示的に reset する。
-    setExpandedRef(null)
-    setRefDetail(null)
-    setRefDetailLoading(false)
-  }, [selectedAccountId])
+    void loadFolders()
+  }, [loadFolders])
+  useEffect(() => {
+    void loadRoutes()
+  }, [loadRoutes])
+  // アカウントを切り替えたら、未分類に戻る
+  useEffect(() => {
+    setFolder(UNFILED)
+    setSearch('')
+    setQuery('')
+    setPage(1)
+  }, [accountId])
+  useEffect(() => {
+    setPage(1)
+  }, [folder, query])
+  // 登録画面から戻ったときに、直前に開いていたフォルダを復元する
+  useEffect(() => {
+    const g = new URLSearchParams(window.location.search).get('group')
+    if (g) setFolder(g)
+  }, [])
 
-  const onCopy = async (refCode: string, id: string) => {
-    const url = `${workerBase()}/r/${refCode}`
+  const selectedFolder = folders.find((f) => f.id === folder) ?? null
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const dragEnabled = !query && total <= PAGE_SIZE
+  const newHref = `/inflow-links/edit?group=${folder === UNFILED ? '' : folder}`
+
+  // ── フォルダ操作 ──
+  function openNewFolder() {
+    setEditingFolderId(null)
+    setDraftFolderName('')
+    setFolderDialogOpen(true)
+  }
+  function openRenameFolder() {
+    if (!selectedFolder) return
+    setEditingFolderId(selectedFolder.id)
+    setDraftFolderName(selectedFolder.name)
+    setFolderMenuOpen(false)
+    setFolderDialogOpen(true)
+  }
+  async function saveFolder() {
+    const name = draftFolderName.trim()
+    if (!name || !accountId) return
+    setSavingFolder(true)
     try {
-      await navigator.clipboard.writeText(url)
-      setCopiedId(id)
-      setTimeout(() => setCopiedId(null), 1200)
-    } catch {
-      // silent
+      if (editingFolderId) {
+        await api.inflow.renameFolder(editingFolderId, name)
+      } else {
+        const res = await api.inflow.createFolder(accountId, name)
+        if (res.success) setFolder(res.data.id)
+      }
+      setFolderDialogOpen(false)
+      await loadFolders()
+    } catch (err) {
+      setError(errorText(err, 'フォルダを保存できませんでした'))
+    } finally {
+      setSavingFolder(false)
+    }
+  }
+  async function deleteFolder() {
+    if (!selectedFolder) return
+    setFolderMenuOpen(false)
+    if (!(await dialogs.confirm(`フォルダ「${selectedFolder.name}」を削除しますか?\n中の流入経路は「未分類」に移動します。`))) return
+    try {
+      await api.inflow.deleteFolder(selectedFolder.id)
+      setFolder(UNFILED)
+      await Promise.all([loadFolders(), loadRoutes()])
+    } catch (err) {
+      setError(errorText(err, 'フォルダを削除できませんでした'))
+    }
+  }
+  async function dropFolder(targetId: string) {
+    const from = dragFolderId.current
+    dragFolderId.current = null
+    if (!from || from === targetId) return
+    const ids = folders.map((f) => f.id)
+    ids.splice(ids.indexOf(from), 1)
+    ids.splice(ids.indexOf(targetId), 0, from)
+    setFolders(ids.map((id) => folders.find((f) => f.id === id)!))
+    await api.inflow.reorderFolders(ids)
+  }
+
+  // ── 流入経路の操作 ──
+  async function dropRoute(targetId: string) {
+    const from = dragRouteId.current
+    dragRouteId.current = null
+    if (!from || from === targetId || !dragEnabled) return
+    const ids = routes.map((r) => r.id)
+    ids.splice(ids.indexOf(from), 1)
+    ids.splice(ids.indexOf(targetId), 0, from)
+    setRoutes(ids.map((id) => routes.find((r) => r.id === id)!))
+    await api.inflow.reorderRoutes(ids)
+  }
+  async function copyRoute(r: InflowRoute) {
+    setRowMenuId(null)
+    try {
+      await api.inflow.copyRoute(r.id)
+      await Promise.all([loadFolders(), loadRoutes()])
+    } catch (err) {
+      setError(errorText(err, 'コピーを作成できませんでした'))
+    }
+  }
+  async function moveRoute(r: InflowRoute, folderId: string | null) {
+    setRowMenuId(null)
+    try {
+      await api.inflow.moveRoute(r.id, folderId)
+      await Promise.all([loadFolders(), loadRoutes()])
+    } catch (err) {
+      setError(errorText(err, '移動できませんでした'))
+    }
+  }
+  async function deleteRoute(r: InflowRoute) {
+    setRowMenuId(null)
+    if (!(await dialogs.confirm(`流入経路「${r.name}」を削除しますか?\nこの流入経路のURLは使えなくなります。`))) return
+    try {
+      await api.inflow.deleteRoute(r.id)
+      await Promise.all([loadFolders(), loadRoutes()])
+    } catch (err) {
+      setError(errorText(err, '削除できませんでした'))
     }
   }
 
-  // Toggle the expandable friend list for a row. Loads on first expand,
-  // collapses on second click, swaps detail when expanding a different row.
-  // Uses /api/analytics/ref/:refCode (the same API the legacy /affiliates
-  // page used) so registered + unregistered refs both work.
-  //
-  // Race-condition guard: an operator who clicks row A then quickly clicks
-  // row B can have request A resolve after B. Without a stale-check, the
-  // late A response would overwrite B's detail. We capture the refCode at
-  // request time and bail out of state updates when it no longer matches
-  // the currently-expanded row.
-  const toggleExpand = async (refCode: string) => {
-    if (expandedRef === refCode) {
-      setExpandedRef(null)
-      setRefDetail(null)
-      setRefDetailLoading(false)
-      return
-    }
-    setExpandedRef(refCode)
-    setRefDetail(null)
-    setRefDetailLoading(true)
-    const requestedFor = refCode
-    const accountAtRequest = selectedAccountId
-    const query = accountAtRequest ? `?lineAccountId=${accountAtRequest}` : ''
-    const res = await fetchApi<{ success: boolean; data: RefDetail }>(
-      `/api/analytics/ref/${encodeURIComponent(refCode)}${query}`,
-    ).catch(() => ({ success: false, data: null }))
-    // Skip stale updates: only commit if we are still looking at the same
-    // ref AND the sidebar account hasn't changed since the request started.
-    setExpandedRef((current) => {
-      if (current !== requestedFor || accountAtRequest !== selectedAccountId) return current
-      if ('success' in res && res.success && res.data) setRefDetail(res.data)
-      setRefDetailLoading(false)
-      return current
-    })
-  }
-
-  // Index summary stats by ref_code for cheap lookup per row.
-  const statsByRef = new Map<string, RefRouteStats>()
-  summary?.routes.forEach((r) => statsByRef.set(r.refCode, r))
-
-  // Merge entry_routes (CRUD 対象), tracked_links (modern path), と
-  // summary.routes (実流入のあった refs)。優先順位 = worker の applyRefAttribution
-  // と同じ: entry_routes → tracked_links → orphan。
-  //
-  // tracked_links は entry_routes と別テーブルで管理されている。Worker は両方を
-  // フォールバック検索するので tracked_links 登録済み ref も「設定済み」扱いに
-  // すべき (Pool は仕様上持たないため "—" 表示)。これがないと「(未登録)」と
-  // 表示されるが裏では tracked_links のシナリオが発火している、という UI の嘘
-  // になる。
-  type Row = {
-    source: 'entry_route' | 'tracked_link' | 'orphan'
-    /** entry_routes に登録があれば id。tracked_link / orphan は null。 */
-    entryRouteId: string | null
-    refCode: string
-    name: string
-    poolId: string | null
-    tagId: string | null
-    scenarioId: string | null
-    /** entry_route のみ意味を持つ (並走/上書き)。他は null。 */
-    runAccountFriendAddScenarios: boolean | null
-    stats: RefRouteStats | undefined
-  }
-  const rowsByRef = new Map<string, Row>()
-  // 「inactive entry_route を譲るべき相手」の refCode 集合。entry_routes と
-  // tracked_links の両方に同じ refCode があった場合、worker の
-  // getEntryRouteByRefCode は is_active=1 のみ拾うので、inactive な entry_route
-  // は applyRefAttribution で通過されず tracked_links にフォールバックされる。
-  // 判定軸は「active tracked_link が存在するか」だけ。実流入 (statsByRef) の
-  // 有無に依存させると、最初のクリック前は衝突判定が空回りして UI が嘘の
-  // entry_route データを見せてしまう (worker は初回クリックでもう tracked_link
-  // を使う)。
-  const activeTrackedLinkRefCodes = new Set(
-    trackedLinks.filter((tl) => tl.isActive).map((tl) => tl.id),
+  const actionLines = useMemo(
+    () => (r: InflowRoute) => {
+      const lines = r.actions.map((a) => describeAction(a, lookups))
+      if (r.scenarioId) lines.unshift(`シナリオ[${lookups.scenarios.find((s) => s.id === r.scenarioId)?.name ?? '未選択'}]を開始`)
+      return lines
+    },
+    [lookups],
   )
-  for (const r of routes) {
-    // Inactive entry_route + active tracked_link が同 refCode に共存する場合、
-    // 実際に発火するのは tracked_link。停止中 entry_route の Pool/scenario を
-    // 表示すると「設定されてるのに違う挙動」の謎が生まれるのでこのケースだけ
-    // 譲る。tracked_link が無ければ inactive でも従来通り表示する。
-    if (!r.isActive && activeTrackedLinkRefCodes.has(r.refCode)) continue
-    rowsByRef.set(r.refCode, {
-      source: 'entry_route',
-      entryRouteId: r.id,
-      refCode: r.refCode,
-      name: r.name,
-      poolId: r.poolId,
-      tagId: r.tagId,
-      scenarioId: r.scenarioId,
-      runAccountFriendAddScenarios: r.runAccountFriendAddScenarios,
-      stats: statsByRef.get(r.refCode),
-    })
-  }
-  for (const tl of trackedLinks) {
-    if (rowsByRef.has(tl.id)) continue // entry_routes が優先
-    // /inflow-links は「友だち獲得経路」のページ。tracked_links は /t/:id クリック
-    // 計測用にも大量に作られるので、実際に友だちの ref_code に焼かれたもの
-    // (= summary に出現するもの) のみ表示する。それ以外は無関係なノイズ。
-    if (!statsByRef.has(tl.id)) continue
-    // worker の applyRefAttribution は isActive=false の tracked_link を skip する
-    // ので UI も合わせて非表示。これがないと「Tracked Link 登録済み」緑バッジ +
-    // シナリオ名が出ているのにシナリオが流れない、という嘘になる。inactive で
-    // 実流入だけある ref は orphan 行 (「未登録」アンバー) として正しく表示される。
-    if (!tl.isActive) continue
-    rowsByRef.set(tl.id, {
-      source: 'tracked_link',
-      entryRouteId: null,
-      refCode: tl.id,
-      name: tl.name,
-      poolId: null, // tracked_links は pool を持たない
-      tagId: null,
-      scenarioId: tl.scenarioId,
-      runAccountFriendAddScenarios: null,
-      stats: statsByRef.get(tl.id),
-    })
-  }
-  for (const s of summary?.routes ?? []) {
-    if (rowsByRef.has(s.refCode)) continue
-    rowsByRef.set(s.refCode, {
-      source: 'orphan',
-      entryRouteId: null,
-      refCode: s.refCode,
-      name: s.name ?? '(未登録)',
-      poolId: null,
-      tagId: null,
-      scenarioId: null,
-      runAccountFriendAddScenarios: null,
-      stats: s,
-    })
-  }
 
-  // Filter by sidebar's selected account.
-  //   - 全アカウント表示: entry_routes 全件 + 未登録 ref 全件
-  //   - アカ選択中:
-  //       a) 未登録 ref: そのアカで実流入があった分のみ (friendCount > 0)
-  //       b) 登録済み行: 実流入 > 0 OR その pool に選択中アカが所属
-  //          (pool_id 未設定なら実行時 main フォールバックで main 所属判定)
-  //
-  // 登録済み行を friendCount > 0 だけで絞ると、作りたての行が一覧から消えて
-  // 「保存したのに出てこない」事故になる。一方で「登録済みは全部表示」だと
-  // X Harness 1 サイドバー選択中に main プール向けの lp/lp2 が並んで紛らわしい。
-  // ルーティングの真実は pool_accounts (worker の getRandomPoolAccount が
-  // ここから抽選する) なので、poolMembers を見て所属判定する。
-  // マルチアカウント pool でも正しく動く。
-  const allRows = Array.from(rowsByRef.values())
-  const mainPool = pools.find((p) => p.slug === 'main')
-  const poolRoutesToAccount = (poolId: string | null, accountId: string): boolean => {
-    const targetPoolId = poolId ?? mainPool?.id
-    if (!targetPoolId) return false
-    return poolMembers[targetPoolId]?.has(accountId) ?? false
-  }
-  const accountFilteredRows = selectedAccountId
-    ? allRows.filter((r) => {
-        if ((r.stats?.friendCount ?? 0) > 0) return true
-        if (r.source === 'orphan') return false
-        // entry_route / tracked_link は pool 所属判定にフォールバック
-        // (tracked_link は poolId=null なので mainPool 所属チェックになる)
-        return poolRoutesToAccount(r.poolId, selectedAccountId)
-      })
-    : allRows
-
-  // Newest "最新追加" first. Routes with no recorded inflow yet sink to the bottom.
-  const sortedRows = [...accountFilteredRows].sort((a, b) => {
-    const sa = a.stats?.latestAt ?? ''
-    const sb = b.stats?.latestAt ?? ''
-    if (!sa && !sb) return 0
-    if (!sa) return 1
-    if (!sb) return -1
-    return sb.localeCompare(sa)
-  })
-
-  const formatDate = (iso: string | null) => {
-    if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-  }
+  const COLS = 'grid-cols-[2rem_minmax(10rem,1.3fr)_8.5rem_minmax(12rem,2fr)_7rem_11rem_7.5rem_6.5rem_2.5rem]'
 
   return (
     <div>
-      <Header
-        title="リファラルリンク"
-        description="流入経路ごとの URL を発行し、Pool・起動シナリオ・即時 push を設定します。"
-      />
+      <Header title="流入経路分析" />
+      {error && <p className="mb-3 text-sm text-[#e5451f]">{error}</p>}
 
-      {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl p-5 border border-gray-100">
-            <p className="text-sm text-gray-500">総友だち数</p>
-            <p className="text-3xl font-bold text-gray-900 mt-1">{summary.totalFriends}</p>
-          </div>
-          <div className="bg-white rounded-xl p-5 border border-gray-100">
-            <p className="text-sm text-gray-500">ref 経由</p>
-            <p className="text-3xl font-bold text-green-600 mt-1">{summary.friendsWithRef}</p>
-          </div>
-          <div className="bg-white rounded-xl p-5 border border-gray-100">
-            <p className="text-sm text-gray-500">ref 不明</p>
-            <p className="text-3xl font-bold text-gray-400 mt-1">{summary.friendsWithoutRef}</p>
-          </div>
-          <div className="bg-white rounded-xl p-5 border border-gray-100">
-            <p className="text-sm text-gray-500">リンク数</p>
-            <p className="text-3xl font-bold text-blue-600 mt-1">{routes.length}</p>
+      <div className="flex gap-5">
+        {/* ── 左: フォルダ ── */}
+        <div className="w-[15rem] flex-shrink-0">
+          <button type="button" className={btnWhite} onClick={openNewFolder}>
+            <span className="text-base leading-none">＋</span> 新しいフォルダ
+          </button>
+          <div className="mt-3 max-h-[calc(100vh-15rem)] overflow-y-auto bg-[#f1f1f4] text-sm">
+            <FolderRow label="未分類" count={unfiledCount} selected={!query && folder === UNFILED} onSelect={() => { setQuery(''); setSearch(''); setFolder(UNFILED) }} />
+            {folders.map((f) => (
+              <FolderRow
+                key={f.id}
+                label={f.name}
+                count={f.count}
+                selected={!query && folder === f.id}
+                draggable
+                onSelect={() => { setQuery(''); setSearch(''); setFolder(f.id) }}
+                onDragStart={() => { dragFolderId.current = f.id }}
+                onDrop={() => void dropFolder(f.id)}
+                menu={
+                  folder === f.id ? (
+                    <div className="relative">
+                      <button type="button" aria-label="フォルダメニュー" className="px-1.5 text-base font-bold" onClick={(e) => { e.stopPropagation(); setFolderMenuOpen((v) => !v) }}>⋮</button>
+                      <Popover open={folderMenuOpen} onClose={() => setFolderMenuOpen(false)}>
+                        <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={openRenameFolder}>名前を変更</button>
+                        <button type="button" className="block w-full px-3 py-1.5 text-left text-[#e5451f] hover:bg-[#f1f1f4]" onClick={() => void deleteFolder()}>削除</button>
+                      </Popover>
+                    </div>
+                  ) : null
+                }
+              />
+            ))}
           </div>
         </div>
-      )}
 
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-sm text-gray-500">
-          {sortedRows.length} リンク
-          {selectedAccountId && allRows.length !== sortedRows.length
-            ? `（全 ${allRows.length} 件中、選択中アカ）`
-            : ''}
-        </span>
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          onClick={() => setEditing('new')}
-        >
-          + 新規リンク
-        </Button>
-      </div>
+        {/* ── 右: 流入経路 ── */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <Link href={newHref} className={btnGreen}>
+              <span className="text-base leading-none">＋</span> 新しい流入経路
+            </Link>
+            <form
+              className="flex"
+              onSubmit={(e) => {
+                e.preventDefault()
+                setQuery(search.trim())
+              }}
+            >
+              <input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  if (!e.target.value.trim()) setQuery('')
+                }}
+                placeholder="検索"
+                aria-label="流入経路を検索"
+                className="h-9 w-56 rounded-l border border-[#cacace] px-3 text-sm outline-none focus:border-[#069e04]"
+              />
+              <button type="submit" aria-label="検索" className="flex h-9 w-10 items-center justify-center rounded-r bg-[#757578] text-white hover:bg-[#65656a]">⌕</button>
+            </form>
+          </div>
 
-      {error && (
-        <Banner className="mb-4" variant="error" title="リンクを読み込めませんでした" description={error} />
-      )}
+          <div className="mt-3 overflow-x-auto">
+            <div className="min-w-[68rem]">
+              <div className={`grid ${COLS} items-center bg-[#f1f1f4] px-2 text-xs text-[#757578]`} style={{ height: 40 }}>
+                <span />
+                <span>流入経路名</span>
+                <span>URL・QRコード</span>
+                <span>アクション</span>
+                <span>友だち追加時設定</span>
+                <span>有効期間</span>
+                <span className="text-right">集計</span>
+                <span className="pl-3">登録日</span>
+                <span />
+              </div>
 
-      {loading ? (
-        <LayerCard className="p-8"><Loader className="mx-auto" /></LayerCard>
-      ) : sortedRows.length === 0 ? (
-        <Empty
-          title="リファラルリンクがありません"
-          description={selectedAccountId
-            ? '選択中のアカウントに紐づくリファラルリンクはありません。'
-            : '「+ 新規リンク」から作成してください。'}
-        />
-      ) : (
-        <LayerCard className="overflow-x-auto p-0">
-          <Table className="min-w-[1080px]">
-            <Table.Header>
-              <Table.Row>
-                <Table.Head>名前</Table.Head>
-                <Table.Head>ref コード</Table.Head>
-                <Table.Head>送り先 Pool</Table.Head>
-                <Table.Head>起動シナリオ</Table.Head>
-                <Table.Head>自動付与タグ</Table.Head>
-                <Table.Head>モード</Table.Head>
-                <Table.Head className="text-right">友だち数</Table.Head>
-                <Table.Head className="text-right">クリック数</Table.Head>
-                <Table.Head>最新追加</Table.Head>
-                <Table.Head>URL</Table.Head>
-                <Table.Head />
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {sortedRows.map((r) => {
-                const pool = pools.find((p) => p.id === r.poolId)
-                const sc = scenarios.find((s) => s.id === r.scenarioId)
-                const tag = tags.find((t) => t.id === r.tagId)
-                const editTarget =
-                  r.source === 'entry_route'
-                    ? routes.find((e) => e.id === r.entryRouteId) ?? null
-                    : null
-                const isExpanded = expandedRef === r.refCode
-                return (
-                  <FragmentRow
-                    key={r.refCode}
-                    isExpanded={isExpanded}
-                    onToggle={() => toggleExpand(r.refCode)}
-                    refDetailLoading={refDetailLoading}
-                    refDetail={refDetail}
-                    refCode={r.refCode}
-                  >
-                    <Table.Cell className="font-medium text-kumo-strong">
-                      {r.source === 'entry_route' && r.entryRouteId ? (
-                        <Link
-                          href={`/inflow-links/detail?id=${r.entryRouteId}`}
-                          className="text-blue-600 hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+              {loading ? (
+                <p className="border-b border-[#e3e3e6] py-6 text-center text-sm text-[#757578]">読み込み中...</p>
+              ) : routes.length === 0 ? (
+                <p className="border-b border-[#e3e3e6] py-6 text-center text-sm text-[#757578]">
+                  {query ? '該当する流入経路がありません' : '流入経路が登録されていません'}
+                </p>
+              ) : (
+                routes.map((r) => {
+                  const lines = actionLines(r)
+                  return (
+                    <div
+                      key={r.id}
+                      draggable={dragEnabled}
+                      onDragStart={() => { dragRouteId.current = r.id }}
+                      onDragOver={(e) => { if (dragEnabled) e.preventDefault() }}
+                      onDrop={() => void dropRoute(r.id)}
+                      className={`item-enter grid ${COLS} items-center border-b border-[#e3e3e6] bg-white px-2 py-2 text-sm transition-colors duration-150 hover:bg-[#fafafb]`}
+                      style={{ minHeight: 56 }}
+                    >
+                      <span className="pl-1">{dragEnabled ? <DragHandle /> : null}</span>
+                      <div className="min-w-0 pr-3">
+                        <Link href={r.legacy ? `/inflow-links/detail?id=${r.id}` : `/inflow-links/edit?id=${r.id}&group=${folder === UNFILED ? '' : folder}`} className="break-words font-bold text-[#2b7bb9] underline">
                           {r.name}
                         </Link>
-                      ) : r.source === 'tracked_link' ? (
-                        <span className="text-gray-700">
-                          {r.name}
-                          <span title="tracked_links 登録済み — クリック計測 + シナリオ起動が設定されています。Pool 振り分けは持ちません。">
-                            <Badge className="ml-2" variant="success">Tracked Link</Badge>
-                          </span>
-                        </span>
-                      ) : (
-                        <span className="text-gray-700">
-                          {r.name}
-                          <span title="entry_routes / tracked_links いずれにも未登録 — X Harness など外部システムが発行した ref。流入実績のみ集計。">
-                            <Badge className="ml-2" variant="warning">未登録</Badge>
-                          </span>
-                        </span>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell className="font-mono text-kumo-link break-all">
-                      {r.refCode}
-                    </Table.Cell>
-                    <Table.Cell className="text-kumo-default">
-                      {pool ? (
-                        pool.name
-                      ) : r.source === 'tracked_link' ? (
-                        <span
-                          className="text-gray-400"
-                          title="tracked_links は Pool 振り分けを持ちません (グローバルデフォルトに従う)。"
-                        >
-                          —
-                        </span>
-                      ) : (
-                        <span
-                          className="text-gray-400"
-                          title="DB に pool_id 未設定。実行時は URL クエリ ?pool= で振り分けられている可能性あり。"
-                        >
-                          未設定
-                        </span>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell className="text-kumo-default">{sc?.name ?? '—'}</Table.Cell>
-                    <Table.Cell className="text-kumo-default">
-                      {tag ? (
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                          style={{
-                            backgroundColor: `${tag.color}22`,
-                            color: tag.color,
-                          }}
-                        >
-                          {tag.name}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </Table.Cell>
-                    <Table.Cell className="text-kumo-subtle">
-                      {r.source === 'entry_route'
-                        ? r.runAccountFriendAddScenarios
-                          ? '並走'
-                          : '上書き'
-                        : r.source === 'tracked_link'
-                          ? // tracked_links は account-level friend_add scenarios を
-                            // 抑制する仕組みを持たない (runAccountFriendAddScenarios
-                            // フラグは entry_routes 専用)。worker 上は常に並走挙動。
-                            '並走'
-                          : '—'}
-                    </Table.Cell>
-                    <Table.Cell className="text-right font-semibold text-kumo-strong">
-                      {r.stats?.friendCount ?? 0}
-                    </Table.Cell>
-                    <Table.Cell className="text-right text-kumo-subtle">
-                      {r.stats?.clickCount ?? 0}
-                    </Table.Cell>
-                    <Table.Cell className="text-kumo-subtle">
-                      {formatDate(r.stats?.latestAt ?? null)}
-                    </Table.Cell>
-                    <Table.Cell onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        onClick={() => onCopy(r.refCode, r.refCode)}
-                      >
-                        {copiedId === r.refCode ? 'コピー済' : 'コピー'}
-                      </Button>
-                    </Table.Cell>
-                    <Table.Cell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      {editTarget ? (
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => setEditing(editTarget)}
-                        >
-                          編集
-                        </Button>
-                      ) : r.source === 'tracked_link' ? (
-                        // tracked_links は別管理 (Web app に編集 UI 未提供)。
-                        // entry_routes への "昇格登録" は worker 優先順位的に
-                        // tracked_link を上書きすることになり混乱の元なので、
-                        // ここではアクション非表示にして tracked_links 側の
-                        // 編集導線 (MCP / API) に委ねる。
-                        <span className="text-xs text-gray-400">—</span>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => setEditing({ register: r.refCode })}
-                          title="未登録 ref を entry_routes に登録します。流入実績はそのまま引き継がれます。"
-                        >
-                          登録
-                        </Button>
-                      )}
-                    </Table.Cell>
-                  </FragmentRow>
-                )
-              })}
-            </Table.Body>
-          </Table>
-        </LayerCard>
-      )}
+                        <span className="ml-2 rounded-sm bg-[#e8e8ec] px-1 py-0.5 align-middle text-[10px] text-[#595959]">登録用</span>
+                      </div>
+                      <div>
+                        <button type="button" className={`${btnBase} border border-[#cacace] bg-white text-[#414143] hover:bg-[#f7f7f9]`} onClick={() => setQrRoute(r)}>
+                          URLコピー・QR
+                        </button>
+                      </div>
+                      <div className="min-w-0 pr-3 text-xs leading-5">
+                        {lines.length === 0 ? <span className="text-[#757578]">-</span> : lines.map((t, i) => <p key={i} className="break-words">{t}</p>)}
+                      </div>
+                      <span className="text-xs">{lines.length === 0 ? '-' : r.ignoreFriendAddSettings ? '無視する' : '無視しない'}</span>
+                      <span className="pr-2 text-xs leading-5">
+                        {r.validFrom || r.validTo ? (
+                          <>
+                            <span className="block">{(r.validFrom ?? '').replace('T', ' ') || '　'}</span>
+                            <span className="block">〜 {(r.validTo ?? '').replace('T', ' ')}</span>
+                          </>
+                        ) : (
+                          '-'
+                        )}
+                      </span>
+                      <Link href={`/inflow-links/stats?id=${r.id}&group=${folder === UNFILED ? '' : folder}`} className="text-right text-[#2b7bb9] underline">
+                        {(r.people ?? 0).toLocaleString('ja-JP')}人({(r.times ?? 0).toLocaleString('ja-JP')}回)
+                      </Link>
+                      <span className="pl-3 text-xs">{r.createdAt.slice(0, 10)}</span>
+                      <div className="relative flex justify-end">
+                        <button type="button" aria-label="メニュー" className="px-1.5 text-base font-bold" onClick={() => setRowMenuId((v) => (v === r.id ? null : r.id))}>⋮</button>
+                        <Popover open={rowMenuId === r.id} onClose={() => setRowMenuId(null)}>
+                          {!r.legacy && (
+                            <button type="button" className="block w-full whitespace-nowrap px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => void copyRoute(r)}>コピーを作成</button>
+                          )}
+                          {r.folderId && (
+                            <button type="button" className="block w-full whitespace-nowrap px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => void moveRoute(r, null)}>未分類に移動</button>
+                          )}
+                          {folders.filter((f) => f.id !== r.folderId).map((f) => (
+                            <button key={f.id} type="button" className="block w-full whitespace-nowrap px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => void moveRoute(r, f.id)}>
+                              「{f.name}」に移動
+                            </button>
+                          ))}
+                          <button type="button" className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-[#e5451f] hover:bg-[#f1f1f4]" onClick={() => void deleteRoute(r)}>削除</button>
+                        </Popover>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
 
-      {editing && (
-        <EditRouteModal
-          route={
-            editing === 'new' || (typeof editing === 'object' && 'register' in editing)
-              ? null
-              : editing
-          }
-          initialRefCode={
-            typeof editing === 'object' && editing !== null && 'register' in editing
-              ? editing.register
-              : undefined
-          }
-          pools={pools}
-          scenarios={scenarios}
-          templates={templates}
-          tags={tags}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null)
-            load()
-          }}
-        />
-      )}
+          {pageCount > 1 && (
+            <div className="mt-4 flex justify-end gap-1 text-sm">
+              <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="h-8 w-8 rounded border border-[#cacace] disabled:opacity-40">&lt;</button>
+              {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setPage(n)}
+                  className={`h-8 w-8 rounded border ${n === page ? 'border-[#069e04] bg-[#069e04] font-bold text-white' : 'border-[#cacace]'}`}
+                >
+                  {n}
+                </button>
+              ))}
+              <button type="button" disabled={page === pageCount} onClick={() => setPage((p) => p + 1)} className="h-8 w-8 rounded border border-[#cacace] disabled:opacity-40">&gt;</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {qrRoute ? <RouteQrDialog route={qrRoute} onClose={() => setQrRoute(null)} /> : null}
+
+      <Dialog.Root open={folderDialogOpen} onOpenChange={(open) => { if (!open && !savingFolder) setFolderDialogOpen(false) }}>
+        <Dialog className="w-full max-w-sm p-5">
+          <Dialog.Title>{editingFolderId ? 'フォルダ名を変更' : '新しいフォルダ'}</Dialog.Title>
+          <Input label="フォルダ名" autoFocus value={draftFolderName} onValueChange={setDraftFolderName} className="mt-4" />
+          <div className="mt-5 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setFolderDialogOpen(false)} disabled={savingFolder}>キャンセル</Button>
+            <Button type="button" variant="primary" loading={savingFolder} onClick={() => void saveFolder()} disabled={!draftFolderName.trim()}>保存</Button>
+          </div>
+        </Dialog>
+      </Dialog.Root>
     </div>
-  )
-}
-
-/**
- * Expandable row wrapper. Renders the main `<tr>` plus an optional second
- * `<tr>` underneath it with the friend list for this ref. Whole-row click
- * toggles expansion; nested clickable cells use `stopPropagation` so the
- * 名前 link / コピー / 編集 buttons don't accidentally trigger expand.
- */
-function FragmentRow({
-  isExpanded,
-  onToggle,
-  refDetailLoading,
-  refDetail,
-  refCode,
-  children,
-}: {
-  isExpanded: boolean
-  onToggle: () => void
-  refDetailLoading: boolean
-  refDetail: RefDetail | null
-  refCode: string
-  children: ReactNode
-}) {
-  const friends = isExpanded && refDetail?.refCode === refCode ? refDetail.friends : null
-  return (
-    <Fragment>
-      <Table.Row className="cursor-pointer" onClick={onToggle}>
-        {children}
-      </Table.Row>
-      {isExpanded && (
-        <Table.Row>
-          <Table.Cell colSpan={11} className="px-6 py-4 bg-kumo-control">
-            {refDetailLoading ? (
-              <p className="text-sm text-gray-400">読み込み中…</p>
-            ) : !friends ? (
-              <p className="text-sm text-gray-400">読み込めませんでした</p>
-            ) : friends.length === 0 ? (
-              <p className="text-sm text-gray-400">この ref から追加した友だちはまだいません</p>
-            ) : (
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
-                  この ref から追加した友だち ({friends.length}人)
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {friends.map((f) => (
-                    <Link
-                      key={f.id}
-                      href={`/chats?friend=${f.id}`}
-                      className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-gray-100 hover:border-blue-300"
-                    >
-                      <span className="text-sm text-gray-800 font-medium truncate">
-                        {f.displayName}
-                      </span>
-                      <span className="text-xs text-gray-400 ml-2 shrink-0">
-                        {f.trackedAt
-                          ? new Date(f.trackedAt).toLocaleDateString('ja-JP', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                            })
-                          : '—'}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            )}
-          </Table.Cell>
-        </Table.Row>
-      )}
-    </Fragment>
   )
 }

@@ -29,6 +29,8 @@ import {
 import { buildIntroMessage } from '../services/intro-message.js';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import { pushImmediateFirstStep } from '../services/immediate-first-step.js';
+import { ignoresFriendAddSettings, runInflowRoute } from '../services/inflow-route-runtime.js';
+import { parseInflowQuery } from '../services/inflow-route-landing.js';
 import { notifyAffiliateFriendAdd } from '../services/affiliate-notifier.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
 import { findCallerFriend } from '../services/caller-friend.js';
@@ -202,7 +204,7 @@ async function applyRefAttribution(
   ref: string,
   friend: { id: string; line_account_id?: string | null },
   lineUserId: string,
-  options?: { accountChannelId?: string | null; isNewFriend?: boolean },
+  options?: { accountChannelId?: string | null; isNewFriend?: boolean; queryParams?: Record<string, string> | null },
 ): Promise<void> {
   if (!ref || ref.startsWith('xh:')) return;
   // Reserved product refs (e.g. 'dashboard') are provenance markers, never
@@ -213,6 +215,15 @@ async function applyRefAttribution(
   const db = c.env.DB;
 
   const route = await getEntryRouteByRefCode(db, ref);
+  // 流入経路分析で作った流入経路(アクション設定つき)は、設定どおりに実行する
+  if (route && typeof route.actions === 'string') {
+    try {
+      await runInflowRoute(db, c.env, route, friend.id, { queryParams: options?.queryParams ?? null });
+    } catch (err) {
+      console.error('Inflow route actions failed (non-blocking):', err);
+    }
+    return;
+  }
   let trackedLink: Awaited<ReturnType<typeof getTrackedLinkById>> = null;
   if (!route) {
     const tl = await getTrackedLinkById(db, ref);
@@ -932,7 +943,8 @@ liffRoutes.get('/auth/callback', async (c) => {
     const referralRouteForOverride =
       ref && !ref.startsWith('xh:') ? await getEntryRouteByRefCode(db, ref) : null;
     const runAccountScenariosLiff =
-      !referralRouteForOverride || referralRouteForOverride.run_account_friend_add_scenarios !== 0;
+      !referralRouteForOverride ||
+      (referralRouteForOverride.run_account_friend_add_scenarios !== 0 && !ignoresFriendAddSettings(referralRouteForOverride));
 
     try {
       // Resolve which account this friend belongs to
@@ -1191,7 +1203,10 @@ liffRoutes.post('/api/liff/link', async (c) => {
       ig?: string;
       iga?: string;
       igan?: string;
+      /** 流入経路のURLのパラメータ(/r/:ref が引き継ぐ) */
+      iqp?: string;
     }>();
+    const inflowQuery = parseInflowQuery(body.iqp);
 
     if (!body.idToken) {
       return c.json({ success: false, error: 'idToken is required' }, 400);
@@ -1287,12 +1302,14 @@ liffRoutes.post('/api/liff/link', async (c) => {
             friendId: friend.id,
             entryRouteId: route?.id ?? null,
             sourceUrl: null,
+            queryParams: inflowQuery,
           });
         } catch { /* silent */ }
       }
       if (body.ref) {
         await applyRefAttribution(c, body.ref, friend, lineUserId, {
           accountChannelId: matchedAccount?.channel_id ?? null,
+          queryParams: inflowQuery,
         });
       }
       // X Harness token resolution for already-linked friends
@@ -1356,12 +1373,14 @@ liffRoutes.post('/api/liff/link', async (c) => {
           friendId: friend.id,
           entryRouteId: route?.id ?? null,
           sourceUrl: null,
+          queryParams: inflowQuery,
         });
       } catch { /* silent */ }
 
       // Apply ref attribution (tag + scenario push) for newly-linked friends
       await applyRefAttribution(c, body.ref, friend, lineUserId, {
         accountChannelId: matchedAccount?.channel_id ?? null,
+        queryParams: inflowQuery,
       });
     }
 

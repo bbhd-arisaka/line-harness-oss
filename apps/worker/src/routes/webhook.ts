@@ -32,6 +32,7 @@ import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
+import { ignoresFriendAddSettings } from '../services/inflow-route-runtime.js';
 import type { FriendAddedNotice, IncomingMessageNotice } from '../services/push-notify.js';
 
 const webhook = new Hono<Env>();
@@ -386,8 +387,10 @@ async function handleEvent(
     const referralRoute: EntryRoute | null = friendRefCode
       ? await getEntryRouteByRefCode(db, friendRefCode)
       : null;
+    // アクション設定つきの流入経路(流入経路分析)は、「友だち追加時設定のアクション」を無視する設定にもできる
+    const ignoreAddSettings = !!referralRoute && ignoresFriendAddSettings(referralRoute);
     const runAccountScenarios =
-      !referralRoute || referralRoute.run_account_friend_add_scenarios !== 0;
+      !referralRoute || (referralRoute.run_account_friend_add_scenarios !== 0 && !ignoreAddSettings);
 
     // friend_add シナリオに登録（このアカウントのシナリオのみ）
     // Skip entirely when a referral link explicitly overrides (run_account_friend_add_scenarios=0).
@@ -428,8 +431,9 @@ async function handleEvent(
       }
     }
 
-    // Referral link side-effects (intro push + dedicated scenario)
-    if (referralRoute) {
+    // Referral link side-effects (intro push + dedicated scenario).
+    // アクション設定つきの流入経路は、アクションとシナリオを LIFF 側(流入経路の設定どおり)で実行するので、ここでは動かさない
+    if (referralRoute && typeof referralRoute.actions !== 'string') {
       // Intro push from referral link
       if (referralRoute.intro_template_id) {
         try {
@@ -469,8 +473,8 @@ async function handleEvent(
       }
     }
 
-    // 友だち追加時設定(シナリオ・その他のアクション)
-    {
+    // 友だち追加時設定(シナリオ・その他のアクション)。流入経路で「無視する」にしているときは動かさない
+    if (!ignoreAddSettings) {
       const { applyFriendAddSettings } = await import('../services/friend-add-settings.js');
       await applyFriendAddSettings(db, {
         kind: alreadyKnown ? 'returning' : 'new',

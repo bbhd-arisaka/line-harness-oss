@@ -35,7 +35,7 @@ export default function InflowLinkDetailPage() {
     return (
       <div className="p-12 text-center">
         <p className="text-red-600">{error || 'リンクが見つかりません'}</p>
-        <Link href="/inflow-links" className="text-sm text-blue-600 hover:underline mt-2 inline-block">
+        <Link href="/inflow-links/legacy" className="text-sm text-blue-600 hover:underline mt-2 inline-block">
           ← 一覧に戻る
         </Link>
       </div>
@@ -49,7 +49,7 @@ export default function InflowLinkDetailPage() {
       <Header title={route.name} description={`ref_code: ${route.refCode}`} />
 
       <Link
-        href="/inflow-links"
+        href="/inflow-links/legacy"
         className="inline-block text-sm text-blue-600 hover:underline mb-4"
       >
         ← 一覧に戻る

@@ -428,6 +428,7 @@ const KNOWN_GAPS: readonly string[] = [
   'GET /api/qr',
   // r (1)
   'GET /r/{ref}/help',
+  'GET /r/{ref}/ad.js',
   // rich-menu-images (1)
   'GET /api/rich-menu-images/{key}{.+}',
   // segments (1)
