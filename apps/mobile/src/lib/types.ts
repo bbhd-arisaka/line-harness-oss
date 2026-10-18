@@ -171,6 +171,8 @@ export interface ChatDetail {
   friendId: string;
   friendName: string;
   friendPictureUrl: string | null;
+  /** false = ブロックされている(送信できない)。古いサーバーでは無い */
+  isFollowing?: boolean;
   operatorId: string | null;
   status: ChatStatus;
   notes: string | null;

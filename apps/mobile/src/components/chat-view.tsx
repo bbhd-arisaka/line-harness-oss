@@ -224,7 +224,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
         if (mine !== seq.current) return;
         const prev = chatRef.current;
         // 新着が無ければ再描画しない(10秒ごとのポーリングで画面がちらつかないように)
-        if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.friendName !== next.friendName || prev.friendPictureUrl !== next.friendPictureUrl) {
+        if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.isFollowing !== next.isFollowing || prev.friendName !== next.friendName || prev.friendPictureUrl !== next.friendPictureUrl) {
           setChat(next);
         }
         setError(null);
@@ -569,6 +569,11 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
               <Text style={{ color: c.danger, fontSize: 13 }}>{sendError}</Text>
             </View>
           ) : null}
+          {chat?.isFollowing === false ? (
+            <View style={[styles.blockedBar, { backgroundColor: c.card, borderTopColor: c.border, paddingBottom: Math.max(insets.bottom, 12) }]}>
+              <Text style={{ color: c.textMuted, fontSize: 14 }}>ブロックされています</Text>
+            </View>
+          ) : (
           <View style={[styles.composer, { backgroundColor: c.card, borderTopColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
             {pendingImage ? (
               <View style={styles.pendingRow}>
@@ -659,6 +664,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
               />
             ) : null}
           </View>
+          )}
           <PickModal
             visible={pickForm}
             title={forms === null ? '回答フォームを選ぶ(読み込み中…)' : '回答フォームを選ぶ'}
@@ -711,6 +717,7 @@ const styles = StyleSheet.create({
   dateLabel: { fontSize: 12, fontWeight: '600', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },
   eventWrap: { alignItems: 'center', marginVertical: 6, paddingHorizontal: 16 },
   eventLabel: { fontSize: 11, textAlign: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
+  blockedBar: { alignItems: 'center', paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth },
   composer: { gap: 6, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   input: { flex: 1, minHeight: MIN_TAP, maxHeight: 140, borderRadius: 22, borderWidth: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 16, lineHeight: 22 },

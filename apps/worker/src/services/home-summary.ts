@@ -51,7 +51,8 @@ export interface QuotaSummary {
 export interface HomeSummary {
   accountId: string;
   generatedAt: string;
-  friends: { active: number; blocked: number; total: number };
+  /** blocked は、LINE が数えているブロック数(取れたとき)。取れないときは、beyond line が記録したぶんだけ */
+  friends: { active: number; blocked: number; total: number; blockedSource: 'line' | 'recorded' };
   chatStatus: ChatStatusCounts;
   /** 未対応のうち、24時間以上たっているもの */
   unreadOver24h: number;
@@ -248,13 +249,40 @@ export function resetQuotaCache(): void {
   quotaCache.clear();
 }
 
+/** LINE が数えている、ブロックされている数(友だち追加の記録が無い人も含む)。1時間覚える(LINE の取得は1時間60回まで) */
+export interface LineBlockCounts {
+  blocks: number;
+}
+const blocksCache = new Map<string, { at: number; value: LineBlockCounts | null }>();
+const BLOCKS_TTL_MS = 60 * 60_000;
+const BLOCKS_FAIL_TTL_MS = 5 * 60_000;
+
+export async function loadLineBlocks(accountId: string, token: string, nowMs: number, client: Pick<LineClient, 'getFollowersInsight'> = new LineClient(token)): Promise<LineBlockCounts | null> {
+  const hit = blocksCache.get(accountId);
+  if (hit && nowMs - hit.at < (hit.value ? BLOCKS_TTL_MS : BLOCKS_FAIL_TTL_MS)) return hit.value;
+  let value: LineBlockCounts | null = null;
+  try {
+    // 集計がそろうのは、終わった日(日本時間の昨日)まで
+    const insight = await client.getFollowersInsight(jstDateKeys(nowMs, 2)[0].replace(/-/g, ''));
+    if (insight?.status === 'ready' && typeof insight.blocks === 'number') value = { blocks: insight.blocks };
+  } catch {
+    value = null;
+  }
+  blocksCache.set(accountId, { at: nowMs, value });
+  return value;
+}
+
+export function resetBlocksCache(): void {
+  blocksCache.clear();
+}
+
 export interface AccountForHome {
   id: string;
   channel_access_token: string;
   token_expires_at?: string | null;
 }
 
-export async function loadHomeSummary(db: D1Database, account: AccountForHome, nowMs: number = Date.now(), quotaLoader: typeof loadQuota = loadQuota): Promise<HomeSummary> {
+export async function loadHomeSummary(db: D1Database, account: AccountForHome, nowMs: number = Date.now(), quotaLoader: typeof loadQuota = loadQuota, blocksLoader: typeof loadLineBlocks = loadLineBlocks): Promise<HomeSummary> {
   const id = account.id;
   const keys = jstDateKeys(nowMs, 14);
   const since14 = keys[0];
@@ -263,7 +291,7 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
   const ago7 = jstDateKeys(nowMs, 8)[0];
   const over24 = jstHoursAgo(nowMs, UNREAD_WARN_HOURS);
 
-  const [friendsRow, addedRows, blockedRows, chatRows, unreadAge, replyRow, receivedRow, formRow, routeRows, brokenRow, lastAddedRow, quota, sent] = await Promise.all([
+  const [friendsRow, addedRows, blockedRows, chatRows, unreadAge, replyRow, receivedRow, formRow, routeRows, brokenRow, lastAddedRow, quota, sent, lineBlocks] = await Promise.all([
     db
       .prepare(`SELECT COALESCE(SUM(CASE WHEN is_following = 1 THEN 1 ELSE 0 END), 0) AS active, COALESCE(SUM(CASE WHEN is_following = 0 THEN 1 ELSE 0 END), 0) AS blocked, COUNT(*) AS total FROM friends WHERE line_account_id = ?`)
       .bind(id)
@@ -343,11 +371,13 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
       .first<{ last_at: string | null }>(),
     quotaLoader(id, account.channel_access_token, nowMs),
     countAccountMonthlyMessages(db, id, new Date(nowMs)).catch(() => 0),
+    blocksLoader(id, account.channel_access_token, nowMs).catch(() => null),
   ]);
 
   const active = friendsRow?.active ?? 0;
-  const blocked = friendsRow?.blocked ?? 0;
-  const total = friendsRow?.total ?? 0;
+  // ブロック数は LINE の数え方を優先する。beyond line は、導入前にブロックした人・導入前から友だちだった人の記録を持たないため、少なくなる
+  const blocked = lineBlocks ? lineBlocks.blocks : (friendsRow?.blocked ?? 0);
+  const total = lineBlocks ? active + blocked : (friendsRow?.total ?? 0);
   const status: ChatStatusCounts = { unread: 0, in_progress: 0, resolved: 0 };
   for (const r of chatRows.results ?? []) if (r.status in status) status[r.status as keyof ChatStatusCounts] = r.n;
 
@@ -390,7 +420,7 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
   return {
     accountId: id,
     generatedAt: new Date(nowMs).toISOString(),
-    friends: { active, blocked, total },
+    friends: { active, blocked, total, blockedSource: lineBlocks ? 'line' : 'recorded' },
     chatStatus: status,
     unreadOver24h,
     oldestUnreadHours,

@@ -73,6 +73,8 @@ function isRichMenuSwitch(msg: { direction: string; messageType: string; content
 interface ChatDetail extends Chat {
   friendName: string
   friendPictureUrl: string | null
+  /** false = ブロックされている(送信できない)。古いサーバーでは無い */
+  isFollowing?: boolean
   messages?: ChatMessage[]
   /** 出来事のログ(タグ・ブロック・フォーム回答など)。古いサーバーでは無い */
   events?: ChatEvent[]
@@ -1604,6 +1606,11 @@ ${t.messageContent}` : t.messageContent))
               {/* z-30 + bg-white: 何かの浮遊要素が万一重なってもコンポーザーが
                   最前面でクリックを受ける。onClick はボタン/入力要素以外の余白
                   クリックを入力欄フォーカスに変換する (当たり判定を行全体に拡大) */}
+              {chatDetail?.isFollowing === false ? (
+                <div className="relative z-30 flex-shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-4 text-center text-sm text-gray-500">
+                  ブロックされています
+                </div>
+              ) : (
               <div
                 className="relative z-30 bg-white flex-shrink-0 px-4 pt-3 pb-5 border-t border-gray-200"
                 onClick={(e) => {
@@ -1773,6 +1780,7 @@ ${t.messageContent}` : t.messageContent))
                   </div>
                 </div>
               </div>
+              )}
             </>
           ) : null}
         </div>

@@ -64,6 +64,18 @@ describe('chat reply tracking and delivery logs', () => {
     expect((await send({ content: '{{name}}さん/{{real_name}}様', trackLinks: false }, 'chat-b')).status).toBe(200);
     expect((requests[1].messages[0] as { text: string }).text).toBe('お客様さん/お客様様');
   });
+  it('ブロックされている相手には、LINEへ送らず、理由を返す。トークの取得では isFollowing=false', async () => {
+    fixture.sqlite.exec("UPDATE friends SET is_following=0 WHERE id='friend-a'");
+    const res = await send({ content: 'こんにちは', trackLinks: false });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain('ブロック');
+    expect(requests).toHaveLength(0);
+    expect(fixture.sqlite.prepare("SELECT COUNT(*) AS n FROM messages_log WHERE friend_id='friend-a'").get()).toEqual({ n: 0 });
+    const chat = (await (await app.request(`${WORKER}/api/chats/chat-a`, {}, { DB: fixture.db })).json()) as { data: { isFollowing: boolean } };
+    expect(chat.data.isFollowing).toBe(false);
+    const other = (await (await app.request(`${WORKER}/api/chats/chat-b`, {}, { DB: fixture.db })).json()) as { data: { isFollowing: boolean } };
+    expect(other.data.isFollowing).toBe(true);
+  });
   it('使えない {{…}} が含まれるときは、送らずに理由を返す', async () => {
     const res = await send({ content: 'こんにちは{{foo}}', trackLinks: false });
     expect(res.status).toBe(400);

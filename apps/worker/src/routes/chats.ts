@@ -26,6 +26,7 @@ import {
 import { invalidateUnansweredCache } from '../services/unanswered-inbox.js';
 import type { Env } from '../index.js';
 import { isDemoLineUserId } from '../services/demo-friend.js';
+import { BLOCKED_SEND_MESSAGE } from '../services/blocked-send.js';
 import { buildAnswerItems } from '../services/form-answer-items.js';
 
 const chats = new Hono<Env>();
@@ -511,9 +512,9 @@ chats.get('/api/chats/:id', async (c) => {
     const createdAt = chatRow?.created_at ?? null;
 
     const friend = await c.env.DB
-      .prepare(`SELECT display_name, real_name, system_display_name, picture_url, line_user_id FROM friends WHERE id = ?`)
+      .prepare(`SELECT display_name, real_name, system_display_name, picture_url, line_user_id, is_following FROM friends WHERE id = ?`)
       .bind(resolvedFriendId)
-      .first<{ display_name: string | null; real_name: string | null; system_display_name: string | null; picture_url: string | null; line_user_id: string }>();
+      .first<{ display_name: string | null; real_name: string | null; system_display_name: string | null; picture_url: string | null; line_user_id: string; is_following: number }>();
 
     // 新しい1000件を取って昇順に戻す。LIMIT 200 ASC だと古い200件だけで broadcast/scenario 等の
     // 新しい push が欠落していた（Shu で 481件中 281件欠落のバグあり）。一覧側と同様に test 配信は除外。
@@ -539,6 +540,8 @@ chats.get('/api/chats/:id', async (c) => {
         friendId: resolvedFriendId,
         friendName: friend?.real_name?.trim() || friend?.system_display_name?.trim() || friend?.display_name || '名前なし',
         friendPictureUrl: friend?.picture_url || null,
+        /** false = ブロックされている(または友だちでない)。送信できない */
+        isFollowing: friend ? friend.is_following !== 0 : true,
         operatorId,
         status,
         notes,
@@ -707,6 +710,8 @@ chats.post('/api/chats/:id/send', async (c) => {
       c.env.LINE_CHANNEL_ACCESS_TOKEN,
     );
     if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
+    // ブロックされている相手には送れない(LINE が受け付けない。送ったことにならないよう、先に止める)
+    if (friend.is_following === 0) return c.json({ success: false, error: BLOCKED_SEND_MESSAGE }, 400);
 
     // LINE APIでメッセージ送信
     const { LineClient } = await import('@line-crm/line-sdk');

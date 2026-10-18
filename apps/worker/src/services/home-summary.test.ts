@@ -124,11 +124,16 @@ describe('ホームの集計(DB)', () => {
     db.prepare("INSERT INTO broadcasts(id,title,message_type,message_content,status,line_account_id,created_at,last_error) VALUES('b1','配信','text','x','scheduled','a1','2026-10-17T10:00:00','失敗')").run();
   });
 
-  const load = (id = 'a1', quota: QuotaSummary | null = { type: 'limited', limit: 1000, consumption: 990, remaining: 10 }) =>
-    loadHomeSummary(fixture.db, { id, channel_access_token: 'tok' }, NOW, async () => quota);
+  const load = (id = 'a1', quota: QuotaSummary | null = { type: 'limited', limit: 1000, consumption: 990, remaining: 10 }, blocks: { blocks: number } | null = null) =>
+    loadHomeSummary(fixture.db, { id, channel_access_token: 'tok' }, NOW, async () => quota, async () => blocks);
 
   it('友だち数: 有効・ブロック・総数(別のアカウントは数えない)', async () => {
-    expect((await load()).friends).toEqual({ active: 3, blocked: 2, total: 5 });
+    expect((await load()).friends).toEqual({ active: 3, blocked: 2, total: 5, blockedSource: 'recorded' });
+  });
+  it('ブロック数: LINE の数え方が取れたときは、それを使う(導入前にブロックした人も含む)。総数は 有効+ブロック', async () => {
+    const s = await load('a1', undefined, { blocks: 40 });
+    expect(s.friends).toEqual({ active: 3, blocked: 40, total: 43, blockedSource: 'line' });
+    expect(s.ops.blockRatePct).toBe(93);
   });
   it('対応状況: 未対応・対応中・対応済みの人数(別のアカウントは数えない)', async () => {
     expect((await load()).chatStatus).toEqual({ unread: 2, in_progress: 1, resolved: 1 });
@@ -170,7 +175,7 @@ describe('ホームの集計(DB)', () => {
   it('友だちがいないアカウントでも、0で返る(割り算でエラーにならない)', async () => {
     fixture.sqlite.prepare('INSERT INTO line_accounts(id,channel_id,name,channel_access_token,channel_secret) VALUES(?,?,?,?,?)').run('a3', 'c3', '空', 'tok', 'sec');
     const s = await load('a3');
-    expect(s.friends).toEqual({ active: 0, blocked: 0, total: 0 });
+    expect(s.friends).toEqual({ active: 0, blocked: 0, total: 0, blockedSource: 'recorded' });
     expect(s.chatStatus).toEqual({ unread: 0, in_progress: 0, resolved: 0 });
     expect(s.ops.blockRatePct).toBeNull();
     expect(s.ops.avgFirstReplyMinutes).toBeNull();

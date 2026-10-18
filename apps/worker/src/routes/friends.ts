@@ -25,6 +25,7 @@ import { buildMessage } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
 import { buildFriendFilterPieces, FilterError, parseFriendFilter } from '../services/friend-filter.js';
 import { isDemoLineUserId } from '../services/demo-friend.js';
+import { BLOCKED_SEND_MESSAGE } from '../services/blocked-send.js';
 import { nameSearchCondition } from '../services/name-search.js';
 
 const friends = new Hono<Env>();
@@ -729,6 +730,8 @@ friends.post('/api/friends/:id/messages', async (c) => {
     if (!friend) {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
+    // ブロックされている相手には送れない(LINE が受け付けない。送ったことにならないよう、先に止める)
+    if (friend.is_following === 0) return c.json({ success: false, error: BLOCKED_SEND_MESSAGE }, 400);
 
     const { LineClient } = await import('@line-crm/line-sdk');
     // Resolve access token from friend's account (multi-account support)
