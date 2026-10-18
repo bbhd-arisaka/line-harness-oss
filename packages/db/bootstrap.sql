@@ -315,6 +315,14 @@ CREATE TABLE IF NOT EXISTS engagement_events (
   UNIQUE (program_id, idempotency_key)
 );
 
+CREATE TABLE IF NOT EXISTS entry_route_folders (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT,
+  name            TEXT NOT NULL,
+  display_order   INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
 CREATE TABLE IF NOT EXISTS entry_routes (
   id          TEXT PRIMARY KEY,
   ref_code    TEXT UNIQUE NOT NULL,
@@ -325,7 +333,7 @@ CREATE TABLE IF NOT EXISTS entry_routes (
   is_active   INTEGER NOT NULL DEFAULT 1,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
-, pool_id TEXT REFERENCES traffic_pools (id) ON DELETE SET NULL, intro_template_id TEXT REFERENCES message_templates (id) ON DELETE SET NULL, run_account_friend_add_scenarios INTEGER NOT NULL DEFAULT 1);
+, pool_id TEXT REFERENCES traffic_pools (id) ON DELETE SET NULL, intro_template_id TEXT REFERENCES message_templates (id) ON DELETE SET NULL, run_account_friend_add_scenarios INTEGER NOT NULL DEFAULT 1, line_account_id TEXT, folder_id TEXT, display_order INTEGER NOT NULL DEFAULT 0, qr_text TEXT, valid_from TEXT, valid_to TEXT, out_of_period_message TEXT, actions TEXT, ignore_friend_add_settings INTEGER NOT NULL DEFAULT 0, action_mode TEXT NOT NULL DEFAULT 'first', ad_import_mode TEXT NOT NULL DEFAULT 'always', ad_param_map TEXT, html_head TEXT, html_body TEXT, geo_lat REAL, geo_lng REAL, geo_radius INTEGER);
 
 CREATE TABLE IF NOT EXISTS event_booking_idempotency_keys (
   key              TEXT PRIMARY KEY,
@@ -920,7 +928,7 @@ CREATE TABLE IF NOT EXISTS ref_tracking (
   entry_route_id  TEXT REFERENCES entry_routes (id) ON DELETE SET NULL,
   source_url      TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-, fbclid TEXT, gclid TEXT, twclid TEXT, ttclid TEXT, utm_source TEXT, utm_medium TEXT, utm_campaign TEXT, user_agent TEXT, ip_address TEXT);
+, fbclid TEXT, gclid TEXT, twclid TEXT, ttclid TEXT, utm_source TEXT, utm_medium TEXT, utm_campaign TEXT, user_agent TEXT, ip_address TEXT, query_params TEXT);
 
 CREATE TABLE IF NOT EXISTS reminder_steps (
   id              TEXT PRIMARY KEY,
@@ -1522,6 +1530,10 @@ CREATE INDEX IF NOT EXISTS idx_engagement_events_actor_user
 CREATE INDEX IF NOT EXISTS idx_engagement_events_source
   ON engagement_events(source, source_event_id);
 
+CREATE INDEX IF NOT EXISTS idx_entry_route_folders_account ON entry_route_folders (line_account_id, display_order);
+
+CREATE INDEX IF NOT EXISTS idx_entry_routes_account ON entry_routes (line_account_id, folder_id, display_order);
+
 CREATE INDEX IF NOT EXISTS idx_entry_routes_pool ON entry_routes (pool_id);
 
 CREATE INDEX IF NOT EXISTS idx_entry_routes_ref ON entry_routes (ref_code);
@@ -1672,6 +1684,8 @@ CREATE INDEX IF NOT EXISTS idx_ref_tracking_friend_created ON ref_tracking(frien
 CREATE INDEX IF NOT EXISTS idx_ref_tracking_ref    ON ref_tracking (ref_code);
 
 CREATE INDEX IF NOT EXISTS idx_ref_tracking_ref_created ON ref_tracking(ref_code, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ref_tracking_route ON ref_tracking (entry_route_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_reminder_steps_reminder ON reminder_steps (reminder_id);
 

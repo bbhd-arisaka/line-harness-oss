@@ -12,6 +12,25 @@ export interface EntryRoute {
   is_active: number;
   created_at: string;
   updated_at: string;
+  // ── 108: 流入経路分析(Lステップと同じ仕様) ──
+  line_account_id: string | null;
+  folder_id: string | null;
+  display_order: number;
+  qr_text: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  out_of_period_message: string | null;
+  /** アクション(JSON配列)。NULL = 旧来の流入経路(tag_id / scenario_id だけ) */
+  actions: string | null;
+  ignore_friend_add_settings: number;
+  action_mode: string;
+  ad_import_mode: string;
+  ad_param_map: string | null;
+  html_head: string | null;
+  html_body: string | null;
+  geo_lat: number | null;
+  geo_lng: number | null;
+  geo_radius: number | null;
 }
 
 export interface RefTracking {
@@ -29,6 +48,8 @@ export interface RefTracking {
   utm_campaign: string | null;
   user_agent: string | null;
   ip_address: string | null;
+  /** アクセスしたときの URL のクエリパラメータ(JSON) */
+  query_params: string | null;
   created_at: string;
 }
 
@@ -233,6 +254,8 @@ export async function recordRefTracking(
     utmCampaign?: string | null;
     userAgent?: string | null;
     ipAddress?: string | null;
+    /** アクセスしたときの URL のクエリパラメータ(集計の「クエリパラメータ」に出す) */
+    queryParams?: Record<string, string> | null;
   },
 ): Promise<RefTracking> {
   const id = crypto.randomUUID();
@@ -243,8 +266,8 @@ export async function recordRefTracking(
       `INSERT INTO ref_tracking
        (id, ref_code, friend_id, entry_route_id, source_url,
         fbclid, gclid, twclid, ttclid, utm_source, utm_medium, utm_campaign,
-        user_agent, ip_address, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        user_agent, ip_address, query_params, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -261,6 +284,7 @@ export async function recordRefTracking(
       opts.utmCampaign ?? null,
       opts.userAgent ?? null,
       opts.ipAddress ?? null,
+      opts.queryParams && Object.keys(opts.queryParams).length > 0 ? JSON.stringify(opts.queryParams) : null,
       now,
     )
     .run();

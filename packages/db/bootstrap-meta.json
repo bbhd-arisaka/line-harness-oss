@@ -112,7 +112,8 @@
     "104_app_push_enabled_kinds.sql",
     "105_app_push_by_account.sql",
     "106_chats_backfill_for_broadcast_only.sql",
-    "107_broadcast_extra_messages.sql"
+    "107_broadcast_extra_messages.sql",
+    "108_entry_route_analysis.sql"
   ],
-  "migrationCount": 113
+  "migrationCount": 114
 }
