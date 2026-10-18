@@ -64,3 +64,23 @@ describe('GET /images/:key', () => {
     expect(await res.text()).not.toContain('secret');
   });
 });
+
+describe('POST /api/images(アプリは、画像のバイナリをそのまま送る)', () => {
+  it('Content-Type が image/jpeg のバイナリを、そのまま保存して、URL を返す', async () => {
+    const { app, store } = setupApp();
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const res = await app.request('https://worker.example/api/images', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: bytes });
+    expect(res.status).toBe(201);
+    const json = (await res.json()) as { data: { url: string; key: string; mimeType: string; size: number } };
+    expect(json.data.mimeType).toBe('image/jpeg');
+    expect(json.data.size).toBe(7);
+    expect(json.data.key.endsWith('.jpg')).toBe(true);
+    expect(json.data.url).toBe(`https://worker.example/images/${json.data.key}`);
+    expect(store.get(json.data.key)?.contentType).toBe('image/jpeg');
+  });
+  it('画像でない種類は受け付けない', async () => {
+    const { app } = setupApp();
+    const res = await app.request('https://worker.example/api/images', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: 'x' });
+    expect(res.status).toBe(400);
+  });
+});

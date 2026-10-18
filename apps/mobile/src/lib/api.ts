@@ -59,6 +59,11 @@ interface RequestOptions {
   auth?: boolean;
   /** 追加のヘッダー(Idempotency-Key など) */
   headers?: Record<string, string>;
+  /** JSON ではなく、そのまま送るもの(画像のバイナリ)。Content-Type は contentType で指定する */
+  rawBody?: unknown;
+  contentType?: string;
+  /** この通信だけのタイムアウト(ミリ秒)。画像のアップロードなど、時間がかかるもの用 */
+  timeoutMs?: number;
 }
 
 export function buildQuery(query?: RequestOptions['query']): string {
@@ -78,7 +83,8 @@ export function createApiClient(options: ApiClientOptions) {
   async function request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
     const auth = opts.auth !== false;
     const headers: Record<string, string> = { Accept: 'application/json', ...(options.defaultHeaders ?? {}) };
-    if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+    if (opts.rawBody !== undefined) headers['Content-Type'] = opts.contentType ?? 'application/octet-stream';
+    else if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
     if (opts.headers) Object.assign(headers, opts.headers);
     if (auth) {
       const token = options.getToken();
@@ -87,13 +93,13 @@ export function createApiClient(options: ApiClientOptions) {
 
     const fetchImpl = options.fetchImpl ?? fetch;
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    const timer = controller ? setTimeout(() => controller.abort(), opts.timeoutMs ?? timeoutMs) : null;
     let res: Response;
     try {
       res = await fetchImpl(`${baseUrl}${path}${buildQuery(opts.query)}`, {
         method,
         headers,
-        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        body: (opts.rawBody as BodyInit | undefined) ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
         signal: controller?.signal,
       });
     } catch (e) {
@@ -214,6 +220,9 @@ export function createApiClient(options: ApiClientOptions) {
       }),
     /** 配信に入れられるフォームの一覧(回答フォームのリンクを本文に入れるため)。id=タグコードに使う・name=表示名 */
     listForms: () => request<FormOption[]>('GET', '/api/forms'),
+    /** 画像のバイナリを、そのままアップロードする(base64 より約3割小さい)。URL を得る */
+    uploadImageBinary: (blob: Blob, mimeType: string) =>
+      request<{ url: string; key: string }>('POST', '/api/images', { rawBody: blob, contentType: mimeType, timeoutMs: 60_000 }),
     /** 画像をアップロードして、配信に使えるURLを得る(JPEG/PNG・base64) */
     uploadImage: (base64: string, mimeType: string, filename?: string) =>
       request<{ url: string; key: string }>('POST', '/api/images', { body: { data: base64, mimeType, filename } }),
