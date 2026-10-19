@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AccountBar } from '../../../src/components/account-bar';
 import { Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
+import { FadeIn } from '../../../src/components/fade-in';
 import { withReadableWidth } from '../../../src/components/readable-width';
 import { api } from '../../../src/state/services';
 import { useAccounts } from '../../../src/state/session';
@@ -85,6 +86,7 @@ function HomeScreen() {
       ) : error && !data ? (
         <ErrorView message={error} onRetry={() => void load('initial')} />
       ) : data ? (
+        <FadeIn key={data.accountId}>
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load('refresh'); }} tintColor={c.primary} />}
@@ -157,6 +159,7 @@ function HomeScreen() {
             </>
           ) : null}
         </ScrollView>
+        </FadeIn>
       ) : null}
     </View>
   );

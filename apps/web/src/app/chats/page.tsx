@@ -30,6 +30,7 @@ import { Radio } from '@cloudflare/kumo/components/radio'
 import { Select } from '@cloudflare/kumo/components/select'
 import FriendAvatar from '@/components/friends/friend-avatar'
 import { PushPinIcon } from '@phosphor-icons/react'
+import { useAutoAnimate } from '@formkit/auto-animate/react'
 
 interface Chat {
   id: string
@@ -342,6 +343,8 @@ export default function ChatsPage() {
   // ピン留めしたトーク(一覧の上に出す。ふつうの一覧とは別に、小さな問い合わせで取る)
   const [pinnedChats, setPinnedChats] = useState<Chat[]>([])
   const pinnedChatsRef = useRef<Chat[]>([])
+  // 一覧の行が、並び替わる・増える・減るとき(新着で上へ・ピン留めの出入り)に、なめらかに動かす
+  const [chatListRef] = useAutoAnimate<HTMLDivElement>({ duration: 240, easing: 'ease-in-out' })
   useEffect(() => { pinnedChatsRef.current = pinnedChats }, [pinnedChats])
   const [allFriends, setAllFriends] = useState<FriendItem[]>([])
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
@@ -1272,7 +1275,7 @@ ${t.messageContent}` : t.messageContent))
           </div>
 
           {/* Chat List */}
-          <div className="flex-1 overflow-y-auto">
+          <div key={`${selectedAccountId ?? ''}|${statusFilter}|${unansweredOnly ? 'u' : ''}`} ref={chatListRef} className="fade-in flex-1 overflow-y-auto">
             {nameQuery.trim() ? (
               nameSearching && nameResults.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-gray-400">検索中...</p>
@@ -1528,7 +1531,7 @@ ${t.messageContent}` : t.messageContent))
               </div>
 
               {/* Messages — LINE-style chat bubbles */}
-              <div ref={messagesScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-2" style={{ backgroundColor: '#7494C0' }}>
+              <div key={chatDetail.id} ref={messagesScrollRef} className="fade-in flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-2" style={{ backgroundColor: '#7494C0' }}>
                 {(!chatDetail.messages?.length && !chatDetail.events?.length) ? (
                   <div className="text-center py-8">
                     <p className="text-white/60 text-sm">メッセージはまだありません。</p>

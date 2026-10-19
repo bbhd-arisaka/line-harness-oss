@@ -115,6 +115,18 @@ button:not(:disabled):not([role='switch']):not([data-no-press]):active,
   animation: page-enter var(--motion-base) ease backwards;
 }
 
+/* 一覧・画面が切り替わったとき(公式アカウント・絞り込み・開くトークを変えたとき)に、すっと現れる */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fade-in var(--motion-base) var(--motion-ease) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-in { animation: none; }
+}
+
 /* 新しいブロック・行が追加されたときの出現 */
 @keyframes item-enter {
   from { opacity: 0; transform: translateY(12px) scale(0.985); }

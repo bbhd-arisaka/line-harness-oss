@@ -17,6 +17,7 @@ import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListIte
 import { STATUS_LABEL } from '../lib/format';
 import { StatusChip } from './status-chip';
 import { MessageText } from './message-text';
+import { animateLayout } from '../lib/motion';
 import type { ChatDetail, ChatStatus, FormOption, TemplateOption } from '../lib/types';
 import { ImageViewer } from '../components/image-viewer';
 import { ErrorView, LoadingView } from '../components/ui';
@@ -204,6 +205,8 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
         const prev = chatRef.current;
         // 新着が無ければ再描画しない(10秒ごとのポーリングで画面がちらつかないように)
         if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.isFollowing !== next.isFollowing || prev.pinned !== next.pinned || prev.friendName !== next.friendName || prev.friendPictureUrl !== next.friendPictureUrl) {
+          // 新しいメッセージ・出来事は、すっと現れる(最初の表示は動かさない)
+          if (prev) animateLayout();
           setChat(next);
         }
         setError(null);

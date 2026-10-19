@@ -18,6 +18,9 @@ import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
 import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
 import { parseChatFilter } from '../../../src/lib/home';
 import { StatusChip } from '../../../src/components/status-chip';
+import { SwipeRow } from '../../../src/components/swipe-row';
+import { FadeIn } from '../../../src/components/fade-in';
+import { animateLayout } from '../../../src/lib/motion';
 
 const PAGE_SIZE = 50;
 
@@ -120,6 +123,8 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
           api.listChats({ lineAccountId: accountId, status: filter === 'all' ? undefined : filter, search, pinned: 'only' }).catch(() => null),
         ]);
         if (id !== seq.current) return;
+        // 並びが変わる更新(新着で上へ・ピン留めの出入り)は、なめらかに動かす。最初の読み込みは、一覧が現れる動きにまかせる
+        if (mode !== 'initial') animateLayout();
         if (pins) setPinnedItems(pins.map((p) => ({ ...p, pinned: true })));
         if (mode === 'silent') {
           // 裏の更新: 「続きを読み込む」で出した古い行は消さない
@@ -193,18 +198,33 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
     }
   }
 
+  /** ピン留め・解除。先に、行を動かして(なめらかに)から、サーバーに送る。失敗したら取り直す */
+  const togglePinChat = useCallback(
+    async (chat: ChatSummary) => {
+      const next = !chat.pinned;
+      animateLayout();
+      if (next) {
+        setItems((prev) => prev.filter((i) => i.id !== chat.id));
+        setPinnedItems((prev) => [{ ...chat, pinned: true }, ...prev.filter((i) => i.id !== chat.id)]);
+      } else {
+        setPinnedItems((prev) => prev.filter((i) => i.id !== chat.id));
+        setItems((prev) => [...prev.filter((i) => i.id !== chat.id), { ...chat, pinned: false }].sort((a, b) => (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? '')));
+      }
+      try {
+        await api.pinChat(chat.friendId, next);
+      } catch (e) {
+        setError(describeError(e, 'ピン留めを変更できませんでした'));
+        void fetchFirst('silent');
+      }
+    },
+    [fetchFirst],
+  );
+
   /** 行を長押し: ピン留めする・外す */
   const onLongPressChat = useCallback(
     (chat: ChatSummary) => {
       const label = chat.pinned ? 'ピン留めを外す' : 'ピン留めする';
-      const run = async () => {
-        try {
-          await api.pinChat(chat.friendId, !chat.pinned);
-          void fetchFirst('silent');
-        } catch (e) {
-          setError(describeError(e, 'ピン留めを変更できませんでした'));
-        }
-      };
+      const run = () => togglePinChat(chat);
       if (Platform.OS === 'ios') {
         ActionSheetIOS.showActionSheetWithOptions({ options: [label, 'キャンセル'], cancelButtonIndex: 1 }, (i) => {
           if (i === 0) void run();
@@ -213,7 +233,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
         Alert.alert('', undefined, [{ text: label, onPress: () => void run() }, { text: 'キャンセル', style: 'cancel' }]);
       }
     },
-    [fetchFirst],
+    [togglePinChat],
   );
 
   const openChat = useCallback(
@@ -293,12 +313,17 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
       ) : error && items.length === 0 && pinnedItems.length === 0 ? (
         <ErrorView message={error} onRetry={() => void fetchFirst('initial')} />
       ) : (
+        <FadeIn>
         <FlatList
           data={[...pinnedItems, ...items]}
           keyExtractor={(it) => it.id}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          renderItem={({ item }) => <ChatRow chat={item} onPress={openChat} onLongPress={onLongPressChat} selected={item.friendId === selectedId} />}
+          renderItem={({ item }) => (
+            <SwipeRow label={item.pinned ? 'ピン留め解除' : 'ピン留め'} icon={item.pinned ? 'pin-outline' : 'pin'} color="#4f6bed" onTrigger={() => void togglePinChat(item)}>
+              <ChatRow chat={item} onPress={openChat} onLongPress={onLongPressChat} selected={item.friendId === selectedId} />
+            </SwipeRow>
+          )}
           extraData={selectedId}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void fetchFirst('refresh')} tintColor={c.primary} />}
           onEndReached={loadMore}
@@ -318,6 +343,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
           ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}
           contentContainerStyle={items.length === 0 && pinnedItems.length === 0 ? { flexGrow: 1 } : undefined}
         />
+        </FadeIn>
       )}
     </View>
   );

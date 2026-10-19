@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Tex
 import { useFocusEffect, useRouter } from 'expo-router';
 import { AccountBar } from '../../../src/components/account-bar';
 import { Avatar, EmptyView, ErrorView, LoadingView } from '../../../src/components/ui';
+import { FadeIn } from '../../../src/components/fade-in';
 import { api } from '../../../src/state/services';
 import { useAccounts } from '../../../src/state/session';
 import { useDebounced } from '../../../src/state/hooks';
@@ -161,6 +162,7 @@ function FriendsScreen() {
       ) : error && items.length === 0 ? (
         <ErrorView message={error} onRetry={() => void fetchFirst('initial')} />
       ) : (
+        <FadeIn>
         <FlatList
           data={items}
           keyExtractor={(f) => f.id}
@@ -189,6 +191,7 @@ function FriendsScreen() {
           ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}
           contentContainerStyle={items.length === 0 ? { flexGrow: 1 } : undefined}
         />
+        </FadeIn>
       )}
     </View>
   );
