@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 const OPEN_W = 88; // 開いたときの、操作ボタンの幅
@@ -43,10 +43,11 @@ export function SwipeRow({
 
   const closeSelfRef = useRef<() => void>(() => undefined);
   const settle = useCallback(
-    (toOpen: boolean) => {
+    (toOpen: boolean, velocity = 0) => {
       isOpenRef.current = toOpen;
       setIsOpen(toOpen);
-      Animated.timing(x, { toValue: toOpen ? OPEN_W : 0, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+      // ばねのように、すっと収まる(指を離したときの勢いを引き継ぐ)
+      Animated.spring(x, { toValue: toOpen ? OPEN_W : 0, velocity, speed: 24, bounciness: 3, useNativeDriver: false }).start();
       if (toOpen) {
         if (openRowClose && openRowClose !== closeSelfRef.current) openRowClose();
         openRowClose = closeSelfRef.current;
@@ -68,8 +69,9 @@ export function SwipeRow({
   const pan = useRef(
     PanResponder.create({
       // 右へ(閉じているとき)・開いているときは、左へも
+      // 反応しやすく: 少し動かして、縦より横が大きければ、すぐ追いかける
       onMoveShouldSetPanResponder: (_, g) =>
-        !disabledRef.current && Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6 && (g.dx > 0 || isOpenRef.current),
+        !disabledRef.current && Math.abs(g.dx) > 5 && Math.abs(g.dx) > Math.abs(g.dy) * 1.15 && (g.dx > 0 || isOpenRef.current),
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         x.stopAnimation((v) => {
@@ -83,7 +85,8 @@ export function SwipeRow({
       },
       onPanResponderRelease: (_, g) => {
         const v = startRef.current + g.dx;
-        settle(v + g.vx * 60 > OPEN_W / 2);
+        // 3分の1ほど開けるか、右へはらうと、開く。左へはらう・足りなければ閉じる
+        settle(v + g.vx * 100 > OPEN_W * 0.35, g.vx);
       },
       onPanResponderTerminate: () => settle(isOpenRef.current),
     }),
