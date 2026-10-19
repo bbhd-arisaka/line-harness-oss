@@ -9,13 +9,14 @@ import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Input } from '@cloudflare/kumo/components/input'
 import Header from '@/components/layout/header'
 import ActionSettingsModal from '@/components/friend-add/action-settings-modal'
+import LandingEditor from '../_components/landing-editor'
 import { useActionLookups } from '@/components/friend-add/use-action-lookups'
 import { useAccount } from '@/contexts/account-context'
 import { api } from '@/lib/api'
 import { errorText } from '@/lib/error-text'
 import { describeAction, describeTiming } from '@/lib/friend-add-actions'
 import type { FriendAddActionItem } from '@/lib/friend-add-actions'
-import type { InflowFolder, InflowRoute } from '@/lib/inflow-routes'
+import type { InflowFolder, InflowRoute, LandingStyle } from '@/lib/inflow-routes'
 
 const NONE = ''
 const NEW_FOLDER = '__new_folder__'
@@ -78,6 +79,7 @@ export default function InflowRouteEditPage() {
   const [htmlHead, setHtmlHead] = useState('')
   const [htmlBody, setHtmlBody] = useState('')
   const [geo, setGeo] = useState({ lat: '', lng: '', radius: '' })
+  const [landing, setLanding] = useState<LandingStyle>({})
   const [actionModal, setActionModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -119,6 +121,7 @@ export default function InflowRouteEditPage() {
         setAdRows(r.adParamMap)
         setHtmlHead(r.htmlHead ?? '')
         setHtmlBody(r.htmlBody ?? '')
+        setLanding(r.landingStyle ?? {})
         setGeo({ lat: r.geoLat === null ? '' : String(r.geoLat), lng: r.geoLng === null ? '' : String(r.geoLng), radius: r.geoRadius === null ? '' : String(r.geoRadius) })
       } catch {
         setError('読み込めませんでした。時間をおいてもう一度お試しください')
@@ -173,6 +176,7 @@ export default function InflowRouteEditPage() {
       geoLat: geo.lat.trim() === '' ? null : Number(geo.lat),
       geoLng: geo.lng.trim() === '' ? null : Number(geo.lng),
       geoRadius: geo.radius.trim() === '' ? null : Number(geo.radius),
+      landingStyle: landing,
     }
     setSaving(true)
     try {
@@ -393,6 +397,10 @@ export default function InflowRouteEditPage() {
                   <textarea value={htmlBody} onChange={(e) => setHtmlBody(e.target.value)} rows={5} spellCheck={false} aria-label="bodyに入れるHTMLタグ" className="w-full rounded border border-[#cacace] px-3 py-2 font-mono text-xs outline-none focus:border-[#069e04]" />
                 </div>
               </div>
+            </Accordion>
+
+            <Accordion title="友だち追加ページ" defaultOpen={Object.keys(landing).length > 0}>
+              <LandingEditor value={landing} onChange={setLanding} />
             </Accordion>
 
             <Accordion title="位置情報" defaultOpen={!!(geo.lat || geo.lng || geo.radius)}>

@@ -11,6 +11,9 @@ import { describeError } from '../../src/lib/errors';
 import {
   emptyInput,
   formatPeriod,
+  isHexColor,
+  LANDING_COLOR_FIELDS,
+  LANDING_DEFAULTS,
   joinPeriod,
   otherActions,
   splitPeriod,
@@ -19,6 +22,7 @@ import {
   withTagAddIds,
   type InflowFolder,
   type InflowRouteInput,
+  type LandingStyle,
 } from '../../src/lib/inflow';
 import { buildDateOptions, buildTimeOptions } from '../../src/lib/schedule';
 import { setSelectedInflow } from '../../src/state/inflow-selection';
@@ -203,6 +207,10 @@ function InflowEditScreen() {
   const folderName = folders.find((f) => f.id === input.folderId)?.name ?? '未分類';
   const scenarioName = scenarios.find((s) => s.id === input.scenarioId)?.name ?? '';
   const otherCount = otherActions(input.actions).length;
+  const landing: LandingStyle = input.landingStyle ?? {};
+  const setLanding = (patch: Partial<LandingStyle>) => set({ landingStyle: { ...landing, ...patch } });
+  const setLandingColor = (key: (typeof LANDING_COLOR_FIELDS)[number]['key'], v: string) =>
+    set({ landingStyle: { ...landing, colors: { ...(landing.colors ?? {}), [key]: v.trim() || null } } });
 
   return (
     <>
@@ -297,6 +305,50 @@ function InflowEditScreen() {
           ]}
           onChange={(v) => set({ actionMode: v })}
         />
+
+        <SectionTitle>友だち追加ページ</SectionTitle>
+        <Card>
+          <Text style={[styles.label, { color: c.textMuted }]}>見出し</Text>
+          <TextInput value={landing.title ?? ''} onChangeText={(v) => setLanding({ title: v })} maxLength={60} placeholder={LANDING_DEFAULTS.title} placeholderTextColor={c.textMuted} accessibilityLabel="見出し" style={[styles.input, { backgroundColor: c.inputBackground, color: c.text }]} />
+          <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>ボタンの文字</Text>
+          <TextInput value={landing.buttonText ?? ''} onChangeText={(v) => setLanding({ buttonText: v })} maxLength={30} placeholder={LANDING_DEFAULTS.buttonText} placeholderTextColor={c.textMuted} accessibilityLabel="ボタンの文字" style={[styles.input, { backgroundColor: c.inputBackground, color: c.text }]} />
+          <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>ボタンの下の文(iPhone)</Text>
+          <TextInput value={landing.hintText ?? ''} onChangeText={(v) => setLanding({ hintText: v })} maxLength={120} editable={landing.showHint !== false} placeholder={LANDING_DEFAULTS.hintText} placeholderTextColor={c.textMuted} accessibilityLabel="ボタンの下の文" style={[styles.input, { backgroundColor: c.inputBackground, color: c.text, opacity: landing.showHint === false ? 0.5 : 1 }]} />
+          <View style={{ marginTop: 8 }}>
+            <Segmented value={landing.showHint === false ? 'hide' : 'show'} options={[{ v: 'show', label: '表示する' }, { v: 'hide', label: '表示しない' }]} onChange={(v) => setLanding({ showHint: v === 'show' })} />
+          </View>
+          <Text style={[styles.label, { color: c.textMuted, marginTop: 12 }]}>「うまく開けない方は」の行</Text>
+          <View style={styles.row2}>
+            <TextInput value={landing.helpText ?? ''} onChangeText={(v) => setLanding({ helpText: v })} maxLength={40} editable={landing.showHelp !== false} placeholder={LANDING_DEFAULTS.helpText} placeholderTextColor={c.textMuted} accessibilityLabel="うまく開けない方への文" style={[styles.input, { flex: 2, backgroundColor: c.inputBackground, color: c.text, opacity: landing.showHelp === false ? 0.5 : 1 }]} />
+            <TextInput value={landing.helpLinkText ?? ''} onChangeText={(v) => setLanding({ helpLinkText: v })} maxLength={20} editable={landing.showHelp !== false} placeholder={LANDING_DEFAULTS.helpLinkText} placeholderTextColor={c.textMuted} accessibilityLabel="リンクの文字" style={[styles.input, { flex: 1, backgroundColor: c.inputBackground, color: c.text, opacity: landing.showHelp === false ? 0.5 : 1 }]} />
+          </View>
+          <View style={{ marginTop: 8 }}>
+            <Segmented value={landing.showHelp === false ? 'hide' : 'show'} options={[{ v: 'show', label: '表示する' }, { v: 'hide', label: '表示しない' }]} onChange={(v) => setLanding({ showHelp: v === 'show' })} />
+          </View>
+          <Text style={[styles.label, { color: c.textMuted, marginTop: 14 }]}>色</Text>
+          {LANDING_COLOR_FIELDS.map((f) => {
+            const current = landing.colors?.[f.key] ?? '';
+            const shown = isHexColor(current) ? current : LANDING_DEFAULTS.colors[f.key];
+            return (
+              <View key={f.key} style={styles.colorRow}>
+                <View style={[styles.swatch, { backgroundColor: shown, borderColor: c.border }]} />
+                <Text style={{ color: c.text, fontSize: 15, flex: 1 }}>{f.label}</Text>
+                <TextInput
+                  value={current}
+                  onChangeText={(v) => setLandingColor(f.key, v)}
+                  placeholder={LANDING_DEFAULTS.colors[f.key]}
+                  placeholderTextColor={c.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={7}
+                  accessibilityLabel={`${f.label}の色`}
+                  style={[styles.input, { width: 120, backgroundColor: c.inputBackground, color: c.text, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) }]}
+                />
+              </View>
+            );
+          })}
+          <Button title="既定に戻す" variant="secondary" onPress={() => set({ landingStyle: {} })} style={{ marginTop: 12 }} />
+        </Card>
 
         {error ? (
           <Text style={{ color: c.danger, fontSize: 14, lineHeight: 20, marginTop: 12 }} accessibilityRole="alert">
@@ -426,6 +478,8 @@ const styles = StyleSheet.create({
   modalBack: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
   modalCard: { borderRadius: 16, padding: 20 },
   modalButtons: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  colorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1 },
   tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12 },
 });

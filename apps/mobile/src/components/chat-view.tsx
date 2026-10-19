@@ -180,6 +180,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
   const [forcedPos, setForcedPos] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [pinBusy, setPinBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const sendLock = useRef(false);
@@ -202,7 +203,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
         if (mine !== seq.current) return;
         const prev = chatRef.current;
         // 新着が無ければ再描画しない(10秒ごとのポーリングで画面がちらつかないように)
-        if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.isFollowing !== next.isFollowing || prev.friendName !== next.friendName || prev.friendPictureUrl !== next.friendPictureUrl) {
+        if (!prev || !sameMessages(prev.messages, next.messages) || !sameEvents(prev.events, next.events) || prev.status !== next.status || prev.isFollowing !== next.isFollowing || prev.pinned !== next.pinned || prev.friendName !== next.friendName || prev.friendPictureUrl !== next.friendPictureUrl) {
           setChat(next);
         }
         setError(null);
@@ -388,6 +389,24 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
   }
 
   /** 対応状態の変更。先に画面へ反映し、失敗したら元に戻して理由を出す */
+  /** ピン留め・解除。先に画面へ反映し、失敗したら元に戻す */
+  async function togglePin() {
+    const current = chatRef.current;
+    if (!current || pinBusy) return;
+    const next = !current.pinned;
+    setPinBusy(true);
+    setChat({ ...current, pinned: next });
+    try {
+      await api.pinChat(current.friendId, next);
+      onChanged?.();
+    } catch (e) {
+      setChat((c) => (c ? { ...c, pinned: !next } : c));
+      setStatusError(describeError(e, 'ピン留めを変更できませんでした'));
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
   async function changeStatus(next: ChatStatus) {
     const current = chatRef.current;
     if (!current || current.status === next || statusBusy) return;
@@ -420,14 +439,19 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
             {chat?.friendName ?? 'トーク'}
           </Text>
           {chat ? (
-            <Pressable
-              onPress={() => router.push({ pathname: '/friend/[id]', params: { id: chat.friendId, from: 'chat' } })}
-              accessibilityRole="button"
-              accessibilityLabel="友だち詳細を開く"
-              style={styles.headerButton}
-            >
-              <Ionicons name="person-circle-outline" size={28} color={c.text} />
-            </Pressable>
+            <View style={{ flexDirection: 'row' }}>
+              <Pressable onPress={() => void togglePin()} accessibilityRole="button" accessibilityLabel={chat.pinned ? 'ピン留めを外す' : 'ピン留めする'} style={styles.headerButton}>
+                <Ionicons name={chat.pinned ? 'pin' : 'pin-outline'} size={24} color={chat.pinned ? c.text : c.textMuted} />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push({ pathname: '/friend/[id]', params: { id: chat.friendId, from: 'chat' } })}
+                accessibilityRole="button"
+                accessibilityLabel="友だち詳細を開く"
+                style={styles.headerButton}
+              >
+                <Ionicons name="person-circle-outline" size={28} color={c.text} />
+              </Pressable>
+            </View>
           ) : null}
         </View>
       ) : (
@@ -436,14 +460,19 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
             title: chat?.friendName ?? 'トーク',
             headerRight: () =>
               chat ? (
-                <Pressable
-                  onPress={() => router.push({ pathname: '/friend/[id]', params: { id: chat.friendId, from: 'chat' } })}
-                  accessibilityRole="button"
-                  accessibilityLabel="友だち詳細を開く"
-                  style={styles.headerButton}
-                >
-                  <Ionicons name="person-circle-outline" size={28} color={c.text} />
-                </Pressable>
+                <View style={{ flexDirection: 'row' }}>
+                  <Pressable onPress={() => void togglePin()} accessibilityRole="button" accessibilityLabel={chat.pinned ? 'ピン留めを外す' : 'ピン留めする'} style={styles.headerButton}>
+                    <Ionicons name={chat.pinned ? 'pin' : 'pin-outline'} size={24} color={chat.pinned ? c.text : c.textMuted} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.push({ pathname: '/friend/[id]', params: { id: chat.friendId, from: 'chat' } })}
+                    accessibilityRole="button"
+                    accessibilityLabel="友だち詳細を開く"
+                    style={styles.headerButton}
+                  >
+                    <Ionicons name="person-circle-outline" size={28} color={c.text} />
+                  </Pressable>
+                </View>
               ) : null,
           }}
         />

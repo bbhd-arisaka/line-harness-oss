@@ -58,6 +58,7 @@ function BroadcastNewScreen() {
   const [picker, setPicker] = useState<Picker>(null);
   const [tags, setTags] = useState<TagItem[] | null>(null);
   const [fields, setFields] = useState<FriendFieldDefinition[] | null>(null);
+  const [routes, setRoutes] = useState<Array<{ refCode: string; name: string }> | null>(null);
   const [count, setCount] = useState<number | null>(null);
   const [busy, setBusy] = useState<'count' | 'test' | 'send' | null>(null);
   // 送るタイミング: いますぐ / 予約(日本時間)
@@ -79,6 +80,8 @@ function BroadcastNewScreen() {
     try {
       if (ruleKind === 'tag_exists' || ruleKind === 'tag_not_exists') {
         if (!tags) setTags(await api.listTags());
+      } else if (ruleKind === 'inflow_is' || ruleKind === 'inflow_is_not') {
+        if (!routes && accountId) setRoutes((await api.listInflowRoutes(accountId)).items.map((r) => ({ refCode: r.refCode, name: r.name })));
       } else if (!fields) {
         setFields(await api.listFriendFieldDefinitions());
       }
@@ -87,7 +90,7 @@ function BroadcastNewScreen() {
       setPicker(null);
       setNotice({ ok: false, text: describeError(e, '一覧を読み込めませんでした') });
     }
-  }, [tags, fields]);
+  }, [tags, fields, routes, accountId]);
 
   function openPicker(ruleKind: RuleKind) {
     if (rules.length >= MAX_RULES) {
@@ -104,7 +107,9 @@ function BroadcastNewScreen() {
     const rule: DraftRule =
       picker.ruleKind === 'tag_exists' || picker.ruleKind === 'tag_not_exists'
         ? { ...base, tagId: item.id, tagName: item.label }
-        : { ...base, fieldKey: item.id, fieldLabel: item.label, value: '' };
+        : picker.ruleKind === 'inflow_is' || picker.ruleKind === 'inflow_is_not'
+          ? { ...base, refCode: item.id, routeName: item.label }
+          : { ...base, fieldKey: item.id, fieldLabel: item.label, value: '' };
     setRules((prev) => [...prev, rule]);
     setPicker(null);
     resetCount();
@@ -113,8 +118,9 @@ function BroadcastNewScreen() {
   const pickItems: PickItem[] = useMemo(() => {
     if (!picker) return [];
     if (picker.ruleKind === 'tag_exists' || picker.ruleKind === 'tag_not_exists') return (tags ?? []).map((t) => ({ id: t.id, label: t.name }));
+    if (picker.ruleKind === 'inflow_is' || picker.ruleKind === 'inflow_is_not') return (routes ?? []).map((r) => ({ id: r.refCode, label: r.name }));
     return (fields ?? []).map((f) => ({ id: f.fieldKey, label: f.label, note: f.options.length > 0 ? `選択肢: ${f.options.slice(0, 4).join('・')}${f.options.length > 4 ? ' など' : ''}` : undefined }));
-  }, [picker, tags, fields]);
+  }, [picker, tags, fields, routes]);
 
   function setRuleValue(id: string, value: string) {
     setRules((prev) => prev.map((r) => (r.id === id ? { ...r, value } : r)));
@@ -445,7 +451,7 @@ function BroadcastNewScreen() {
 
       <PickModal
         visible={picker !== null}
-        title={picker?.ruleKind === 'field_equals' || picker?.ruleKind === 'field_not_equals' ? '友だち情報の項目を選ぶ' : 'タグを選ぶ'}
+        title={picker?.ruleKind === 'field_equals' || picker?.ruleKind === 'field_not_equals' ? '友だち情報の項目を選ぶ' : picker?.ruleKind === 'inflow_is' || picker?.ruleKind === 'inflow_is_not' ? '流入経路を選ぶ' : 'タグを選ぶ'}
         items={pickItems}
         onPick={onPick}
         onClose={() => setPicker(null)}

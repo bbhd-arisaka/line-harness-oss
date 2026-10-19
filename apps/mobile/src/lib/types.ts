@@ -135,6 +135,8 @@ export interface ChatSummary {
   operatorId: string | null;
   status: ChatStatus;
   notes: string | null;
+  /** ピン留め中(一覧の上に出る) */
+  pinned?: boolean;
   lastMessageAt: string | null;
   /** text のときだけ本文(先頭200文字)。それ以外は null */
   lastMessageContent: string | null;
@@ -171,6 +173,8 @@ export interface ChatDetail {
   friendId: string;
   friendName: string;
   friendPictureUrl: string | null;
+  /** ピン留め中 */
+  pinned?: boolean;
   /** false = ブロックされている(送信できない)。古いサーバーでは無い */
   isFollowing?: boolean;
   operatorId: string | null;
@@ -238,7 +242,10 @@ export interface FriendPage {
 }
 
 /** GET /api/friends/:id(フォーム回答つき。アプリでは使わない部分は省略) */
-export type FriendDetail = Friend;
+export type FriendDetail = Friend & {
+  /** 流入経路分析の流入経路(この友だちの流入経路)。無ければ null */
+  inflowRoute?: { id: string; name: string } | null;
+};
 
 /** GET /api/friend-fields/definitions の1件(友だち情報欄の定義) */
 export interface FriendFieldDefinition {

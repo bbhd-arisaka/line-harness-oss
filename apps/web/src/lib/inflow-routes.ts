@@ -32,6 +32,7 @@ export interface InflowRoute {
   geoLat: number | null
   geoLng: number | null
   geoRadius: number | null
+  landingStyle?: LandingStyle
   url: string
   createdAt: string
   /** 一覧のときだけ */
@@ -58,6 +59,7 @@ export interface InflowRouteInput {
   geoLat: number | null
   geoLng: number | null
   geoRadius: number | null
+  landingStyle?: LandingStyle | null
 }
 
 export interface InflowStatsRow {
@@ -94,3 +96,42 @@ export function formatInflowPeriod(from: string | null, to: string | null): stri
 export function adInsertTag(workerOrigin: string, refCode: string): string {
   return `<script src="${workerOrigin}/r/${refCode}/ad.js" async></script>`
 }
+
+// ── 友だち追加ページ(/r/<ref>)の文言・配色。サーバー側は apps/worker/src/services/inflow-landing-style.ts ──
+
+export interface LandingColors {
+  pageBg?: string | null
+  cardBg?: string | null
+  text?: string | null
+  button?: string | null
+  buttonText?: string | null
+}
+
+export interface LandingStyle {
+  title?: string | null
+  buttonText?: string | null
+  hintText?: string | null
+  showHint?: boolean
+  helpText?: string | null
+  helpLinkText?: string | null
+  showHelp?: boolean
+  colors?: LandingColors
+}
+
+/** 設定が無いときの、ページの文言と色(サーバーの既定と同じ) */
+export const LANDING_DEFAULTS = {
+  title: '友達追加して始める',
+  buttonText: 'LINEで開く',
+  hintText: '※開かない場合はボタンを長押しして「LINEで開く」を選択',
+  helpText: 'うまく開けない方は',
+  helpLinkText: 'こちら',
+  colors: { pageBg: '#f5f7f5', cardBg: '#ffffff', text: '#444444', button: '#06c755', buttonText: '#ffffff' },
+} as const
+
+export const LANDING_COLOR_FIELDS: Array<{ key: keyof LandingColors; label: string }> = [
+  { key: 'pageBg', label: '背景' },
+  { key: 'cardBg', label: 'カード' },
+  { key: 'text', label: '文字' },
+  { key: 'button', label: 'ボタン' },
+  { key: 'buttonText', label: 'ボタンの文字' },
+]

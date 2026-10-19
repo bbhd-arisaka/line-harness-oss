@@ -45,6 +45,14 @@ describe('条件の組み立て', () => {
     });
   });
   it('未完成の条件(タグ未選択・値が空)は含めない。1つも無ければ null(=絞り込みなし)', () => {
+    expect(toSegmentConditions('AND', [{ id: 'i1', kind: 'inflow_is', refCode: 'HPB111', routeName: 'HPB' }, { id: 'i2', kind: 'inflow_is_not', refCode: 'INS222' }])).toEqual({
+      operator: 'AND',
+      rules: [
+        { type: 'ref_code', value: 'HPB111' },
+        { type: 'ref_code_not', value: 'INS222' },
+      ],
+    });
+    expect(toSegmentConditions('AND', [{ id: 'i3', kind: 'inflow_is' }])).toBeNull(); // 流入経路を選んでいないものは、条件にしない
     expect(toSegmentConditions('AND', [])).toBeNull();
     expect(toSegmentConditions('AND', [{ id: 'a', kind: 'tag_exists' }, field('  ')])).toBeNull();
     expect(toSegmentConditions('AND', [{ id: 'a', kind: 'tag_exists' }, tag('t1')])?.rules).toHaveLength(1);

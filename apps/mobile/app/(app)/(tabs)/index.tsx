@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AccountBar } from '../../../src/components/account-bar';
@@ -29,14 +29,16 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'resolved', label: '対応済み' },
 ];
 
-const ChatRow = memo(function ChatRow({ chat, onPress, selected }: { chat: ChatSummary; onPress: (id: string) => void; selected?: boolean }) {
+const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: { chat: ChatSummary; onPress: (id: string) => void; onLongPress?: (chat: ChatSummary) => void; selected?: boolean }) {
   const c = useColors();
   const unread = chat.status === 'unread';
   return (
     <Pressable
       onPress={() => onPress(chat.friendId)}
+      onLongPress={onLongPress ? () => onLongPress(chat) : undefined}
+      delayLongPress={400}
       accessibilityRole="button"
-      accessibilityLabel={`${chat.friendName}。${unread ? '未対応。' : ''}${messagePreview(chat)}`}
+      accessibilityLabel={`${chat.pinned ? 'ピン留め。' : ''}${chat.friendName}。${unread ? '未対応。' : ''}${messagePreview(chat)}`}
       style={({ pressed }) => [styles.row, { backgroundColor: pressed || selected ? c.inputBackground : c.card, borderBottomColor: c.border }]}
     >
       <View>
@@ -48,7 +50,10 @@ const ChatRow = memo(function ChatRow({ chat, onPress, selected }: { chat: ChatS
           <Text style={[styles.name, { color: c.text, fontWeight: unread ? '800' : '600' }]} numberOfLines={1}>
             {chat.friendName}
           </Text>
-          <Text style={{ color: unread ? c.danger : c.textMuted, fontSize: 12 }}>{formatListTime(chat.lastMessageAt)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            {chat.pinned ? <Ionicons name="pin" size={13} color={c.textMuted} /> : null}
+            <Text style={{ color: unread ? c.danger : c.textMuted, fontSize: 12 }}>{formatListTime(chat.lastMessageAt)}</Text>
+          </View>
         </View>
         <View style={styles.rowBottom}>
           <Text style={[styles.preview, { color: unread ? c.text : c.textMuted }]} numberOfLines={1}>
@@ -84,6 +89,8 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   const [query, setQuery] = useState('');
   const search = useDebounced(query.trim(), 400);
   const [items, setItems] = useState<ChatSummary[]>([]);
+  // ピン留めしたトーク(一覧の上に出す。ふつうの一覧とは別に、小さな問い合わせで取る)
+  const [pinnedItems, setPinnedItems] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -102,8 +109,13 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
       }
       if (mode === 'refresh') setRefreshing(true);
       try {
-        const rows = await api.listChats({ lineAccountId: accountId, status: filter === 'all' ? undefined : filter, search, limit: PAGE_SIZE });
+        const [rows, pins] = await Promise.all([
+          api.listChats({ lineAccountId: accountId, status: filter === 'all' ? undefined : filter, search, limit: PAGE_SIZE, pinned: 'exclude' }),
+          // ピン留めが取れなくても、ふつうの一覧は見られる
+          api.listChats({ lineAccountId: accountId, status: filter === 'all' ? undefined : filter, search, pinned: 'only' }).catch(() => null),
+        ]);
         if (id !== seq.current) return;
+        if (pins) setPinnedItems(pins.map((p) => ({ ...p, pinned: true })));
         if (mode === 'silent') {
           // 裏の更新: 「続きを読み込む」で出した古い行は消さない
           setItems((prev) => mergeFreshPage(prev, rows, PAGE_SIZE));
@@ -159,6 +171,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
         search,
         limit: PAGE_SIZE,
         before: { at: last.lastMessageAt, id: last.friendId },
+        pinned: 'exclude',
       });
       if (id !== seq.current) return;
       setItems((prev) => {
@@ -174,6 +187,29 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
       setLoadingMore(false);
     }
   }
+
+  /** 行を長押し: ピン留めする・外す */
+  const onLongPressChat = useCallback(
+    (chat: ChatSummary) => {
+      const label = chat.pinned ? 'ピン留めを外す' : 'ピン留めする';
+      const run = async () => {
+        try {
+          await api.pinChat(chat.friendId, !chat.pinned);
+          void fetchFirst('silent');
+        } catch (e) {
+          setError(describeError(e, 'ピン留めを変更できませんでした'));
+        }
+      };
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions({ options: [label, 'キャンセル'], cancelButtonIndex: 1 }, (i) => {
+          if (i === 0) void run();
+        });
+      } else {
+        Alert.alert('', undefined, [{ text: label, onPress: () => void run() }, { text: 'キャンセル', style: 'cancel' }]);
+      }
+    },
+    [fetchFirst],
+  );
 
   const openChat = useCallback(
     (id: string) => (onOpen ? onOpen(id) : router.push({ pathname: '/chat/[id]', params: { id } })),
@@ -249,15 +285,15 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
 
       {loading ? (
         <LoadingView />
-      ) : error && items.length === 0 ? (
+      ) : error && items.length === 0 && pinnedItems.length === 0 ? (
         <ErrorView message={error} onRetry={() => void fetchFirst('initial')} />
       ) : (
         <FlatList
-          data={items}
+          data={[...pinnedItems, ...items]}
           keyExtractor={(it) => it.id}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          renderItem={({ item }) => <ChatRow chat={item} onPress={openChat} selected={item.friendId === selectedId} />}
+          renderItem={({ item }) => <ChatRow chat={item} onPress={openChat} onLongPress={onLongPressChat} selected={item.friendId === selectedId} />}
           extraData={selectedId}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void fetchFirst('refresh')} tintColor={c.primary} />}
           onEndReached={loadMore}
@@ -275,7 +311,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
             />
           }
           ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}
-          contentContainerStyle={items.length === 0 ? { flexGrow: 1 } : undefined}
+          contentContainerStyle={items.length === 0 && pinnedItems.length === 0 ? { flexGrow: 1 } : undefined}
         />
       )}
     </View>

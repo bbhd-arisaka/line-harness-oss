@@ -5,6 +5,8 @@ import { api } from '../../../src/state/services';
 import { useLoader } from '../../../src/state/hooks';
 import { Avatar, Button, Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
 import { MessageText } from '../../../src/components/message-text';
+import { PickModal } from '../../../src/components/pick-modal';
+import type { InflowRoute } from '../../../src/lib/inflow';
 import { buildInfoRows, describeRichMenu, formatDateTime, resolveFriendName } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
 import { charLength, draftFromFriend, NAME_MAX_LENGTH, planProfileUpdate, type ProfileDraft } from '../../../src/lib/profile';
@@ -88,6 +90,10 @@ function FriendDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState(false);
+  // 流入経路(つけ外し)。編集を始めたときに、この友だちの公式アカウントの流入経路を読み込む
+  const [routeDraft, setRouteDraft] = useState<string | null>(null);
+  const [routes, setRoutes] = useState<InflowRoute[]>([]);
+  const [routePicker, setRoutePicker] = useState(false);
 
   const friend = useLoader(() => api.getFriend(id), [id]);
   // 友だち情報欄の定義・リッチメニューは、取れなくても詳細そのものは見せる(個別に状態を持つ)
@@ -106,16 +112,23 @@ function FriendDetailScreen() {
       setSaveError(plan.error);
       return;
     }
-    if (!plan.changed) {
+    const routeChanged = routeDraft !== (f.inflowRoute?.id ?? null);
+    if (!plan.changed && !routeChanged) {
       setDraft(null);
       return;
     }
     setSaving(true);
     setSaveError(null);
     try {
-      const updated = await api.updateFriendProfile(f.id, plan.input);
-      // 返ってきた最新の友だちで画面を置き換える(名前の表示も変わる)
-      friend.setData(updated);
+      if (plan.changed) {
+        const updated = await api.updateFriendProfile(f.id, plan.input);
+        // 返ってきた最新の友だちで画面を置き換える(名前の表示も変わる)
+        friend.setData({ ...updated, inflowRoute: f.inflowRoute });
+      }
+      if (routeChanged) {
+        await api.setFriendInflowRoute(f.id, routeDraft);
+        await friend.refresh();
+      }
       setDraft(null);
       setSavedNotice(true);
     } catch (e) {
@@ -155,6 +168,13 @@ function FriendDetailScreen() {
                   setSaveError(null);
                   setSavedNotice(false);
                   setDraft(draftFromFriend(f));
+                  setRouteDraft(f.inflowRoute?.id ?? null);
+                  if (f.lineAccountId) {
+                    api
+                      .listInflowRoutes(f.lineAccountId)
+                      .then((r) => setRoutes(r.items.filter((x) => !x.legacy)))
+                      .catch(() => setRoutes([]));
+                  }
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="名前とメモを編集する"
@@ -195,7 +215,28 @@ function FriendDetailScreen() {
               editable={!saving}
             />
             <Field label="LINE名(変更できません)" value={f.displayName} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="流入経路を選ぶ"
+              onPress={() => setRoutePicker(true)}
+              style={[styles.field, { minHeight: MIN_TAP }]}
+            >
+              <Text style={{ color: c.textMuted, fontSize: 12 }}>流入経路</Text>
+              <Text style={{ color: routeDraft ? c.text : c.textMuted, fontSize: 15, marginTop: 2, fontWeight: '600' }}>
+                {routes.find((r) => r.id === routeDraft)?.name ?? (routeDraft ? (f.inflowRoute?.name ?? '選択中') : 'なし')}
+              </Text>
+            </Pressable>
           </Card>
+          <PickModal
+            visible={routePicker}
+            title="流入経路"
+            items={[{ id: '__none__', label: 'なし' }, ...(f.inflowRoute && !routes.some((r) => r.id === f.inflowRoute!.id) ? [{ id: f.inflowRoute.id, label: f.inflowRoute.name }] : []), ...routes.map((r) => ({ id: r.id, label: r.name }))]}
+            onPick={(item) => {
+              setRouteDraft(item.id === '__none__' ? null : item.id);
+              setRoutePicker(false);
+            }}
+            onClose={() => setRoutePicker(false)}
+          />
 
           <SectionTitle>メモ</SectionTitle>
           <Card>
@@ -231,6 +272,7 @@ function FriendDetailScreen() {
           <Card>
             <Field label="本名" value={f.realName?.trim()} />
             <Field label="LINE名" value={f.displayName} />
+            <Field label="流入経路" value={f.inflowRoute?.name ?? f.refCode ?? null} />
           </Card>
 
           <SectionTitle>メモ</SectionTitle>

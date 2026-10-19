@@ -8,6 +8,40 @@ export interface InflowAction {
   timing?: unknown;
 }
 
+/** 友だち追加ページ(/r/<ref>)の文言・配色。空・未設定の項目は、既定のまま */
+export interface LandingStyle {
+  title?: string | null;
+  buttonText?: string | null;
+  hintText?: string | null;
+  showHint?: boolean;
+  helpText?: string | null;
+  helpLinkText?: string | null;
+  showHelp?: boolean;
+  colors?: { pageBg?: string | null; cardBg?: string | null; text?: string | null; button?: string | null; buttonText?: string | null };
+}
+
+/** 設定が無いときの、ページの文言と色(サーバーの既定と同じ) */
+export const LANDING_DEFAULTS = {
+  title: '友達追加して始める',
+  buttonText: 'LINEで開く',
+  hintText: '※開かない場合はボタンを長押しして「LINEで開く」を選択',
+  helpText: 'うまく開けない方は',
+  helpLinkText: 'こちら',
+  colors: { pageBg: '#f5f7f5', cardBg: '#ffffff', text: '#444444', button: '#06c755', buttonText: '#ffffff' },
+} as const;
+
+export const LANDING_COLOR_FIELDS: Array<{ key: 'pageBg' | 'cardBg' | 'text' | 'button' | 'buttonText'; label: string }> = [
+  { key: 'pageBg', label: '背景' },
+  { key: 'cardBg', label: 'カード' },
+  { key: 'text', label: '文字' },
+  { key: 'button', label: 'ボタン' },
+  { key: 'buttonText', label: 'ボタンの文字' },
+];
+
+export function isHexColor(v: string | null | undefined): v is string {
+  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+}
+
 export interface InflowFolder {
   id: string;
   name: string;
@@ -38,6 +72,7 @@ export interface InflowRoute {
   geoLat: number | null;
   geoLng: number | null;
   geoRadius: number | null;
+  landingStyle?: LandingStyle;
   url: string;
   createdAt: string;
   people?: number;
@@ -67,6 +102,7 @@ export function toInput(r: InflowRoute, accountId: string): InflowRouteInput {
     geoLat: r.geoLat,
     geoLng: r.geoLng,
     geoRadius: r.geoRadius,
+    landingStyle: r.landingStyle ?? {},
   };
 }
 
@@ -90,6 +126,7 @@ export function emptyInput(accountId: string, folderId: string | null = null): I
     geoLat: null,
     geoLng: null,
     geoRadius: null,
+    landingStyle: {},
   };
 }
 

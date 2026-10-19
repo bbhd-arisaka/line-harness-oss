@@ -8,7 +8,7 @@ import { Input } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
 
 interface SegmentRule {
-  type: 'tag_exists' | 'tag_not_exists' | 'metadata_equals' | 'metadata_not_equals' | 'is_following'
+  type: 'tag_exists' | 'tag_not_exists' | 'metadata_equals' | 'metadata_not_equals' | 'ref_code' | 'ref_code_not' | 'is_following'
   value: string | boolean | { key: string; value: string }
 }
 
@@ -30,6 +30,8 @@ const ruleTypeLabels: Record<SegmentRule['type'], string> = {
   tag_not_exists: 'タグなし',
   metadata_equals: 'メタデータ一致',
   metadata_not_equals: 'メタデータ不一致',
+  ref_code: '流入経路',
+  ref_code_not: '流入経路以外',
   is_following: 'フォロー中のみ',
 }
 
@@ -38,6 +40,17 @@ export default function SegmentBuilder({ tags, accountId, initialConditions, onA
   const [rules, setRules] = useState<SegmentRule[]>(initialConditions?.rules ?? [{ type: 'tag_exists', value: '' }])
   const [count, setCount] = useState<number | null>(null)
   const [counting, setCounting] = useState(false)
+  // 流入経路で絞り込むための、この公式アカウントの流入経路
+  const [routes, setRoutes] = useState<Array<{ refCode: string; name: string }>>([])
+  useEffect(() => {
+    if (!accountId) { setRoutes([]); return }
+    let cancelled = false
+    api.inflow
+      .routes({ lineAccountId: accountId, folder: 'all', pageSize: 100 })
+      .then((res) => { if (!cancelled && res.success) setRoutes(res.data.items.map((r) => ({ refCode: r.refCode, name: r.name }))) })
+      .catch(() => { /* 選べないだけ */ })
+    return () => { cancelled = true }
+  }, [accountId])
 
   const fetchCount = useCallback(async () => {
     const validRules = rules.filter(r => {
@@ -112,6 +125,17 @@ export default function SegmentBuilder({ tags, accountId, initialConditions, onA
                 className="flex-1"
                 aria-label={`ルール${i + 1}のタグ`}
                 items={[{ value: '', label: 'タグを選択...' }, ...tags.map((tag) => ({ value: tag.id, label: tag.name }))]}
+              />
+            )}
+
+            {(rule.type === 'ref_code' || rule.type === 'ref_code_not') && (
+              <Select
+                size="sm"
+                value={typeof rule.value === 'string' ? rule.value : ''}
+                onValueChange={(value) => updateRule(i, { value: value ?? '' })}
+                className="flex-1"
+                aria-label={`ルール${i + 1}の流入経路`}
+                items={[{ value: '', label: '流入経路を選択...' }, ...routes.map((r) => ({ value: r.refCode, label: r.name }))]}
               />
             )}
 

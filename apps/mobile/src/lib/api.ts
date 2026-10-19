@@ -175,9 +175,12 @@ export function createApiClient(options: ApiClientOptions) {
       limit?: number;
       /** 続きの取得: 最後の行の lastMessageAt と id(friendId) */
       before?: { at: string; id: string };
+      /** only = ピン留めだけ / exclude = ピン留め以外(上にピン留めを別に出すため) */
+      pinned?: 'only' | 'exclude';
     }) =>
       request<ChatSummary[]>('GET', '/api/chats', {
         query: {
+          pinned: params.pinned,
           lineAccountId: params.lineAccountId,
           status: params.status,
           search: params.search || undefined,
@@ -190,6 +193,8 @@ export function createApiClient(options: ApiClientOptions) {
     getHome: (lineAccountId: string, fresh = false) =>
       request<HomeSummary>('GET', '/api/home', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),
     getChat: (id: string) => request<ChatDetail>('GET', `/api/chats/${encodeURIComponent(id)}`),
+    /** トークのピン留め・解除(スタッフ全員で共通) */
+    pinChat: (id: string, pinned: boolean) => request<{ pinned: boolean }>('PUT', `/api/chats/${encodeURIComponent(id)}/pin`, { body: { pinned } }),
     /** トークの「回答結果を見る」カードから開く、フォームの回答結果 */
     getFormAnswer: (chatId: string, submissionId: string) =>
       request<FormAnswerDetail>('GET', `/api/chats/${encodeURIComponent(chatId)}/form-answers/${encodeURIComponent(submissionId)}`),
@@ -279,6 +284,9 @@ export function createApiClient(options: ApiClientOptions) {
         },
       }),
     getFriend: (id: string) => request<FriendDetail>('GET', `/api/friends/${encodeURIComponent(id)}`),
+    /** 流入経路を、つける・外す(routeId=null で外す) */
+    setFriendInflowRoute: (id: string, routeId: string | null) =>
+      request<{ refCode: string | null; inflowRoute: { id: string; name: string } | null }>('PUT', `/api/friends/${encodeURIComponent(id)}/inflow-route`, { body: { routeId } }),
     /** 本名・システム表示名・個別メモの更新(空にするときは null)。更新後の友だちが返る */
     updateFriendProfile: (id: string, profile: FriendProfileInput) =>
       request<FriendDetail>('PUT', `/api/friends/${encodeURIComponent(id)}/profile`, { body: profile }),

@@ -291,7 +291,12 @@ export type FriendFormSubmission = {
   data: Record<string, unknown>
   createdAt: string
 }
-export type FriendDetail = FriendWithTags & { formSubmissions: FriendFormSubmission[] }
+export type FriendDetail = FriendWithTags & {
+  formSubmissions: FriendFormSubmission[]
+  /** 流入経路分析の流入経路(この友だちの流入経路。無ければ null) */
+  inflowRoute?: { id: string; name: string } | null
+  lineAccountId?: string | null
+}
 export type MileageSummary = {
   programId: string
   programName: string
@@ -483,6 +488,12 @@ export const api = {
       fetchApi<ApiResponse<FriendDetail>>(`/api/friends/${id}/metadata`, {
         method: 'PUT',
         body: JSON.stringify(data),
+      }),
+    /** 流入経路を、つける・外す(routeId=null で外す) */
+    setInflowRoute: (id: string, routeId: string | null) =>
+      fetchApi<ApiResponse<{ refCode: string | null; inflowRoute: { id: string; name: string } | null }>>(`/api/friends/${id}/inflow-route`, {
+        method: 'PUT',
+        body: JSON.stringify({ routeId }),
       }),
     // 本名・システム表示名・個別メモ。Lステップ新形式で「友だち情報」とは別の登録先。
     updateProfile: (id: string, data: { realName?: string | null; displayName?: string | null; systemDisplayName?: string | null; memo?: string | null }) =>

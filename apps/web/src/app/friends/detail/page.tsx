@@ -166,9 +166,19 @@ export default function FriendDetailPage() {
   const [draftDisplayName, setDraftDisplayName] = useState('')
   const [draftMemo, setDraftMemo] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
+  // 流入経路(つけ外し)。編集を始めたときに、この友だちの公式アカウントの流入経路を読み込む
+  const [routeOptions, setRouteOptions] = useState<Array<{ id: string; name: string }>>([])
+  const [draftRouteId, setDraftRouteId] = useState('')
 
   function startEditingProfile() {
     if (!friend) return
+    setDraftRouteId(friend.inflowRoute?.id ?? '')
+    if (friend.lineAccountId) {
+      api.inflow
+        .routes({ lineAccountId: friend.lineAccountId, folder: 'all', pageSize: 100 })
+        .then((res) => { if (res.success) setRouteOptions(res.data.items.filter((r) => !r.legacy).map((r) => ({ id: r.id, name: r.name }))) })
+        .catch(() => { /* 選べないだけ */ })
+    }
     setDraftRealName(friend.realName ?? '')
     setDraftDisplayName(friend.systemDisplayName ?? '')
     setDraftMemo(friend.memo ?? '')
@@ -187,6 +197,11 @@ export default function FriendDetailPage() {
       if (res.success && res.data) {
         setFriend(res.data)
         setEditingProfile(false)
+        // 流入経路が変わっていたら、つけ外しして、取り直す
+        if (draftRouteId !== (friend.inflowRoute?.id ?? '') && (draftRouteId || friend.inflowRoute)) {
+          const r = await api.friends.setInflowRoute(friend.id, draftRouteId || null)
+          if (r.success) loadFriend()
+        }
       }
     } finally {
       setSavingProfile(false)
@@ -332,6 +347,21 @@ export default function FriendDetailPage() {
                   <div className="space-y-3">
                     <Input label="本名" value={draftRealName} onValueChange={setDraftRealName} placeholder="山田花子" />
                     <Input label="システム表示名" value={draftDisplayName} onValueChange={setDraftDisplayName} placeholder="表示名" />
+                    <div>
+                      <label className="mb-1 block text-sm text-kumo-default" htmlFor="friend-inflow-route">流入経路</label>
+                      <select
+                        id="friend-inflow-route"
+                        value={draftRouteId}
+                        onChange={(e) => setDraftRouteId(e.target.value)}
+                        className="h-9 w-full rounded-md border border-kumo-line bg-kumo-base px-2 text-sm"
+                      >
+                        <option value="">なし</option>
+                        {friend.inflowRoute && !routeOptions.some((o) => o.id === friend.inflowRoute!.id) ? (
+                          <option value={friend.inflowRoute.id}>{friend.inflowRoute.name}</option>
+                        ) : null}
+                        {routeOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                      </select>
+                    </div>
                     <InputArea label="個別メモ" minRows={3} value={draftMemo} onValueChange={setDraftMemo} placeholder="メモを入力..." />
                     <div className="flex gap-2">
                       <Button type="button" variant="primary" size="sm" loading={savingProfile} onClick={() => void saveProfile()}>保存</Button>
@@ -347,6 +377,10 @@ export default function FriendDetailPage() {
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">システム表示名</dt>
                       <dd className="text-kumo-strong">{friend.systemDisplayName || '未登録'}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-kumo-subtle">流入経路</dt>
+                      <dd className="text-kumo-strong">{friend.inflowRoute?.name || (friend.refCode ? friend.refCode : '未登録')}</dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">個別メモ</dt>

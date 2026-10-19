@@ -2,7 +2,7 @@
 
 /** サーバー(services/segment-query.ts)が受け取る条件 */
 export interface SegmentRule {
-  type: 'tag_exists' | 'tag_not_exists' | 'metadata_equals' | 'metadata_not_equals' | 'is_following';
+  type: 'tag_exists' | 'tag_not_exists' | 'metadata_equals' | 'metadata_not_equals' | 'ref_code' | 'ref_code_not' | 'is_following';
   value: string | boolean | { key: string; value: string };
 }
 
@@ -14,7 +14,7 @@ export interface SegmentCondition {
 }
 
 /** 画面で作る条件1つ */
-export type RuleKind = 'tag_exists' | 'tag_not_exists' | 'field_equals' | 'field_not_equals';
+export type RuleKind = 'tag_exists' | 'tag_not_exists' | 'field_equals' | 'field_not_equals' | 'inflow_is' | 'inflow_is_not';
 
 export interface DraftRule {
   id: string;
@@ -24,6 +24,9 @@ export interface DraftRule {
   fieldKey?: string;
   fieldLabel?: string;
   value?: string;
+  /** 流入経路(ref_code)と、その名前 */
+  refCode?: string;
+  routeName?: string;
 }
 
 export const RULE_KIND_LABEL: Record<RuleKind, string> = {
@@ -31,6 +34,8 @@ export const RULE_KIND_LABEL: Record<RuleKind, string> = {
   tag_not_exists: 'タグがない',
   field_equals: '友だち情報が一致する',
   field_not_equals: '友だち情報が一致しない',
+  inflow_is: '流入経路が同じ',
+  inflow_is_not: '流入経路が違う',
 };
 
 /** 条件を何個まで足せるか(多すぎると、画面でも人数の確認でも分かりにくい) */
@@ -40,6 +45,7 @@ export const MAX_MESSAGE_LENGTH = 5000;
 
 export function isRuleComplete(r: DraftRule): boolean {
   if (r.kind === 'tag_exists' || r.kind === 'tag_not_exists') return !!r.tagId;
+  if (r.kind === 'inflow_is' || r.kind === 'inflow_is_not') return !!r.refCode;
   return !!r.fieldKey && !!r.value?.trim();
 }
 
@@ -55,6 +61,10 @@ export function toSegmentConditions(operator: 'AND' | 'OR', rules: DraftRule[]):
           return { type: 'tag_exists', value: r.tagId as string };
         case 'tag_not_exists':
           return { type: 'tag_not_exists', value: r.tagId as string };
+        case 'inflow_is':
+          return { type: 'ref_code', value: r.refCode as string };
+        case 'inflow_is_not':
+          return { type: 'ref_code_not', value: r.refCode as string };
         case 'field_equals':
           return { type: 'metadata_equals', value: { key: r.fieldKey as string, value: (r.value as string).trim() } };
         case 'field_not_equals':
@@ -71,6 +81,10 @@ export function describeRule(r: DraftRule): string {
       return `タグ「${r.tagName ?? '?'}」がある`;
     case 'tag_not_exists':
       return `タグ「${r.tagName ?? '?'}」がない`;
+    case 'inflow_is':
+      return `流入経路が「${r.routeName ?? '?'}」`;
+    case 'inflow_is_not':
+      return `流入経路が「${r.routeName ?? '?'}」ではない`;
     case 'field_equals':
       return `友だち情報「${r.fieldLabel ?? '?'}」が「${r.value ?? ''}」`;
     case 'field_not_equals':
