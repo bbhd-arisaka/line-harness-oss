@@ -19,7 +19,7 @@ import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
 import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
 import { parseChatFilter } from '../../../src/lib/home';
 import { StatusChip } from '../../../src/components/status-chip';
-import { SwipeRow, closeOpenSwipeRow } from '../../../src/components/swipe-row';
+import { SwipeRow, closeOpenSwipeRow, swallowTouchWhileOpen } from '../../../src/components/swipe-row';
 import { FadeIn } from '../../../src/components/fade-in';
 import { animateLayout } from '../../../src/lib/motion';
 
@@ -284,7 +284,11 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   }, [fetchFirst]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.background }}>
+    <View
+      style={{ flex: 1, backgroundColor: c.background }}
+      // 行が開いているとき、ほかの場所(開いている行の外)をタップしたら、閉じるだけにする
+      onStartShouldSetResponderCapture={(e) => swallowTouchWhileOpen(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+    >
       <AccountBar />
       <View style={[styles.searchWrap, { backgroundColor: c.card }]}>
         <View style={[styles.searchBox, { backgroundColor: c.inputBackground }]}>

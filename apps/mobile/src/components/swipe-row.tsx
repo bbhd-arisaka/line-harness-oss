@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, View, type ScrollView } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { hapticSelect, hapticSuccess } from '../lib/haptics';
+import { useColors } from '../theme/theme';
 
-const OPEN_W = 88; // 開いたときの、操作ボタンの幅
+const OPEN_W = 84; // 開いたときの、操作ボタン(丸)がおさまる幅
+const BTN = 52; // 丸ボタンの直径
 const START = { x: OPEN_W, y: 0 }; // 閉じた位置(行が見える位置)。毎回あたらしい値を渡さないよう、固定
 
 /** 直前に分かった行の幅。作り直された行が、すぐ(幅が分かるのを待たずに)スライドできる状態で出るように使う */
@@ -11,8 +13,22 @@ let lastWidth = 0;
 
 /** いま開いている行(同時に開くのは1行だけ)。一覧の縦スクロールを始めたときなどに、閉じる */
 let openRowClose: (() => void) | null = null;
+/** 開いている行の、画面上の範囲(ボタンの部分も含む行全体)。開いているあいだ、ほかの場所のタップを「閉じる」に使うため */
+let openRect: Rect | null = null;
+type Rect = { x: number; y: number; w: number; h: number };
+const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 export function closeOpenSwipeRow(): void {
   openRowClose?.();
+}
+/**
+ * 画面全体のタップの入口(onStartShouldSetResponderCapture)から呼ぶ。行が開いているとき、開いている行の「外」を
+ * タップしたら、開いている行を閉じて、そのタップはほかの操作にしない(true を返す)。
+ */
+export function swallowTouchWhileOpen(pageX: number, pageY: number): boolean {
+  if (!openRowClose) return false;
+  if (!openRect || inside(openRect, pageX, pageY)) return false; // 範囲がまだ分からないうちは、何もしない
+  openRowClose();
+  return true;
 }
 
 /**
@@ -43,7 +59,10 @@ export function SwipeRow({
   onTrigger: () => void;
   disabled?: boolean;
 }) {
+  const c = useColors();
   const ref = useRef<ScrollView>(null);
+  const wrapRef = useRef<View>(null);
+  const scrollX = useRef(new Animated.Value(OPEN_W)).current; // 丸ボタンの出方(大きさ・濃さ)に使う。ネイティブ側で動く
   const [width, setWidth] = useState(lastWidth);
   const [isOpen, setIsOpen] = useState(false);
   const openRef = useRef(false);
@@ -72,8 +91,12 @@ export function SwipeRow({
       hapticSelect(); // 開いたとき、かすかに
       if (openRowClose && openRowClose !== closeSelfRef.current) openRowClose();
       openRowClose = closeSelfRef.current;
+      wrapRef.current?.measureInWindow((x, y, w, h) => {
+        if (openRowClose === closeSelfRef.current) openRect = { x, y, w, h };
+      });
     } else if (openRowClose === closeSelfRef.current) {
       openRowClose = null;
+      openRect = null;
     }
   };
   closeSelfRef.current = () => {
@@ -97,18 +120,39 @@ export function SwipeRow({
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (openRowClose === closeSelfRef.current) openRowClose = null;
+      if (openRowClose === closeSelfRef.current) {
+        openRowClose = null;
+        openRect = null;
+      }
     },
     [],
   );
 
+  const onScroll = useRef(
+    Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+      useNativeDriver: true,
+      listener: (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+        xRef.current = e.nativeEvent.contentOffset.x;
+      },
+    }),
+  ).current;
+  // 丸ボタンは、スライドに合わせて、小さく薄い状態から、ふわっと大きく出てくる
+  const btnStyle = {
+    opacity: scrollX.interpolate({ inputRange: [0, OPEN_W * 0.7, OPEN_W], outputRange: [1, 0.55, 0], extrapolate: 'clamp' as const }),
+    transform: [{ scale: scrollX.interpolate({ inputRange: [0, OPEN_W], outputRange: [1, 0.35], extrapolate: 'clamp' as const }) }],
+  };
+
   return (
-    <View style={styles.wrap} onLayout={(e) => {
+    <View
+      ref={wrapRef}
+      style={styles.wrap}
+      onLayout={(e) => {
         lastWidth = e.nativeEvent.layout.width;
         setWidth(lastWidth);
-      }}>
+      }}
+    >
       {width > 0 ? (
-        <ScrollView
+        <Animated.ScrollView
           ref={ref}
           horizontal
           scrollEnabled={!disabled}
@@ -124,9 +168,7 @@ export function SwipeRow({
           contentOffset={START}
           keyboardShouldPersistTaps="handled"
           scrollEventThrottle={16}
-          onScroll={(e) => {
-            xRef.current = e.nativeEvent.contentOffset.x;
-          }}
+          onScroll={onScroll}
           onScrollBeginDrag={() => {
             draggingRef.current = true;
           }}
@@ -137,19 +179,24 @@ export function SwipeRow({
           onMomentumScrollEnd={(e) => read(e.nativeEvent.contentOffset.x)}
         >
           <View style={{ flexDirection: 'row', width: width + OPEN_W }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={label}
-              onPress={() => {
-                closeSelfRef.current();
-                hapticSuccess();
-                // 閉じる動きが終わってから実行する(並べ替えと重なると、閉じる動きが中断されるため)
-                setTimeout(onTrigger, 220);
-              }}
-              style={[styles.action, { backgroundColor: color }]}
-            >
-              <MaterialCommunityIcons name={icon} size={24} color="#ffffff" />
-              <Text style={styles.label}>{label}</Text>
+            {/* ボタンの置き場。丸ボタンの外を押すと、閉じるだけ */}
+            <Pressable accessibilityLabel="閉じる" onPress={() => closeSelfRef.current()} style={[styles.action, { backgroundColor: c.card }]}>
+              <Animated.View style={btnStyle}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={label}
+                  hitSlop={6}
+                  onPress={() => {
+                    closeSelfRef.current();
+                    hapticSuccess();
+                    // 閉じる動きが終わってから実行する(並べ替えと重なると、閉じる動きが中断されるため)
+                    setTimeout(onTrigger, 140);
+                  }}
+                  style={({ pressed }) => [styles.circle, { backgroundColor: color, opacity: pressed ? 0.85 : 1 }]}
+                >
+                  <MaterialCommunityIcons name={icon} size={26} color="#ffffff" />
+                </Pressable>
+              </Animated.View>
             </Pressable>
             <View style={{ width }}>
               {children}
@@ -157,7 +204,7 @@ export function SwipeRow({
               {isOpen ? <Pressable accessibilityLabel="閉じる" onPress={() => closeSelfRef.current()} style={StyleSheet.absoluteFill} /> : null}
             </View>
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       ) : (
         children
       )}
@@ -167,6 +214,6 @@ export function SwipeRow({
 
 const styles = StyleSheet.create({
   wrap: { overflow: 'hidden' },
-  action: { width: OPEN_W, alignItems: 'center', justifyContent: 'center', gap: 4 },
-  label: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
+  action: { width: OPEN_W, alignItems: 'center', justifyContent: 'center' },
+  circle: { width: BTN, height: BTN, borderRadius: BTN / 2, alignItems: 'center', justifyContent: 'center' },
 });
