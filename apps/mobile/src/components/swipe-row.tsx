@@ -6,6 +6,9 @@ import { hapticSelect, hapticSuccess } from '../lib/haptics';
 const OPEN_W = 88; // 開いたときの、操作ボタンの幅
 const START = { x: OPEN_W, y: 0 }; // 閉じた位置(行が見える位置)。毎回あたらしい値を渡さないよう、固定
 
+/** 直前に分かった行の幅。作り直された行が、すぐ(幅が分かるのを待たずに)スライドできる状態で出るように使う */
+let lastWidth = 0;
+
 /** いま開いている行(同時に開くのは1行だけ)。一覧の縦スクロールを始めたときなどに、閉じる */
 let openRowClose: (() => void) | null = null;
 export function closeOpenSwipeRow(): void {
@@ -41,7 +44,7 @@ export function SwipeRow({
   disabled?: boolean;
 }) {
   const ref = useRef<ScrollView>(null);
-  const [width, setWidth] = useState(0);
+  const [width, setWidth] = useState(lastWidth);
   const [isOpen, setIsOpen] = useState(false);
   const openRef = useRef(false);
   const closeSelfRef = useRef<() => void>(() => undefined);
@@ -100,7 +103,10 @@ export function SwipeRow({
   );
 
   return (
-    <View style={styles.wrap} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View style={styles.wrap} onLayout={(e) => {
+        lastWidth = e.nativeEvent.layout.width;
+        setWidth(lastWidth);
+      }}>
       {width > 0 ? (
         <ScrollView
           ref={ref}

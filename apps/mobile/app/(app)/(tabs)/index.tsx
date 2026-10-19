@@ -322,7 +322,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
           keyboardDismissMode="on-drag"
           onScrollBeginDrag={closeOpenSwipeRow}
           renderItem={({ item }) => (
-            <SwipeRow label={item.pinned ? 'ピン留め解除' : 'ピン留め'} icon={item.pinned ? 'pin-off' : 'pin'} color="#4f6bed" onTrigger={() => void togglePinChat(item)}>
+            <SwipeRow key={item.pinned ? 'pinned' : 'normal'} label={item.pinned ? 'ピン留め解除' : 'ピン留め'} icon={item.pinned ? 'pin-off' : 'pin'} color="#4f6bed" onTrigger={() => void togglePinChat(item)}>
               <ChatRow chat={item} onPress={openChat} onLongPress={onLongPressChat} selected={item.friendId === selectedId} />
             </SwipeRow>
           )}
