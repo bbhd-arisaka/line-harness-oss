@@ -45,6 +45,21 @@ export function SwipeRow({
   const [isOpen, setIsOpen] = useState(false);
   const openRef = useRef(false);
   const closeSelfRef = useRef<() => void>(() => undefined);
+  const xRef = useRef(OPEN_W); // 最後に分かった、スクロール位置
+  const draggingRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 状態(開/閉)と、見た目の位置がずれていたら、状態の位置にそろえる。
+  // 一覧の並べ替えのアニメーション中に、閉じる動きが中断されて「開いたまま」になるのを、必ず直す
+  const reconcile = (delay: number) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      if (draggingRef.current) return;
+      const target = openRef.current ? 0 : OPEN_W;
+      if (Math.abs(xRef.current - target) > 1) ref.current?.scrollTo({ x: target, animated: false });
+    }, delay);
+  };
 
   const setOpenState = (next: boolean) => {
     if (openRef.current === next) return;
@@ -61,12 +76,15 @@ export function SwipeRow({
   closeSelfRef.current = () => {
     ref.current?.scrollTo({ x: OPEN_W, animated: true });
     setOpenState(false);
+    reconcile(450);
   };
 
   // 止まった位置から、開いている/閉じているを読み取る(途中の位置のときは、何もしない。そのあとの止まる動きで決まる)
   const read = (x: number) => {
+    xRef.current = x;
     if (x <= 1) setOpenState(true);
     else if (x >= OPEN_W - 1) setOpenState(false);
+    else if (!draggingRef.current) reconcile(250); // 止まったのに途中の位置(中断された)
   };
 
   // 幅が分かったら、閉じた位置に置く
@@ -75,6 +93,7 @@ export function SwipeRow({
   }, [width]);
   useEffect(
     () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
       if (openRowClose === closeSelfRef.current) openRowClose = null;
     },
     [],
@@ -98,7 +117,17 @@ export function SwipeRow({
           disableIntervalMomentum
           contentOffset={START}
           keyboardShouldPersistTaps="handled"
-          onScrollEndDrag={(e) => read(e.nativeEvent.contentOffset.x)}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            xRef.current = e.nativeEvent.contentOffset.x;
+          }}
+          onScrollBeginDrag={() => {
+            draggingRef.current = true;
+          }}
+          onScrollEndDrag={(e) => {
+            draggingRef.current = false;
+            read(e.nativeEvent.contentOffset.x);
+          }}
           onMomentumScrollEnd={(e) => read(e.nativeEvent.contentOffset.x)}
         >
           <View style={{ flexDirection: 'row', width: width + OPEN_W }}>
@@ -108,7 +137,8 @@ export function SwipeRow({
               onPress={() => {
                 closeSelfRef.current();
                 hapticSuccess();
-                onTrigger();
+                // 閉じる動きが終わってから実行する(並べ替えと重なると、閉じる動きが中断されるため)
+                setTimeout(onTrigger, 220);
               }}
               style={[styles.action, { backgroundColor: color }]}
             >
