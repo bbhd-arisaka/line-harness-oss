@@ -22,7 +22,8 @@ import {
 import type { EntryRoute } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { isReservedRef } from '../lib/reserved-refs.js';
-import { parseLandingStyle } from '../services/inflow-landing-style.js';
+import { parseLandingStyle, parseLandingStyleInput, resolveLanding } from '../services/inflow-landing-style.js';
+import { renderLandingPage } from '../services/inflow-landing-page.js';
 import { generateRefCode, parseInflowRouteInput, refCodeFromSearch, MAX_NAME } from '../services/inflow-route-input.js';
 
 /**
@@ -118,6 +119,27 @@ async function folderError(c: Context<Env>, folderId: string | null, lineAccount
   if (!f || f.line_account_id !== lineAccountId) return 'フォルダが見つかりません';
   return null;
 }
+
+// ── 友だち追加ページのプレビュー ──
+// 保存する前の設定(編集中)から、実際のページと同じ HTML を作って返す(画面の iframe の srcdoc に入れる)
+inflowRoutes.post('/api/inflow/landing-preview', async (c) => {
+  try {
+    const body = await c.req.json<{ style?: unknown; kind?: string; url?: string }>().catch(() => ({}) as { style?: unknown; kind?: string; url?: string });
+    const parsed = parseLandingStyleInput(body.style ?? null);
+    if (!parsed.ok) return c.json({ success: false, error: parsed.error }, 400);
+    const L = resolveLanding(parsed.json ? (JSON.parse(parsed.json) as Parameters<typeof resolveLanding>[0]) : null);
+    const origin = workerOrigin(c);
+    const sample = typeof body.url === 'string' && body.url.startsWith('https://') ? body.url.slice(0, 500) : 'https://line.me/R/ti/p/@sample';
+    const html =
+      body.kind === 'pc'
+        ? renderLandingPage(L, { kind: 'pc', qrSrc: `${origin}/api/qr?size=240x240&data=${encodeURIComponent(sample)}` })
+        : renderLandingPage(L, { kind: 'mobile', buttonHref: '#', helpUrl: '#', ios: true });
+    return c.json({ success: true, data: { html } });
+  } catch (err) {
+    console.error('POST /api/inflow/landing-preview error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
 
 // ── フォルダ ──
 

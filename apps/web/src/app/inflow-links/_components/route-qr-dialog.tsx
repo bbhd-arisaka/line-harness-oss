@@ -101,6 +101,9 @@ export default function RouteQrDialog({ route, onClose }: { route: InflowRoute; 
             ) : null}
           </div>
           <CopyRow label="URL" value={route.url} />
+          <a href={`${route.url}${route.url.includes('?') ? '&' : '?'}preview=1`} target="_blank" rel="noreferrer" className="inline-block text-xs font-bold text-[#2b7bb9] underline">
+            ページを見る
+          </a>
           {route.adParamMap.length > 0 && origin ? <CopyRow label="広告挿入タグ" value={adInsertTag(origin, route.refCode)} /> : null}
         </div>
       </Dialog>

@@ -559,6 +559,9 @@ export const api = {
     stats: (id: string, page: number, pageSize = 50) =>
       fetchApi<ApiResponse<InflowStats>>(`/api/inflow/routes/${id}/stats?page=${page}&pageSize=${pageSize}`),
     exportPath: (id: string) => `/api/inflow/routes/${id}/export`,
+    /** 友だち追加ページのプレビューの HTML(保存前の設定から、実際のページと同じものを作る) */
+    landingPreview: (style: unknown, kind: 'mobile' | 'pc', url?: string) =>
+      fetchApi<ApiResponse<{ html: string }>>('/api/inflow/landing-preview', { method: 'POST', body: JSON.stringify({ style, kind, url }) }),
   },
   friendAddSettings: {
     get: (lineAccountId: string) =>

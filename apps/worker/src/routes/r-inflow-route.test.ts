@@ -139,6 +139,20 @@ describe('/r/:ref — 流入経路分析の流入経路', () => {
     expect(d).toContain('background:#06c755');
     expect(d).toContain('うまく開けない方は');
   });
+  it('プレビュー(?preview=1): 有効期間・位置情報の確認をとばして見た目を見せる。ボタンの先に ref を付けない(押しても記録されない)', async () => {
+    dbMocks.getEntryRouteByRefCode.mockResolvedValue(route({ valid_to: '2020-01-01T00:00', geo_lat: 35, geo_lng: 139, geo_radius: 100 }));
+    const html = await (await get(`${url}&preview=1`)).text();
+    expect(html).toContain('liff.line.me/2008163446-AAAAAAAA');
+    expect(html).not.toContain('ref=AbC234');
+    // ふつうに開いたときは、止まる
+    expect(await (await get(url)).text()).not.toContain('liff.line.me');
+  });
+  it('背景画像・透過の設定が、ページに出る', async () => {
+    dbMocks.getEntryRouteByRefCode.mockResolvedValue(route({ landing_style: JSON.stringify({ bgImageUrl: 'https://example.com/bg.jpg', cardOpacity: 60 }) }));
+    const html = await (await get(url)).text();
+    expect(html).toContain('url("https://example.com/bg.jpg")');
+    expect(html).toContain('rgba(255,255,255,0.6)');
+  });
   it('旧来の流入経路(アクションが無い)は、有効期間などの新しい判定をしない', async () => {
     dbMocks.getEntryRouteByRefCode.mockResolvedValue(route({ actions: null, valid_to: '2020-01-01T00:00' }));
     expect(await (await get(url)).text()).toContain('liff.line.me/2008163446-AAAAAAAA');

@@ -78,7 +78,8 @@ import { reserve } from './routes/reserve.js';
 import { reservePublic } from './routes/reserve-public.js';
 import { bindNotificationEnv } from './services/notifications.js';
 import { checkPeriod, distanceMeters } from './services/inflow-route-input.js';
-import { adInsertScript, collectInflowQuery, escapeHtml, encodeInflowQuery, geoRequestPage, injectHtml, outOfAreaPage, outOfPeriodPage } from './services/inflow-route-landing.js';
+import { adInsertScript, collectInflowQuery, encodeInflowQuery, geoRequestPage, injectHtml, outOfAreaPage, outOfPeriodPage } from './services/inflow-route-landing.js';
+import { renderLandingPage } from './services/inflow-landing-page.js';
 import { parseLandingStyle, resolveLanding } from './services/inflow-landing-style.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import { defaultCachePolicyMiddleware } from './middleware/cache-policy.js';
@@ -383,7 +384,9 @@ app.get('/r/:ref', async (c) => {
   // 有効期間の外・位置情報の範囲の外なら、LINEへ進めない。
   const inflowCandidate = ref ? await getEntryRouteByRefCode(c.env.DB, ref) : null;
   const inflow = inflowCandidate && typeof inflowCandidate.actions === 'string' ? inflowCandidate : null;
-  if (inflow) {
+  // ?preview=1(管理画面の「ページを見る」): 有効期間・位置情報の確認をとばして、ページの見た目だけを見せる
+  const preview = c.req.query('preview') === '1';
+  if (inflow && !preview) {
     if (!checkPeriod(inflow, Date.now()).ok) return c.html(outOfPeriodPage(inflow));
     if (typeof inflow.geo_lat === 'number' && typeof inflow.geo_lng === 'number' && typeof inflow.geo_radius === 'number') {
       const latQ = c.req.query('_lat');
@@ -397,7 +400,6 @@ app.get('/r/:ref', async (c) => {
   const respondHtml = (html: string) => c.html(inflow ? injectHtml(html, inflow) : html);
   // 流入経路ごとの、文言・配色(設定が無ければ、これまでどおり)
   const L = resolveLanding(inflow ? parseLandingStyle(inflow.landing_style) : null);
-  const lc = L.colors;
 
   // 1. entry_route lookup. getTrafficPoolById (unlike getTrafficPoolBySlug)
   // does not filter on is_active, so we ignore disabled pools explicitly to
@@ -469,7 +471,8 @@ app.get('/r/:ref', async (c) => {
   const liffIdMatch = liffUrl.match(/liff\.line\.me\/([0-9]+-[A-Za-z0-9]+)/);
   const liffParams = new URLSearchParams();
   if (liffIdMatch) liffParams.set('liffId', liffIdMatch[1]);
-  if (ref) liffParams.set('ref', ref);
+  // プレビューでは ref を引き継がない(ボタンを押しても、流入経路の記録・アクションが動かない)
+  if (ref && !preview) liffParams.set('ref', ref)
   if (formId) liffParams.set('form', formId);
   // Parity with /auth/line's qrParams — keeps the account hint on the LIFF URL.
   if (accountParam) liffParams.set('account', accountParam);
@@ -544,81 +547,12 @@ app.get('/r/:ref', async (c) => {
     const intentFallback = encodeURIComponent(liffTarget);
     const androidIntent = `intent://${liffPath}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;package=jp.naver.line.android;S.browser_fallback_url=${intentFallback};end`;
     const buttonHref = isAndroid ? androidIntent : liffTarget;
-    // iOS shows long-press hint; Android relies on intent URL alone (long-press
-    // on Android opens "Open with…" which is noisier than the intent route).
-    const longPressHint = isIOS && L.showHint
-      ? `<p class="hint">${L.hintText === null ? `※開かない場合はボタンを<strong>長押し</strong>して「${escapeHtml(L.buttonText)}」を選択` : escapeHtml(L.hintText)}</p>`
-      : '';
-
-    return respondHtml(`<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LINE で開く</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Hiragino Sans','Helvetica Neue',system-ui,sans-serif;background:${lc.pageBg};display:flex;justify-content:center;align-items:center;min-height:100vh}
-.card{background:${lc.cardBg};border-radius:20px;box-shadow:0 2px 20px rgba(0,0,0,0.06);text-align:center;max-width:360px;width:90%;padding:40px 28px 32px;border:1px solid rgba(0,0,0,0.04)}
-.line-icon{width:48px;height:48px;margin:0 auto 20px}
-.line-icon svg{width:48px;height:48px}
-.msg{font-size:15px;color:${lc.text};font-weight:500;margin-bottom:28px;line-height:1.6}
-.btn{display:block;width:100%;padding:16px;border:none;border-radius:12px;font-size:16px;font-weight:700;text-decoration:none;text-align:center;color:${lc.buttonText};background:${lc.button};box-shadow:0 2px 12px ${lc.shadow};transition:all .15s}
-.btn:active{transform:scale(0.98);opacity:.9}
-.hint{font-size:11px;color:${lc.muted};margin-top:10px;line-height:1.6}
-.hint strong{color:${lc.button};font-weight:700}
-.help{font-size:12px;color:${lc.muted};margin-top:18px;line-height:1.5}
-.help a{color:${lc.muted};text-decoration:underline}
-</style>
-</head>
-<body>
-<div class="card">
-<div class="line-icon">
-<svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="${lc.button}"/><path d="M24 12C17.37 12 12 16.58 12 22.2c0 3.54 2.35 6.65 5.86 8.47-.2.74-.76 2.75-.87 3.17-.14.55.2.54.42.39.18-.12 2.84-1.88 4-2.65.84.13 1.7.22 2.59.22 6.63 0 12-4.58 12-10.2S30.63 12 24 12z" fill="${lc.buttonText}"/></svg>
-</div>
-<p class="msg">${escapeHtml(L.title)}</p>
-<a href="${buttonHref}" class="btn">${escapeHtml(L.buttonText)}</a>
-${longPressHint}
-${L.showHelp ? `<p class="help">${escapeHtml(L.helpText)} <a href="${helpUrl}">${escapeHtml(L.helpLinkText)}</a></p>` : ''}
-</div>
-</body>
-</html>`);
+    // iPhone は、開かないとき用の注意書きを出す(Android は intent URL だけで開く)
+    return respondHtml(renderLandingPage(L, { kind: 'mobile', buttonHref, helpUrl, ios: isIOS }));
   }
 
-  // PC: show QR code page — QR encodes LIFF URL directly
-  return respondHtml(`<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LINE で開く</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Hiragino Sans','Helvetica Neue',system-ui,sans-serif;background:${lc.pageBg};display:flex;justify-content:center;align-items:center;min-height:100vh}
-.card{background:${lc.cardBg};border-radius:20px;box-shadow:0 2px 20px rgba(0,0,0,0.06);text-align:center;max-width:480px;width:90%;padding:48px;border:1px solid rgba(0,0,0,0.04)}
-.line-icon{width:48px;height:48px;margin:0 auto 20px}
-.line-icon svg{width:48px;height:48px}
-.msg{font-size:15px;color:${lc.text};font-weight:500;margin-bottom:32px;line-height:1.6}
-.qr{background:#f9f9f9;border-radius:16px;padding:24px;display:inline-block;margin-bottom:24px;border:1px solid rgba(0,0,0,0.04)}
-.qr img{display:block;width:240px;height:240px}
-.hint{font-size:13px;color:${lc.muted};line-height:1.6}
-.footer{font-size:11px;color:${lc.mutedSoft};margin-top:24px;line-height:1.5}
-</style>
-</head>
-<body>
-<div class="card">
-<div class="line-icon">
-<svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="${lc.button}"/><path d="M24 12C17.37 12 12 16.58 12 22.2c0 3.54 2.35 6.65 5.86 8.47-.2.74-.76 2.75-.87 3.17-.14.55.2.54.42.39.18-.12 2.84-1.88 4-2.65.84.13 1.7.22 2.59.22 6.63 0 12-4.58 12-10.2S30.63 12 24 12z" fill="${lc.buttonText}"/></svg>
-</div>
-<p class="msg">スマートフォンで QR コードを読み取ってください</p>
-<div class="qr">
-<img src="/api/qr?size=240x240&data=${encodeURIComponent(liffTarget)}" alt="QR Code">
-</div>
-<p class="hint">LINE アプリのカメラまたは<br>スマートフォンのカメラで読み取れます</p>
-<p class="footer">友だち追加で全機能を無料体験できます</p>
-</div>
-</body>
-</html>`);
+  // PC: QR コードのページ — QR は LIFF の URL そのもの
+  return respondHtml(renderLandingPage(L, { kind: 'pc', qrSrc: `/api/qr?size=240x240&data=${encodeURIComponent(liffTarget)}` }));
 });
 
 // /r/:ref/ad.js — 流入経路の「広告挿入タグ」。広告のリンク先ページに貼ると、そのページのURLにある広告パラメータを、この流入経路へのリンクに引き継ぐ

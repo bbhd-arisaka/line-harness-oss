@@ -80,6 +80,8 @@ export default function InflowRouteEditPage() {
   const [htmlBody, setHtmlBody] = useState('')
   const [geo, setGeo] = useState({ lat: '', lng: '', radius: '' })
   const [landing, setLanding] = useState<LandingStyle>({})
+  // 保存済みの流入経路のURL(「実際のページを開く」のプレビュー用)
+  const [routeUrl, setRouteUrl] = useState('')
   const [actionModal, setActionModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -122,6 +124,7 @@ export default function InflowRouteEditPage() {
         setHtmlHead(r.htmlHead ?? '')
         setHtmlBody(r.htmlBody ?? '')
         setLanding(r.landingStyle ?? {})
+        setRouteUrl(r.url)
         setGeo({ lat: r.geoLat === null ? '' : String(r.geoLat), lng: r.geoLng === null ? '' : String(r.geoLng), radius: r.geoRadius === null ? '' : String(r.geoRadius) })
       } catch {
         setError('読み込めませんでした。時間をおいてもう一度お試しください')
@@ -227,7 +230,7 @@ export default function InflowRouteEditPage() {
       {!ready && !error ? (
         <p className="text-sm text-[#757578]">読み込み中...</p>
       ) : (
-        <div className="max-w-[54rem] space-y-6">
+        <div className="max-w-[72rem] space-y-6">
           <div className="flex flex-wrap gap-5">
             <div className="w-[21rem] max-w-full">
               <label className={labelCls}>流入経路名 <Required /></label>
@@ -399,8 +402,8 @@ export default function InflowRouteEditPage() {
               </div>
             </Accordion>
 
-            <Accordion title="友だち追加ページ" defaultOpen={Object.keys(landing).length > 0}>
-              <LandingEditor value={landing} onChange={setLanding} />
+            <Accordion title="友だち追加ページ" defaultOpen>
+              <LandingEditor value={landing} onChange={setLanding} openUrl={routeUrl ? `${routeUrl}${routeUrl.includes('?') ? '&' : '?'}preview=1` : undefined} />
             </Accordion>
 
             <Accordion title="位置情報" defaultOpen={!!(geo.lat || geo.lng || geo.radius)}>

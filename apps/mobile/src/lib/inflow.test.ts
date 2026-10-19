@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPeriod, joinPeriod, otherActions, splitPeriod, tagAddIds, withTagAddIds, type InflowAction } from './inflow';
+import { applyLandingPreset, resolveLandingView, formatPeriod, joinPeriod, otherActions, splitPeriod, tagAddIds, withTagAddIds, type InflowAction } from './inflow';
 
 const tag = (ids: string[], op = 'add', condition: unknown = null): InflowAction => ({ type: 'tag', params: { op, tagIds: ids }, condition });
 const text: InflowAction = { type: 'text', params: { content: 'こんにちは' }, condition: null };
@@ -22,5 +22,31 @@ describe('流入経路のアクション(アプリで編集するのは「タグ
     expect(splitPeriod(null)).toEqual({ dateId: null, timeId: null });
     expect(formatPeriod('2026-10-20T09:30')).toBe('10月20日 09:30');
     expect(formatPeriod(null)).toBe('');
+  });
+});
+
+describe('友だち追加ページのデザイン(アプリのプレビュー)', () => {
+  it('設定が無ければ既定。背景画像があって、かぶせる濃さが0より大きいときだけ、かぶせる色が付く', () => {
+    const d = resolveLandingView({});
+    expect(d).toMatchObject({ title: '友達追加して始める', buttonText: 'LINEで開く', showIcon: true, bgImage: null, veil: null, cardBg: 'rgba(255,255,255,1)', cardRadius: 24 });
+    const v = resolveLandingView({ bgImageUrl: 'https://example.com/b.jpg', bgOverlayOpacity: 40, cardOpacity: 60, buttonOpacity: 80, colors: { button: '#ff0000', overlay: '#000000' } });
+    expect(v.veil).toBe('rgba(0,0,0,0.4)');
+    expect(v.cardBg).toBe('rgba(255,255,255,0.6)');
+    expect(v.buttonBg).toBe('rgba(255,0,0,0.8)');
+    expect(resolveLandingView({ bgOverlayOpacity: 40 }).veil).toBeNull();
+    expect(resolveLandingView({ bgImageUrl: 'http://example.com/b.jpg' }).bgImage).toBeNull(); // https 以外は使わない
+  });
+  it('表示しない設定: 注意書き・うまく開けない方は', () => {
+    expect(resolveLandingView({ showHint: false, showHelp: false })).toMatchObject({ hintText: null, helpText: null });
+    expect(resolveLandingView({ helpText: '開けない場合', helpLinkText: 'ここ' }).helpText).toBe('開けない場合 ここ');
+  });
+  it('ひな形: 色・透過・角丸を入れ替え、文言・画像・表示の切り替えは残す。「標準」で、色などが既定に戻る', () => {
+    const base = { title: 'T', bgImageUrl: 'https://example.com/b.jpg', showHint: false, colors: { button: '#ff0000' }, cardOpacity: 50 };
+    const glass = applyLandingPreset(base, 'glass');
+    expect(glass).toMatchObject({ title: 'T', bgImageUrl: 'https://example.com/b.jpg', showHint: false, cardOpacity: 68, cardBlur: 14 });
+    expect(glass.colors?.button).toBe('#06c755');
+    const std = applyLandingPreset(base, 'standard');
+    expect(std).toEqual({ title: 'T', bgImageUrl: 'https://example.com/b.jpg', showHint: false });
+    expect(applyLandingPreset(base, 'nope')).toBe(base);
   });
 });

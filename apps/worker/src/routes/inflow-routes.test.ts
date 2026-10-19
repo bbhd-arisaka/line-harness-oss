@@ -146,6 +146,16 @@ describe('流入経路分析 API(Lステップと同じ仕様)', () => {
     const none = await call('PUT', `/api/inflow/routes/${a.id}`, { name: 'HPB経由' });
     expect(none.json.data.landingStyle).toEqual({});
   });
+  it('友だち追加ページのプレビュー: 保存前の設定から、実際と同じ HTML を返す。不正な設定は400', async () => {
+    const r = await call('POST', '/api/inflow/landing-preview', { kind: 'mobile', style: { title: 'プレビュー見出し', bgImageUrl: 'https://example.com/bg.jpg', cardOpacity: 60, colors: { button: '#ff6600' } } });
+    expect(r.status).toBe(200);
+    expect(r.json.data.html).toContain('プレビュー見出し');
+    expect(r.json.data.html).toContain('url("https://example.com/bg.jpg")');
+    expect(r.json.data.html).toContain('#ff6600');
+    const pc = await call('POST', '/api/inflow/landing-preview', { kind: 'pc', url: 'https://example.com/r/abc', style: {} });
+    expect(pc.json.data.html).toContain(`${ORIGIN}/api/qr?size=240x240&amp;data=https%3A%2F%2Fexample.com%2Fr%2Fabc`);
+    expect((await call('POST', '/api/inflow/landing-preview', { style: { cardOpacity: 5 } })).status).toBe(400);
+  });
   it('削除: 経路は消えるが、集計の記録は残る(経路との結びつきだけ外れる)', async () => {
     const a = await create();
     fixture.sqlite.prepare("INSERT INTO ref_tracking(id,ref_code,friend_id,entry_route_id,created_at) VALUES('h1','x',NULL,?,'2026-10-18T10:00:00.000')").run(a.id);

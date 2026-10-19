@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as MediaLibrary from 'expo-media-library/legacy';
@@ -192,6 +192,9 @@ function FriendAddScreen() {
               {(route.people ?? 0).toLocaleString('ja-JP')}人({(route.times ?? 0).toLocaleString('ja-JP')}回)
             </Text>
           </View>
+          {route.legacy ? null : (
+            <Button title="ページを見る" variant="secondary" onPress={() => void Linking.openURL(`${route.url}${route.url.includes('?') ? '&' : '?'}preview=1`)} style={{ marginTop: 12 }} />
+          )}
           {route.legacy ? null : (
             <Button title="編集" variant="secondary" onPress={() => router.push({ pathname: '/inflow-edit', params: { id: route.id } })} style={{ marginTop: 12 }} />
           )}
