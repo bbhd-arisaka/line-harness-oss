@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
+import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +8,6 @@ import { pickAndUploadImage } from '../state/image-upload';
 import { TagTextInput } from './tag-text-input';
 import { ChatAttachPanel } from './chat-attach-panel';
 import { DefaultAvatar } from './default-avatar';
-import { TextSelectModal } from './text-select-modal';
 import { PickModal, type PickItem } from './pick-modal';
 import { appendTag, insertTag, segsToText, toSegs } from '../lib/tag-editor';
 import { findUnsupportedTag, formTag, NAME_TAG, REAL_NAME_TAG } from '../lib/broadcast';
@@ -98,14 +96,11 @@ const BubbleView = memo(function BubbleView({
   bubble,
   onImagePress,
   onOpenAnswer,
-  onLongPressText,
   avatar,
 }: {
   bubble: Bubble;
   onImagePress: (url: string) => void;
   onOpenAnswer: (card: FormAnswerCard) => void;
-  /** 文章の吹き出しを長押ししたとき(コピー・一部を選んでコピー) */
-  onLongPressText: (text: string) => void;
   /** 相手のアイコンの表示に使う情報(受信の吹き出しだけに付ける) */
   avatar: { uri: string | null; name: string; onPress: () => void };
 }) {
@@ -119,9 +114,7 @@ const BubbleView = memo(function BubbleView({
     <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
       {!out ? <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} /> : null}
       {out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
-      <Pressable
-        onLongPress={bubble.kind === 'text' && bubble.text ? () => onLongPressText(bubble.text) : undefined}
-        delayLongPress={350}
+      <View
         style={[
           styles.bubble,
           { backgroundColor: out ? c.bubbleOutgoing : c.bubbleIncoming },
@@ -137,18 +130,31 @@ const BubbleView = memo(function BubbleView({
             <Image source={{ uri: bubble.imageUrl }} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
           </Pressable>
         ) : (
-          <Text
-            style={{
-              color: out ? c.bubbleOutgoingText : c.bubbleIncomingText,
-              fontSize: 16,
-              lineHeight: 22,
-              fontStyle: alt ? 'italic' : 'normal',
-            }}
-          >
-            {bubble.text}
-          </Text>
+          // 文章は、その場で好きな範囲を選べる(長押し→ハンドルをドラッグ→「コピー」)。
+          // 大きさは見えない Text で決め、同じ位置に、読み取り専用の入力欄(iPhone で範囲を選べる)を重ねる
+          <View>
+            <Text
+              accessible={false}
+              importantForAccessibility="no-hide-descendants"
+              style={[styles.bubbleText, { fontStyle: alt ? 'italic' : 'normal', opacity: 0 }]}
+            >
+              {bubble.text}
+            </Text>
+            <TextInput
+              value={bubble.text}
+              multiline
+              editable={false}
+              scrollEnabled={false}
+              accessibilityLabel="メッセージ"
+              style={[
+                StyleSheet.absoluteFill,
+                styles.bubbleText,
+                { color: out ? c.bubbleOutgoingText : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' },
+              ]}
+            />
+          </View>
         )}
-      </Pressable>
+      </View>
       {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
     </View>
   );
@@ -195,8 +201,6 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
   // 左の「＋」で開く、選択のパネル(普通のLINEと同じ)
   const [panelOpen, setPanelOpen] = useState(false);
   // 文章の長押し: コピー(全文)・一部を選んでコピー
-  const [selectText, setSelectText] = useState<string | null>(null);
-  const [copiedNote, setCopiedNote] = useState(false);
   // 入力欄のカーソル位置(まだ一度も触っていないときは null → ボックスは最後に足す)
   const selection = useRef<{ start: number; end: number } | null>(null);
   const [forcedPos, setForcedPos] = useState<number | null>(null);
@@ -326,26 +330,6 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
     selection.current = { start: r.cursor, end: r.cursor };
     setForcedPos(r.cursor);
   }
-
-  const onLongPressText = useCallback((text: string) => {
-    const copyAll = async () => {
-      await Clipboard.setStringAsync(text);
-      setCopiedNote(true);
-      setTimeout(() => setCopiedNote(false), 1500);
-    };
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions({ options: ['コピー', '一部を選んでコピー', 'キャンセル'], cancelButtonIndex: 2 }, (i) => {
-        if (i === 0) void copyAll();
-        else if (i === 1) setSelectText(text);
-      });
-    } else {
-      Alert.alert('', undefined, [
-        { text: 'コピー', onPress: () => void copyAll() },
-        { text: '一部を選んでコピー', onPress: () => setSelectText(text) },
-        { text: 'キャンセル', style: 'cancel' },
-      ]);
-    }
-  }, []);
 
   async function choosePhoto() {
     if (uploading || sending) return;
@@ -546,7 +530,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
               ) : item.type === 'event' ? (
                 <EventView event={item.event} />
               ) : (
-                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} onLongPressText={onLongPressText} avatar={avatar} />
+                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} avatar={avatar} />
               )
             }
             // inverted の末尾 = 画面の一番上
@@ -685,12 +669,6 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
         </KeyboardAvoidingView>
       )}
       <ImageViewer uri={viewerUri} onClose={() => setViewerUri(null)} />
-      <TextSelectModal text={selectText} onClose={() => setSelectText(null)} />
-      {copiedNote ? (
-        <View pointerEvents="none" style={styles.copiedNote}>
-          <Text style={styles.copiedText}>コピーしました</Text>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -727,6 +705,5 @@ const styles = StyleSheet.create({
   pendingX: { position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
   sendButton: { width: MIN_TAP, height: MIN_TAP, borderRadius: MIN_TAP / 2, alignItems: 'center', justifyContent: 'center' },
   sendError: { paddingHorizontal: 12, paddingVertical: 8 },
-  copiedNote: { position: 'absolute', top: 12, left: 0, right: 0, alignItems: 'center' },
-  copiedText: { color: '#ffffff', backgroundColor: 'rgba(0,0,0,0.75)', fontSize: 14, fontWeight: '600', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18, overflow: 'hidden' },
+  bubbleText: { fontSize: 16, lineHeight: 22, padding: 0, margin: 0 },
 });
