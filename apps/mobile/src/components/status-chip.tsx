@@ -45,8 +45,9 @@ export function StatusChip({
       style={({ pressed }) => [
         styles.chip,
         {
-          backgroundColor: active ? tone.soft : c.card,
-          borderColor: active ? tone.line : c.border,
+          // どれも同じ大きさ(枠は1・高さは38)。選ばれていないものも、薄い灰色の面で、大きさが見える
+          backgroundColor: active ? tone.soft : c.inputBackground,
+          borderColor: active ? tone.line : c.inputBackground,
           opacity: disabled && !active ? 0.5 : pressed ? 0.8 : 1,
         },
       ]}

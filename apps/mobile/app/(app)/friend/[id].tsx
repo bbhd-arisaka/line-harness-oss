@@ -4,6 +4,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { api } from '../../../src/state/services';
 import { useLoader } from '../../../src/state/hooks';
 import { Avatar, Button, Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
+import { MessageText } from '../../../src/components/message-text';
 import { buildInfoRows, describeRichMenu, formatDateTime, resolveFriendName } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
 import { charLength, draftFromFriend, NAME_MAX_LENGTH, planProfileUpdate, type ProfileDraft } from '../../../src/lib/profile';
@@ -20,9 +21,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   return (
     <View style={styles.field}>
       <Text style={{ color: c.textMuted, fontSize: 12 }}>{label}</Text>
-      <Text selectable style={{ color: value ? c.text : c.textMuted, fontSize: 15, marginTop: 2 }}>
-        {value || '未設定'}
-      </Text>
+      <MessageText text={value || '未設定'} style={{ color: value ? c.text : c.textMuted, fontSize: 15, marginTop: 2 }} />
     </View>
   );
 }
@@ -236,9 +235,7 @@ function FriendDetailScreen() {
 
           <SectionTitle>メモ</SectionTitle>
           <Card>
-            <Text selectable style={{ color: f.memo?.trim() ? c.text : c.textMuted, fontSize: 15, lineHeight: 22 }}>
-              {f.memo?.trim() || 'メモはありません'}
-            </Text>
+            <MessageText text={f.memo?.trim() || 'メモはありません'} style={{ color: f.memo?.trim() ? c.text : c.textMuted, fontSize: 15, lineHeight: 22 }} />
           </Card>
         </>
       )}

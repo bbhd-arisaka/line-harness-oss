@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { useInterval } from '../state/hooks';
 import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow, type FormAnswerCard } from '../lib/format';
 import { STATUS_LABEL } from '../lib/format';
 import { StatusChip } from './status-chip';
+import { MessageText } from './message-text';
 import type { ChatDetail, ChatStatus, FormOption, TemplateOption } from '../lib/types';
 import { ImageViewer } from '../components/image-viewer';
 import { ErrorView, LoadingView } from '../components/ui';
@@ -71,14 +72,8 @@ function FormAnswerCardView({ card, time, avatar, onOpen }: { card: FormAnswerCa
     <View style={[styles.bubbleRow, { justifyContent: 'flex-start' }]}>
       <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} />
       <View style={[styles.answerCard, { backgroundColor: c.card, borderColor: c.border }]}>
-        <Text selectable style={{ color: c.text, fontSize: 15, fontWeight: '700', lineHeight: 21 }}>
-          {card.title}
-        </Text>
-        {card.body ? (
-          <Text selectable style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginTop: 4 }}>
-            {card.body}
-          </Text>
-        ) : null}
+        <MessageText text={card.title} style={{ color: c.text, fontSize: 15, fontWeight: '700', lineHeight: 21 }} />
+        {card.body ? <MessageText text={card.body} style={{ color: c.textSub, fontSize: 13, lineHeight: 19, marginTop: 4 }} /> : null}
         <Pressable
           onPress={() => onOpen(card)}
           accessibilityRole="button"
@@ -89,31 +84,6 @@ function FormAnswerCardView({ card, time, avatar, onOpen }: { card: FormAnswerCa
         </Pressable>
       </View>
       <Text style={[styles.time, { color: c.textMuted }]}>{time}</Text>
-    </View>
-  );
-}
-
-/**
- * 吹き出しの文章。その場で好きな範囲を選べる(長押し→ハンドルをドラッグ→「コピー」)。
- * 大きさは、見えない Text で決める。その上に、同じ書式の読み取り専用の入力欄(iPhone で範囲を選べる)を重ねる。
- * 入力欄は、描く幅が Text より少し狭く、折り返しが1行増えて最後の行がはみ出すことがあったので、
- * 右に 12 だけ広げて重ねる(広い分には、折り返しは増えない。吹き出しの外にはみ出す分は、何も描かれない)。
- */
-function SelectableText({ text, color, italic }: { text: string; color: string; italic: boolean }) {
-  const fontStyle = italic ? 'italic' : 'normal';
-  return (
-    <View>
-      <Text accessible={false} importantForAccessibility="no-hide-descendants" style={[styles.bubbleText, { fontStyle, opacity: 0 }]}>
-        {text}
-      </Text>
-      <TextInput
-        value={text}
-        multiline
-        editable={false}
-        scrollEnabled={false}
-        accessibilityLabel="メッセージ"
-        style={[styles.bubbleText, { position: 'absolute', left: 0, top: 0, bottom: 0, right: -12, color, fontStyle }]}
-      />
     </View>
   );
 }
@@ -156,7 +126,7 @@ const BubbleView = memo(function BubbleView({
             <Image source={{ uri: bubble.imageUrl }} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
           </Pressable>
         ) : (
-          <SelectableText text={bubble.text} color={out ? c.bubbleOutgoingText : c.bubbleIncomingText} italic={alt} />
+          <MessageText text={bubble.text} style={[styles.bubbleText, { color: out ? c.bubbleOutgoingText : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' }]} />
         )}
       </View>
       {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}

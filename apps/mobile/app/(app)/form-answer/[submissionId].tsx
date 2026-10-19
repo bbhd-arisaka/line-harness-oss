@@ -3,6 +3,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-na
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../../../src/state/services';
 import { Card, ErrorView, LoadingView } from '../../../src/components/ui';
+import { MessageText } from '../../../src/components/message-text';
 import { withReadableWidth } from '../../../src/components/readable-width';
 import { formatDateTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
@@ -65,9 +66,7 @@ function FormAnswerScreen() {
                   <Text style={{ color: c.primaryText, fontSize: 15, fontWeight: '600' }}>📎 添付ファイルを開く</Text>
                 </Pressable>
               ) : (
-                <Text selectable style={{ color: c.text, fontSize: 16, lineHeight: 23, marginTop: 2 }}>
-                  {it.value}
-                </Text>
+                <MessageText text={it.value} style={{ color: c.text, fontSize: 16, lineHeight: 23, marginTop: 2 }} />
               )}
             </View>
           ))
