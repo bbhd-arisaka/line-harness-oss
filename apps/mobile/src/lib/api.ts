@@ -1,3 +1,4 @@
+import type { InflowFolder, InflowRoute, InflowRouteInput } from './inflow';
 import type {
   ApiEnvelope,
   BroadcastItem,
@@ -251,6 +252,19 @@ export function createApiClient(options: ApiClientOptions) {
         body: { conditions, accountId, followingOnly: true, ...(opts?.countMissingRealName ? { countMissingRealName: true } : {}) },
       }),
     listTags: () => request<TagItem[]>('GET', '/api/tags'),
+    /** 公式アカウントのシナリオ(流入経路で、友だち追加のときに始めるものを選ぶ) */
+    listScenarios: (accountId: string) =>
+      request<Array<{ id: string; name: string }>>('GET', '/api/scenarios', { query: { lineAccountId: accountId } }),
+
+    // ── 流入経路(友だち追加のQR・URLを、流入経路ごとに) ──
+    listInflowFolders: (accountId: string) =>
+      request<{ folders: InflowFolder[]; unfiledCount: number }>('GET', '/api/inflow/folders', { query: { lineAccountId: accountId } }),
+    listInflowRoutes: (accountId: string) =>
+      request<{ items: InflowRoute[]; total: number }>('GET', '/api/inflow/routes', { query: { lineAccountId: accountId, folder: 'all', pageSize: 100 } }),
+    getInflowRoute: (id: string) => request<InflowRoute>('GET', `/api/inflow/routes/${encodeURIComponent(id)}`),
+    createInflowRoute: (input: InflowRouteInput) => request<InflowRoute>('POST', '/api/inflow/routes', { body: input }),
+    updateInflowRoute: (id: string, input: InflowRouteInput) => request<InflowRoute>('PUT', `/api/inflow/routes/${encodeURIComponent(id)}`, { body: input }),
+    deleteInflowRoute: (id: string) => request<null>('DELETE', `/api/inflow/routes/${encodeURIComponent(id)}`),
 
     // ── 友だち ──
     listFriends: (params: { lineAccountId: string; search?: string; limit?: number; offset?: number }) =>
