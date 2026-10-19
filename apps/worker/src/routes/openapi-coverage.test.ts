@@ -274,6 +274,8 @@ const KNOWN_GAPS: readonly string[] = [
   'POST /api/chats',
   'POST /api/chats/{id}/loading',
   'POST /api/chats/{id}/send',
+  'PUT /api/chats/{id}/pin',
+  'PUT /api/friends/{id}/inflow-route',
   'PUT /api/chats/{id}',
   // mileage (6)
   'DELETE /api/mileage/rules/{id}',

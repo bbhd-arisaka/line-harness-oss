@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS chats (
   last_message_at TEXT,
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-, line_account_id TEXT);
+, line_account_id TEXT, pinned_at TEXT);
 
 CREATE TABLE IF NOT EXISTS conversion_events (
   id                   TEXT PRIMARY KEY,
@@ -333,7 +333,7 @@ CREATE TABLE IF NOT EXISTS entry_routes (
   is_active   INTEGER NOT NULL DEFAULT 1,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
-, pool_id TEXT REFERENCES traffic_pools (id) ON DELETE SET NULL, intro_template_id TEXT REFERENCES message_templates (id) ON DELETE SET NULL, run_account_friend_add_scenarios INTEGER NOT NULL DEFAULT 1, line_account_id TEXT, folder_id TEXT, display_order INTEGER NOT NULL DEFAULT 0, qr_text TEXT, valid_from TEXT, valid_to TEXT, out_of_period_message TEXT, actions TEXT, ignore_friend_add_settings INTEGER NOT NULL DEFAULT 0, action_mode TEXT NOT NULL DEFAULT 'first', ad_import_mode TEXT NOT NULL DEFAULT 'always', ad_param_map TEXT, html_head TEXT, html_body TEXT, geo_lat REAL, geo_lng REAL, geo_radius INTEGER);
+, pool_id TEXT REFERENCES traffic_pools (id) ON DELETE SET NULL, intro_template_id TEXT REFERENCES message_templates (id) ON DELETE SET NULL, run_account_friend_add_scenarios INTEGER NOT NULL DEFAULT 1, line_account_id TEXT, folder_id TEXT, display_order INTEGER NOT NULL DEFAULT 0, qr_text TEXT, valid_from TEXT, valid_to TEXT, out_of_period_message TEXT, actions TEXT, ignore_friend_add_settings INTEGER NOT NULL DEFAULT 0, action_mode TEXT NOT NULL DEFAULT 'first', ad_import_mode TEXT NOT NULL DEFAULT 'always', ad_param_map TEXT, html_head TEXT, html_body TEXT, geo_lat REAL, geo_lng REAL, geo_radius INTEGER, landing_style TEXT);
 
 CREATE TABLE IF NOT EXISTS event_booking_idempotency_keys (
   key              TEXT PRIMARY KEY,

@@ -1,5 +1,5 @@
 export interface SegmentRule {
-  type: 'tag_exists' | 'tag_not_exists' | 'metadata_equals' | 'metadata_not_equals' | 'ref_code' | 'is_following'
+  type: 'tag_exists' | 'tag_not_exists' | 'metadata_equals' | 'metadata_not_equals' | 'ref_code' | 'ref_code_not' | 'is_following'
   value: string | boolean | { key: string; value: string }
 }
 
@@ -71,6 +71,15 @@ export function buildSegmentQuery(condition: SegmentCondition): { sql: string; b
           throw new Error('ref_code rule requires a string value')
         }
         clauses.push(`f.ref_code = ?`)
+        bindings.push(rule.value)
+        break
+      }
+
+      case 'ref_code_not': {
+        if (typeof rule.value !== 'string') {
+          throw new Error('ref_code_not rule requires a string value')
+        }
+        clauses.push(`(f.ref_code IS NULL OR f.ref_code != ?)`)
         bindings.push(rule.value)
         break
       }

@@ -29,6 +29,7 @@ import { Input } from '@cloudflare/kumo/components/input'
 import { Radio } from '@cloudflare/kumo/components/radio'
 import { Select } from '@cloudflare/kumo/components/select'
 import FriendAvatar from '@/components/friends/friend-avatar'
+import { PushPinIcon } from '@phosphor-icons/react'
 
 interface Chat {
   id: string
@@ -38,6 +39,8 @@ interface Chat {
   operatorId: string | null
   status: 'unread' | 'in_progress' | 'resolved'
   notes: string | null
+  /** ピン留め中(一覧の上に出す) */
+  pinned?: boolean
   lastMessageAt: string | null
   lastMessageContent: string | null
   lastMessageDirection: 'incoming' | 'outgoing' | null
@@ -336,6 +339,10 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
 export default function ChatsPage() {
   const { selectedAccountId } = useAccount()
   const [chats, setChats] = useState<Chat[]>([])
+  // ピン留めしたトーク(一覧の上に出す。ふつうの一覧とは別に、小さな問い合わせで取る)
+  const [pinnedChats, setPinnedChats] = useState<Chat[]>([])
+  const pinnedChatsRef = useRef<Chat[]>([])
+  useEffect(() => { pinnedChatsRef.current = pinnedChats }, [pinnedChats])
   const [allFriends, setAllFriends] = useState<FriendItem[]>([])
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
@@ -464,16 +471,41 @@ export default function ChatsPage() {
     const params: {
       status?: string; accountId?: string; unansweredOnly?: boolean;
       limit?: number; beforeAt?: string; beforeId?: string;
+      pinned?: 'only' | 'exclude'
     } = {}
     if (statusFilter !== 'all' && !unansweredOnly) params.status = statusFilter
     if (selectedAccountId) params.accountId = selectedAccountId
     if (unansweredOnly) params.unansweredOnly = true
-    else params.limit = CHAT_PAGE_SIZE
+    else {
+      params.limit = CHAT_PAGE_SIZE
+      // ピン留めは、上に別に出す(ふつうの一覧には入れない)
+      params.pinned = 'exclude'
+    }
     if (cursor) {
       params.beforeAt = cursor.at
       params.beforeId = cursor.id
     }
     return params
+  }, [statusFilter, selectedAccountId, unansweredOnly])
+
+  /** ピン留めしたトークを取り直す(同じ絞り込み・公式アカウントで)。「未返信だけ」のときは、ピン留めを分けない */
+  const loadPinnedSeq = useRef(0)
+  const loadPinned = useCallback(async () => {
+    const mine = ++loadPinnedSeq.current
+    if (unansweredOnly) {
+      setPinnedChats([])
+      return
+    }
+    try {
+      const res = await api.chats.list({
+        pinned: 'only',
+        ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+        ...(selectedAccountId ? { accountId: selectedAccountId } : {}),
+      })
+      if (mine === loadPinnedSeq.current && res.success) setPinnedChats(res.data as unknown as Chat[])
+    } catch {
+      // ピン留めが取れなくても、ふつうの一覧は見られる
+    }
   }, [statusFilter, selectedAccountId, unansweredOnly])
 
   // 公式アカウントを切り替えた直後など、古い読み込みの結果(特に失敗)が、新しい結果のあとで届いて画面を上書きしないようにする
@@ -482,6 +514,7 @@ export default function ChatsPage() {
     const mine = ++loadChatsSeq.current
     setLoading(true)
     setError('')
+    void loadPinned()
     try {
       const chatRes = await api.chats.list(buildListParams(null))
       if (mine !== loadChatsSeq.current) return
@@ -498,7 +531,7 @@ export default function ChatsPage() {
     } finally {
       if (mine === loadChatsSeq.current) setLoading(false)
     }
-  }, [buildListParams, unansweredOnly])
+  }, [buildListParams, unansweredOnly, loadPinned])
 
   // 「さらに読み込む」— サーバ由来カーソルの続きを取得して末尾に追加する。
   // 楽観更新との競合に備えて既存 id は除外し、重複表示を防ぐ。
@@ -619,6 +652,7 @@ export default function ChatsPage() {
     const listSeq = loadChatsSeq.current
     const openId = selectedChatIdRef.current
     try {
+      void loadPinned()
       const [listRes, detailRes] = await Promise.all([
         api.chats.list(buildListParams(null)).catch(() => null),
         openId ? api.chats.get(openId).catch(() => null) : Promise.resolve(null),
@@ -633,7 +667,7 @@ export default function ChatsPage() {
     } finally {
       silentRefreshing.current = false
     }
-  }, [buildListParams, applyDetailSilently])
+  }, [buildListParams, applyDetailSilently, loadPinned])
 
   /** 合図が来た1人のトークだけ取り直して、一覧の行と、開いているトークに反映する(軽い) */
   const refreshOneChat = useCallback(async (friendId: string) => {
@@ -652,6 +686,27 @@ export default function ChatsPage() {
         else if (last.messageType === 'form_answer') {
           try { lastContent = String((JSON.parse(last.content) as { title?: string }).title ?? '').slice(0, 200) || null } catch { lastContent = null }
         } else lastContent = null
+      }
+      // ピン留めの出入り(別のスタッフが留めた・外した)は、ピン留めの一覧と、ふつうの一覧の両方を取り直す
+      const wasPinned = pinnedChatsRef.current.some((c) => c.friendId === d.friendId)
+      if (d.pinned !== undefined && d.pinned !== wasPinned) {
+        void loadPinned()
+        fullRefreshCoalescer.current?.push('all')
+        return
+      }
+      if (wasPinned) {
+        setPinnedChats((prev) => prev.map((c) => c.friendId === d.friendId ? {
+          ...c,
+          friendName: d.friendName,
+          friendPictureUrl: d.friendPictureUrl,
+          status: d.status,
+          notes: d.notes ?? null,
+          lastMessageAt: last?.createdAt ?? d.lastMessageAt ?? c.lastMessageAt,
+          lastMessageContent: lastContent,
+          lastMessageDirection: last?.direction ?? d.lastMessageDirection ?? null,
+          lastMessageType: lastType,
+        } : c))
+        return
       }
       setChats((prev) => {
         const existing = prev.find((c) => c.friendId === d.friendId)
@@ -675,7 +730,35 @@ export default function ChatsPage() {
     } catch {
       /* 取れなければ、次の合図・つなぎ直しで取り直す */
     }
-  }, [applyDetailSilently])
+  }, [applyDetailSilently, loadPinned])
+
+  const isChatPinned = (c: { friendId?: string; id: string; pinned?: boolean }) =>
+    pinnedChats.some((p) => p.friendId === (c.friendId ?? c.id)) || (pinnedChats.length === 0 && c.pinned === true)
+
+  /** ピン留め・解除。先に画面へ反映し、失敗したら取り直す */
+  const togglePin = async (chat: { friendId?: string; id: string; pinned?: boolean }) => {
+    const friendId = chat.friendId ?? chat.id
+    const pinnedNow = pinnedChats.some((p) => p.friendId === friendId)
+    const row = pinnedNow ? pinnedChats.find((p) => p.friendId === friendId) : chats.find((c) => c.friendId === friendId)
+    if (row) {
+      if (pinnedNow) {
+        setPinnedChats((prev) => prev.filter((p) => p.friendId !== friendId))
+        setChats((prev) => upsertChatRow(prev, { ...row, pinned: false }))
+      } else {
+        setChats((prev) => prev.filter((c) => c.friendId !== friendId))
+        setPinnedChats((prev) => [{ ...row, pinned: true }, ...prev.filter((p) => p.friendId !== friendId)])
+      }
+    }
+    setChatDetail((prev) => (prev && (prev.friendId === friendId || prev.id === friendId) ? { ...prev, pinned: !pinnedNow } : prev))
+    try {
+      const res = await api.chats.pin(chat.id, !pinnedNow)
+      if (!res.success) throw new Error('pin')
+      if (!row) void loadChats()
+    } catch {
+      setError('ピン留めを変更できませんでした。もう一度お試しください。')
+      void loadChats()
+    }
+  }
 
   const eventCoalescer = useRef<ReturnType<typeof createCoalescer> | null>(null)
   useEffect(() => {
@@ -1231,7 +1314,7 @@ ${t.messageContent}` : t.messageContent))
               </div>
             ) : (
               <>
-                {chats.map((chat) => {
+                {[...pinnedChats.map((c) => ({ ...c, pinned: true })), ...chats].map((chat) => {
                   const isSelected = selectedChatId === chat.id
                   // 「真の自発（要対応）」= chat.status='unread'。webhook 側で auto_reply に
                   // マッチしなかった incoming のみ unread に設定される。auto_reply trigger
@@ -1256,8 +1339,8 @@ ${t.messageContent}` : t.messageContent))
                     <button
                       key={chat.id}
                       onClick={() => { setSelectedFriendId(null); handleSelectChat(chat.id); }}
-                      className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
-                        isSelected && !selectedFriendId ? 'bg-green-50' : 'hover:bg-gray-50'
+                      className={`group w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
+                        isSelected && !selectedFriendId ? 'bg-green-50' : chat.pinned ? 'bg-gray-50 hover:bg-gray-100' : 'hover:bg-gray-50'
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -1270,7 +1353,20 @@ ${t.messageContent}` : t.messageContent))
                               )}
                               <p className="text-sm font-medium text-gray-900 truncate">{chat.friendName}</p>
                             </div>
-                            <span className="text-[10px] text-gray-400 flex-shrink-0">{formatDatetime(chat.lastMessageAt)}</span>
+                            <span className="flex flex-shrink-0 items-center gap-1.5">
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                aria-label={chat.pinned ? 'ピン留めを外す' : 'ピン留めする'}
+                                title={chat.pinned ? 'ピン留めを外す' : 'ピン留めする'}
+                                onClick={(e) => { e.stopPropagation(); void togglePin(chat) }}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void togglePin(chat) } }}
+                                className={`rounded p-0.5 transition-opacity ${chat.pinned ? 'text-gray-600' : 'text-gray-400 opacity-0 hover:text-gray-700 group-hover:opacity-100 focus:opacity-100'}`}
+                              >
+                                <PushPinIcon size={14} weight={chat.pinned ? 'fill' : 'regular'} />
+                              </span>
+                              <span className="text-[10px] text-gray-400">{formatDatetime(chat.lastMessageAt)}</span>
+                            </span>
                           </div>
                           <p
                             className={`text-xs mt-0.5 truncate ${
@@ -1359,6 +1455,15 @@ ${t.messageContent}` : t.messageContent))
                         {chatDetail.friendName}
                       </Link>
                       <NameEditPencil onClick={() => void openHeaderNameEdit(chatDetail.friendId ?? chatDetail.id)} />
+                      <button
+                        type="button"
+                        aria-label={isChatPinned(chatDetail) ? 'ピン留めを外す' : 'ピン留めする'}
+                        title={isChatPinned(chatDetail) ? 'ピン留めを外す' : 'ピン留めする'}
+                        onClick={() => void togglePin(chatDetail)}
+                        className={`rounded p-1 hover:bg-gray-100 ${isChatPinned(chatDetail) ? 'text-gray-700' : 'text-gray-400'}`}
+                      >
+                        <PushPinIcon size={16} weight={isChatPinned(chatDetail) ? 'fill' : 'regular'} />
+                      </button>
                     </div>
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-1.5">

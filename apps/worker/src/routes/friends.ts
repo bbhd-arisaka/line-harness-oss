@@ -516,10 +516,17 @@ friends.get('/api/friends/:id', async (c) => {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
 
+    // 流入経路(この友だちの ref_code に当たる、流入経路分析の流入経路)
+    const refCode = (friend as unknown as Record<string, unknown>).ref_code as string | null;
+    const route = refCode
+      ? await db.prepare('SELECT id, name FROM entry_routes WHERE ref_code = ? LIMIT 1').bind(refCode).first<{ id: string; name: string }>()
+      : null;
+
     return c.json({
       success: true,
       data: {
         ...serializeFriend(friend),
+        inflowRoute: route ? { id: route.id, name: route.name } : null,
         tags: tags.map(serializeTag),
         formSubmissions: formSubmissions.map((submission) => ({
           id: submission.id,
@@ -681,6 +688,54 @@ friends.put('/api/friends/:id/profile', async (c) => {
     });
   } catch (err) {
     console.error('PUT /api/friends/:id/profile error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// PUT /api/friends/:id/inflow-route - 流入経路を、つける・外す(routeId=null で外す)。
+// 友だちの流入経路(ref_code)を直接書き換える。流入経路は、その友だちと同じ公式アカウントのものだけ
+friends.put('/api/friends/:id/inflow-route', async (c) => {
+  try {
+    const friendId = c.req.param('id');
+    const db = c.env.DB;
+    const friend = await getFriendById(db, friendId);
+    if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
+    const body = await c.req.json<{ routeId?: string | null }>().catch(() => ({}) as { routeId?: string | null });
+    const accountId = (friend as unknown as Record<string, unknown>).line_account_id as string | null;
+    const before = (friend as unknown as Record<string, unknown>).ref_code as string | null;
+
+    let refCode: string | null = null;
+    let routeName: string | null = null;
+    if (body.routeId) {
+      const route = await db
+        .prepare('SELECT id, name, ref_code, line_account_id FROM entry_routes WHERE id = ?')
+        .bind(body.routeId)
+        .first<{ id: string; name: string; ref_code: string; line_account_id: string | null }>();
+      if (!route) return c.json({ success: false, error: '流入経路が見つかりません' }, 404);
+      if (route.line_account_id && accountId && route.line_account_id !== accountId) {
+        return c.json({ success: false, error: 'この友だちの公式アカウントの流入経路を選んでください' }, 400);
+      }
+      refCode = route.ref_code;
+      routeName = route.name;
+    }
+    if (refCode !== before) {
+      await db.prepare('UPDATE friends SET ref_code = ?, updated_at = ? WHERE id = ?').bind(refCode, jstNow(), friendId).run();
+      try {
+        const { recordFriendEvent } = await import('@line-crm/db');
+        await recordFriendEvent(db, {
+          friendId,
+          lineAccountId: accountId,
+          type: 'profile_changed',
+          text: routeName ? '流入経路を設定しました' : '流入経路を外しました',
+          actor: c.get('staff')?.name ?? null,
+        });
+      } catch {
+        // 記録できなくても、変更そのものは有効
+      }
+    }
+    return c.json({ success: true, data: { refCode, inflowRoute: body.routeId && routeName ? { id: body.routeId, name: routeName } : null } });
+  } catch (err) {
+    console.error('PUT /api/friends/:id/inflow-route error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

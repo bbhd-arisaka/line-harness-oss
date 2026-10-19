@@ -1200,8 +1200,9 @@ export const api = {
       ),
   },
   chats: {
-    list: (params?: { status?: string; operatorId?: string; accountId?: string; unansweredOnly?: boolean; limit?: number; beforeAt?: string; beforeId?: string }) => {
+    list: (params?: { status?: string; operatorId?: string; accountId?: string; unansweredOnly?: boolean; limit?: number; beforeAt?: string; beforeId?: string; pinned?: 'only' | 'exclude' }) => {
       const query: Record<string, string> = {}
+      if (params?.pinned) query.pinned = params.pinned
       if (params?.status) query.status = params.status
       if (params?.operatorId) query.operatorId = params.operatorId
       if (params?.accountId) query.lineAccountId = params.accountId
@@ -1228,6 +1229,9 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
+    /** トークのピン留め(一覧の上に出す)・解除 */
+    pin: (id: string, pinned: boolean) =>
+      fetchApi<ApiResponse<{ pinned: boolean }>>(`/api/chats/${id}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
     send: (id: string, data: { content: string; messageType?: string }) =>
       fetchApi<ApiResponse<unknown>>(`/api/chats/${id}/send`, {
         method: 'POST',

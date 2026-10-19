@@ -215,6 +215,8 @@ chats.get('/api/chats', async (c) => {
     const status = c.req.query('status') ?? undefined;
     const operatorId = c.req.query('operatorId') ?? undefined;
     const lineAccountId = c.req.query('lineAccountId') ?? undefined;
+    // ピン留め: only = ピン留めしたものだけ(新しく留めた順)、exclude = ピン留め以外(ふつうの一覧。上にピン留めを別に出す画面用)。指定なし = すべて
+    const pinnedMode = c.req.query('pinned') === 'only' ? 'only' : c.req.query('pinned') === 'exclude' ? 'exclude' : null;
     const unansweredOnly =
       c.req.query('unansweredOnly') === 'true' || c.req.query('unansweredOnly') === '1';
 
@@ -276,6 +278,8 @@ chats.get('/api/chats', async (c) => {
       conditions.push('c.operator_id = ?');
       conditionBindings.push(operatorId);
     }
+    if (pinnedMode === 'only') conditions.push('c.pinned_at IS NOT NULL');
+    if (pinnedMode === 'exclude') conditions.push('c.pinned_at IS NULL');
     if (lineAccountId) {
       conditions.push('f.line_account_id = ?');
       conditionBindings.push(lineAccountId);
@@ -288,7 +292,7 @@ chats.get('/api/chats', async (c) => {
     }
     // status / operator filter は chats を参照するので、その時だけ page CTE 側でも
     // chats を lookup する (無条件時は 全friend × chats lookup を省く)。
-    const pageNeedsChats = Boolean(status || operatorId);
+    const pageNeedsChats = Boolean(status || operatorId || pinnedMode);
 
     // preview は direction/source を問わず **実際の最新メッセージ** を表示する。
     // incoming を常に優先すると、プロキシ経由の manual/external 送信が messages_log に
@@ -302,6 +306,76 @@ chats.get('/api/chats', async (c) => {
     // 値を返す」という SQLite の documented 挙動で argmax として使っている。
     // 集約は page 確定後の friend に絞って実行する (全 friend 分の content を
     // materialize しない)。last_any は並び順決定専用のスリムな全走査 1 回のみ。
+    // ピン留めだけの一覧は、全員ぶんの履歴を読まず(D1 の読み取り行数が多くなる)、留めたトークの友だちだけで作る。
+    // 一覧の行の形・並び(新しく留めたのが上)は、ふつうの一覧と同じ
+    if (pinnedMode === 'only' && !unansweredOnly) {
+      const pinnedSql = `
+        WITH pg AS (
+          SELECT f.id AS friend_id
+          FROM friends f
+          INNER JOIN chats c ON c.id = (SELECT id FROM chats WHERE friend_id = f.id ORDER BY created_at DESC LIMIT 1)
+          WHERE c.pinned_at IS NOT NULL
+          ${conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : ''}
+          LIMIT 200
+        ),
+        any_agg AS (
+          SELECT friend_id,
+            CASE WHEN message_type = 'text' THEN SUBSTR(content, 1, 200)
+                 WHEN message_type = 'form_answer' THEN SUBSTR(json_extract(content, '$.title'), 1, 200)
+                 ELSE NULL END AS content,
+            direction,
+            CASE WHEN message_type = 'form_answer' THEN 'text' ELSE message_type END AS message_type,
+            MAX(created_at) AS created_at
+          FROM messages_log
+          WHERE (delivery_type IS NULL OR delivery_type != 'test')
+            AND ${NOT_BROADCAST_LOG}
+            AND friend_id IN (SELECT friend_id FROM pg)
+          GROUP BY friend_id
+        ),
+        form_agg AS (
+          SELECT friend_id, text AS form_text, MAX(created_at) AS form_at
+          FROM friend_events
+          WHERE event_type = 'form_submitted' AND friend_id IN (SELECT friend_id FROM pg)
+          GROUP BY friend_id
+        )
+        SELECT
+          f.id AS id, f.id AS friend_id, f.display_name, f.real_name, f.system_display_name, f.picture_url, f.line_user_id, f.line_account_id,
+          c.operator_id, COALESCE(c.status, 'resolved') AS status, c.notes, c.pinned_at,
+          CASE WHEN fa.form_at > COALESCE(rm.created_at, '') THEN fa.form_at ELSE COALESCE(rm.created_at, c.last_message_at, c.created_at) END AS last_message_at,
+          CASE WHEN fa.form_at > COALESCE(rm.created_at, '') THEN fa.form_text ELSE rm.content END AS last_message_content,
+          CASE WHEN fa.form_at > COALESCE(rm.created_at, '') THEN 'incoming' ELSE rm.direction END AS last_message_direction,
+          CASE WHEN fa.form_at > COALESCE(rm.created_at, '') THEN 'text' ELSE rm.message_type END AS last_message_type,
+          c.created_at AS created_at, c.updated_at AS updated_at
+        FROM pg
+        INNER JOIN friends f ON f.id = pg.friend_id
+        INNER JOIN chats c ON c.id = (SELECT id FROM chats WHERE friend_id = f.id ORDER BY created_at DESC LIMIT 1)
+        LEFT JOIN any_agg rm ON rm.friend_id = f.id
+        LEFT JOIN form_agg fa ON fa.friend_id = f.id
+        ORDER BY c.pinned_at DESC
+      `;
+      const pinnedRes = await c.env.DB.prepare(pinnedSql).bind(...conditionBindings).all();
+      return c.json({
+        success: true,
+        data: pinnedRes.results.map((ch: Record<string, unknown>) => ({
+          id: ch.id as string,
+          friendId: ch.friend_id,
+          friendName: (ch.real_name as string | null)?.trim() || (ch.system_display_name as string | null)?.trim() || (ch.display_name as string | null) || '名前なし',
+          friendPictureUrl: ch.picture_url || null,
+          operatorId: ch.operator_id,
+          status: ch.status,
+          notes: ch.notes,
+          pinned: true,
+          pinnedAt: ch.pinned_at ?? null,
+          lastMessageAt: ch.last_message_at,
+          lastMessageContent: ch.last_message_content || null,
+          lastMessageDirection: ch.last_message_direction || null,
+          lastMessageType: ch.last_message_type || null,
+          createdAt: ch.created_at,
+          updatedAt: ch.updated_at,
+        })),
+      });
+    }
+
     const sql = `
       WITH last_any AS MATERIALIZED (
         SELECT friend_id, MAX(created_at) AS last_message_at
@@ -371,6 +445,7 @@ chats.get('/api/chats', async (c) => {
         c.operator_id,
         COALESCE(c.status, 'resolved') AS status,
         c.notes,
+        c.pinned_at,
         CASE WHEN fa.form_at > COALESCE(rm.preview_at, '') THEN fa.form_at ELSE COALESCE(rm.preview_at, d.last_message_at) END AS last_message_at,
         CASE WHEN fa.form_at > COALESCE(rm.preview_at, '') THEN fa.form_text ELSE rm.content END AS last_message_content,
         CASE WHEN fa.form_at > COALESCE(rm.preview_at, '') THEN 'incoming' ELSE rm.direction END AS last_message_direction,
@@ -405,6 +480,8 @@ chats.get('/api/chats', async (c) => {
       operatorId: ch.operator_id,
       status: ch.status,
       notes: ch.notes,
+      pinned: !!ch.pinned_at,
+      pinnedAt: (ch.pinned_at as string | null) ?? null,
       lastMessageAt: ch.last_message_at,
       lastMessageContent: ch.last_message_content || null,
       lastMessageDirection: ch.last_message_direction || null,
@@ -508,6 +585,7 @@ chats.get('/api/chats/:id', async (c) => {
     const operatorId = chatRow?.operator_id ?? null;
     const status = chatRow?.status ?? 'resolved';
     const notes = chatRow?.notes ?? null;
+    const pinnedAt = (chatRow as { pinned_at?: string | null } | null | undefined)?.pinned_at ?? null;
     const lastMessageAt = chatRow?.last_message_at ?? null;
     const createdAt = chatRow?.created_at ?? null;
 
@@ -540,6 +618,7 @@ chats.get('/api/chats/:id', async (c) => {
         friendId: resolvedFriendId,
         friendName: friend?.real_name?.trim() || friend?.system_display_name?.trim() || friend?.display_name || '名前なし',
         friendPictureUrl: friend?.picture_url || null,
+        pinned: !!pinnedAt,
         /** false = ブロックされている(または友だちでない)。送信できない */
         isFollowing: friend ? friend.is_following !== 0 : true,
         operatorId,
@@ -654,6 +733,21 @@ chats.put('/api/chats/:id', async (c) => {
 });
 
 // オペレーター入力中のローディング表示を開始
+// トークのピン留め(一覧の上に出す)。スタッフ全員で共通。:id は、チャットID または 友だちID
+chats.put('/api/chats/:id/pin', async (c) => {
+  try {
+    const chat = await resolveOrCreateChat(c.env.DB, c.req.param('id'));
+    if (!chat) return c.json({ success: false, error: 'Chat not found' }, 404);
+    const body = await c.req.json<{ pinned?: boolean }>().catch(() => ({}) as { pinned?: boolean });
+    const pinned = body.pinned !== false;
+    await c.env.DB.prepare('UPDATE chats SET pinned_at = ? WHERE id = ?').bind(pinned ? jstNow() : null, chat.id).run();
+    return c.json({ success: true, data: { pinned } });
+  } catch (err) {
+    console.error('PUT /api/chats/:id/pin error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 chats.post('/api/chats/:id/loading', async (c) => {
   try {
     const chatId = c.req.param('id');

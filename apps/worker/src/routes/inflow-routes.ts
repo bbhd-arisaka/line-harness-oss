@@ -22,6 +22,7 @@ import {
 import type { EntryRoute } from '@line-crm/db';
 import type { Env } from '../index.js';
 import { isReservedRef } from '../lib/reserved-refs.js';
+import { parseLandingStyle } from '../services/inflow-landing-style.js';
 import { generateRefCode, parseInflowRouteInput, refCodeFromSearch, MAX_NAME } from '../services/inflow-route-input.js';
 
 /**
@@ -86,6 +87,7 @@ function serialize(row: EntryRoute, origin: string, channelId: string | null, ex
     geoLat: row.geo_lat,
     geoLng: row.geo_lng,
     geoRadius: row.geo_radius,
+    landingStyle: parseLandingStyle(row.landing_style),
     isActive: row.is_active === 1,
     url: routeUrl(origin, row, channelId),
     createdAt: row.created_at,
@@ -322,6 +324,7 @@ inflowRoutes.post('/api/inflow/routes/:id/copy', async (c) => {
       geoLat: r.row.geo_lat,
       geoLng: r.row.geo_lng,
       geoRadius: r.row.geo_radius,
+      landingStyle: r.row.landing_style,
     });
     return c.json({ success: true, data: serialize(row, workerOrigin(c), r.account.channel_id, { people: 0, times: 0 }) }, 201);
   } catch (err) {

@@ -1,4 +1,5 @@
 import { FriendAddSettingError, parseFriendAddActions } from '@line-crm/db';
+import { parseLandingStyleInput } from './inflow-landing-style.js';
 
 /**
  * 流入経路(Lステップの「流入経路分析」)の、作成・更新の入力の検査。画面に依存しない純粋な関数。
@@ -24,6 +25,8 @@ export interface ParsedInflowRoute {
   geoLat: number | null;
   geoLng: number | null;
   geoRadius: number | null;
+  /** 友だち追加ページの文言・配色(JSON文字列。既定のままなら null) */
+  landingStyle: string | null;
 }
 
 export type ParseResult = { ok: true; value: ParsedInflowRoute } | { ok: false; error: string };
@@ -126,6 +129,9 @@ export function parseInflowRouteInput(body: unknown, opts: { isCreate: boolean }
     if (!Number.isInteger(geoRadius) || geoRadius! < 5 || geoRadius! > 1000) return { ok: false, error: '有効範囲(半径)は、5m〜1000mの整数で入力してください' };
   }
 
+  const landing = parseLandingStyleInput(b.landingStyle);
+  if (!landing.ok) return { ok: false, error: landing.error };
+
   return {
     ok: true,
     value: {
@@ -146,6 +152,7 @@ export function parseInflowRouteInput(body: unknown, opts: { isCreate: boolean }
       geoLat,
       geoLng,
       geoRadius,
+      landingStyle: landing.json,
     },
   };
 }

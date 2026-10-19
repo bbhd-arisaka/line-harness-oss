@@ -31,6 +31,8 @@ export interface EntryRoute {
   geo_lat: number | null;
   geo_lng: number | null;
   geo_radius: number | null;
+  /** 友だち追加ページの文言・配色(JSON)。NULL = 既定 */
+  landing_style: string | null;
 }
 
 export interface RefTracking {

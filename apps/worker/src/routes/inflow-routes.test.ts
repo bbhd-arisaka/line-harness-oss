@@ -135,6 +135,17 @@ describe('流入経路分析 API(Lステップと同じ仕様)', () => {
     expect(c.refCode).not.toBe(a.refCode);
     expect(c).toMatchObject({ name: 'HPB経由のコピー', qrText: 'ABC', geoLat: 35, geoRadius: 100, htmlHead: '<script></script>', actionMode: 'always', people: 0, times: 0 });
   });
+  it('友だち追加ページの文言・配色: 保存・更新・コピーで引き継ぎ・不正な色は400', async () => {
+    const a = await create({ landingStyle: { title: 'ご予約はこちら', colors: { button: '#FF6600' } } });
+    expect(a.landingStyle).toEqual({ title: 'ご予約はこちら', colors: { button: '#ff6600' } });
+    expect((await call('POST', '/api/inflow/routes', { lineAccountId: 'a1', name: 'x', landingStyle: { colors: { button: 'red' } } })).status).toBe(400);
+    const up = await call('PUT', `/api/inflow/routes/${a.id}`, { name: 'HPB経由', landingStyle: { buttonText: '開く' } });
+    expect(up.json.data.landingStyle).toEqual({ buttonText: '開く' });
+    const c = (await call('POST', `/api/inflow/routes/${a.id}/copy`)).json.data;
+    expect(c.landingStyle).toEqual({ buttonText: '開く' });
+    const none = await call('PUT', `/api/inflow/routes/${a.id}`, { name: 'HPB経由' });
+    expect(none.json.data.landingStyle).toEqual({});
+  });
   it('削除: 経路は消えるが、集計の記録は残る(経路との結びつきだけ外れる)', async () => {
     const a = await create();
     fixture.sqlite.prepare("INSERT INTO ref_tracking(id,ref_code,friend_id,entry_route_id,created_at) VALUES('h1','x',NULL,?,'2026-10-18T10:00:00.000')").run(a.id);

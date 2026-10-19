@@ -45,6 +45,8 @@ export interface InflowRouteInput {
   geoLat?: number | null;
   geoLng?: number | null;
   geoRadius?: number | null;
+  /** 友だち追加ページの文言・配色(JSON文字列) */
+  landingStyle?: string | null;
 }
 
 // ── フォルダ ──
@@ -211,8 +213,8 @@ export async function createInflowRoute(db: D1Database, input: InflowRouteInput)
       `INSERT INTO entry_routes
          (id, ref_code, name, tag_id, scenario_id, redirect_url, pool_id, intro_template_id, run_account_friend_add_scenarios, is_active,
           line_account_id, folder_id, display_order, qr_text, valid_from, valid_to, out_of_period_message, actions, ignore_friend_add_settings,
-          action_mode, ad_import_mode, ad_param_map, html_head, html_body, geo_lat, geo_lng, geo_radius, created_at, updated_at)
-       VALUES (?, ?, ?, NULL, ?, NULL, NULL, NULL, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          action_mode, ad_import_mode, ad_param_map, html_head, html_body, geo_lat, geo_lng, geo_radius, landing_style, created_at, updated_at)
+       VALUES (?, ?, ?, NULL, ?, NULL, NULL, NULL, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -236,6 +238,7 @@ export async function createInflowRoute(db: D1Database, input: InflowRouteInput)
       input.geoLat ?? null,
       input.geoLng ?? null,
       input.geoRadius ?? null,
+      input.landingStyle ?? null,
       now,
       now,
     )
@@ -249,7 +252,7 @@ export async function updateInflowRoute(db: D1Database, id: string, input: Omit<
     .prepare(
       `UPDATE entry_routes SET
          name = ?, folder_id = ?, qr_text = ?, valid_from = ?, valid_to = ?, out_of_period_message = ?, actions = ?, scenario_id = ?,
-         ignore_friend_add_settings = ?, ad_param_map = ?, html_head = ?, html_body = ?, geo_lat = ?, geo_lng = ?, geo_radius = ?, updated_at = ?
+         ignore_friend_add_settings = ?, ad_param_map = ?, html_head = ?, html_body = ?, geo_lat = ?, geo_lng = ?, geo_radius = ?, landing_style = ?, updated_at = ?
        WHERE id = ?`,
     )
     .bind(
@@ -268,6 +271,7 @@ export async function updateInflowRoute(db: D1Database, id: string, input: Omit<
       input.geoLat ?? null,
       input.geoLng ?? null,
       input.geoRadius ?? null,
+      input.landingStyle ?? null,
       jstNow(),
       id,
     )

@@ -78,7 +78,8 @@ import { reserve } from './routes/reserve.js';
 import { reservePublic } from './routes/reserve-public.js';
 import { bindNotificationEnv } from './services/notifications.js';
 import { checkPeriod, distanceMeters } from './services/inflow-route-input.js';
-import { adInsertScript, collectInflowQuery, encodeInflowQuery, geoRequestPage, injectHtml, outOfAreaPage, outOfPeriodPage } from './services/inflow-route-landing.js';
+import { adInsertScript, collectInflowQuery, escapeHtml, encodeInflowQuery, geoRequestPage, injectHtml, outOfAreaPage, outOfPeriodPage } from './services/inflow-route-landing.js';
+import { parseLandingStyle, resolveLanding } from './services/inflow-landing-style.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import { defaultCachePolicyMiddleware } from './middleware/cache-policy.js';
 import booking from './routes/booking.js';
@@ -394,6 +395,9 @@ app.get('/r/:ref', async (c) => {
     }
   }
   const respondHtml = (html: string) => c.html(inflow ? injectHtml(html, inflow) : html);
+  // 流入経路ごとの、文言・配色(設定が無ければ、これまでどおり)
+  const L = resolveLanding(inflow ? parseLandingStyle(inflow.landing_style) : null);
+  const lc = L.colors;
 
   // 1. entry_route lookup. getTrafficPoolById (unlike getTrafficPoolBySlug)
   // does not filter on is_active, so we ignore disabled pools explicitly to
@@ -542,8 +546,8 @@ app.get('/r/:ref', async (c) => {
     const buttonHref = isAndroid ? androidIntent : liffTarget;
     // iOS shows long-press hint; Android relies on intent URL alone (long-press
     // on Android opens "Open with…" which is noisier than the intent route).
-    const longPressHint = isIOS
-      ? '<p class="hint">※開かない場合はボタンを<strong>長押し</strong>して「LINEで開く」を選択</p>'
+    const longPressHint = isIOS && L.showHint
+      ? `<p class="hint">${L.hintText === null ? `※開かない場合はボタンを<strong>長押し</strong>して「${escapeHtml(L.buttonText)}」を選択` : escapeHtml(L.hintText)}</p>`
       : '';
 
     return respondHtml(`<!DOCTYPE html>
@@ -554,28 +558,28 @@ app.get('/r/:ref', async (c) => {
 <title>LINE で開く</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Hiragino Sans','Helvetica Neue',system-ui,sans-serif;background:#f5f7f5;display:flex;justify-content:center;align-items:center;min-height:100vh}
-.card{background:#fff;border-radius:20px;box-shadow:0 2px 20px rgba(0,0,0,0.06);text-align:center;max-width:360px;width:90%;padding:40px 28px 32px;border:1px solid rgba(0,0,0,0.04)}
+body{font-family:'Hiragino Sans','Helvetica Neue',system-ui,sans-serif;background:${lc.pageBg};display:flex;justify-content:center;align-items:center;min-height:100vh}
+.card{background:${lc.cardBg};border-radius:20px;box-shadow:0 2px 20px rgba(0,0,0,0.06);text-align:center;max-width:360px;width:90%;padding:40px 28px 32px;border:1px solid rgba(0,0,0,0.04)}
 .line-icon{width:48px;height:48px;margin:0 auto 20px}
 .line-icon svg{width:48px;height:48px}
-.msg{font-size:15px;color:#444;font-weight:500;margin-bottom:28px;line-height:1.6}
-.btn{display:block;width:100%;padding:16px;border:none;border-radius:12px;font-size:16px;font-weight:700;text-decoration:none;text-align:center;color:#fff;background:#06C755;box-shadow:0 2px 12px rgba(6,199,85,0.2);transition:all .15s}
+.msg{font-size:15px;color:${lc.text};font-weight:500;margin-bottom:28px;line-height:1.6}
+.btn{display:block;width:100%;padding:16px;border:none;border-radius:12px;font-size:16px;font-weight:700;text-decoration:none;text-align:center;color:${lc.buttonText};background:${lc.button};box-shadow:0 2px 12px ${lc.shadow};transition:all .15s}
 .btn:active{transform:scale(0.98);opacity:.9}
-.hint{font-size:11px;color:#888;margin-top:10px;line-height:1.6}
-.hint strong{color:#06C755;font-weight:700}
-.help{font-size:12px;color:#999;margin-top:18px;line-height:1.5}
-.help a{color:#999;text-decoration:underline}
+.hint{font-size:11px;color:${lc.muted};margin-top:10px;line-height:1.6}
+.hint strong{color:${lc.button};font-weight:700}
+.help{font-size:12px;color:${lc.muted};margin-top:18px;line-height:1.5}
+.help a{color:${lc.muted};text-decoration:underline}
 </style>
 </head>
 <body>
 <div class="card">
 <div class="line-icon">
-<svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="#06C755"/><path d="M24 12C17.37 12 12 16.58 12 22.2c0 3.54 2.35 6.65 5.86 8.47-.2.74-.76 2.75-.87 3.17-.14.55.2.54.42.39.18-.12 2.84-1.88 4-2.65.84.13 1.7.22 2.59.22 6.63 0 12-4.58 12-10.2S30.63 12 24 12z" fill="#fff"/></svg>
+<svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="${lc.button}"/><path d="M24 12C17.37 12 12 16.58 12 22.2c0 3.54 2.35 6.65 5.86 8.47-.2.74-.76 2.75-.87 3.17-.14.55.2.54.42.39.18-.12 2.84-1.88 4-2.65.84.13 1.7.22 2.59.22 6.63 0 12-4.58 12-10.2S30.63 12 24 12z" fill="${lc.buttonText}"/></svg>
 </div>
-<p class="msg">友達追加して始める</p>
-<a href="${buttonHref}" class="btn">LINEで開く</a>
+<p class="msg">${escapeHtml(L.title)}</p>
+<a href="${buttonHref}" class="btn">${escapeHtml(L.buttonText)}</a>
 ${longPressHint}
-<p class="help">うまく開けない方は <a href="${helpUrl}">こちら</a></p>
+${L.showHelp ? `<p class="help">${escapeHtml(L.helpText)} <a href="${helpUrl}">${escapeHtml(L.helpLinkText)}</a></p>` : ''}
 </div>
 </body>
 </html>`);
@@ -590,21 +594,21 @@ ${longPressHint}
 <title>LINE で開く</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Hiragino Sans','Helvetica Neue',system-ui,sans-serif;background:#f5f7f5;display:flex;justify-content:center;align-items:center;min-height:100vh}
-.card{background:#fff;border-radius:20px;box-shadow:0 2px 20px rgba(0,0,0,0.06);text-align:center;max-width:480px;width:90%;padding:48px;border:1px solid rgba(0,0,0,0.04)}
+body{font-family:'Hiragino Sans','Helvetica Neue',system-ui,sans-serif;background:${lc.pageBg};display:flex;justify-content:center;align-items:center;min-height:100vh}
+.card{background:${lc.cardBg};border-radius:20px;box-shadow:0 2px 20px rgba(0,0,0,0.06);text-align:center;max-width:480px;width:90%;padding:48px;border:1px solid rgba(0,0,0,0.04)}
 .line-icon{width:48px;height:48px;margin:0 auto 20px}
 .line-icon svg{width:48px;height:48px}
-.msg{font-size:15px;color:#444;font-weight:500;margin-bottom:32px;line-height:1.6}
+.msg{font-size:15px;color:${lc.text};font-weight:500;margin-bottom:32px;line-height:1.6}
 .qr{background:#f9f9f9;border-radius:16px;padding:24px;display:inline-block;margin-bottom:24px;border:1px solid rgba(0,0,0,0.04)}
 .qr img{display:block;width:240px;height:240px}
-.hint{font-size:13px;color:#999;line-height:1.6}
-.footer{font-size:11px;color:#bbb;margin-top:24px;line-height:1.5}
+.hint{font-size:13px;color:${lc.muted};line-height:1.6}
+.footer{font-size:11px;color:${lc.mutedSoft};margin-top:24px;line-height:1.5}
 </style>
 </head>
 <body>
 <div class="card">
 <div class="line-icon">
-<svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="#06C755"/><path d="M24 12C17.37 12 12 16.58 12 22.2c0 3.54 2.35 6.65 5.86 8.47-.2.74-.76 2.75-.87 3.17-.14.55.2.54.42.39.18-.12 2.84-1.88 4-2.65.84.13 1.7.22 2.59.22 6.63 0 12-4.58 12-10.2S30.63 12 24 12z" fill="#fff"/></svg>
+<svg viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="${lc.button}"/><path d="M24 12C17.37 12 12 16.58 12 22.2c0 3.54 2.35 6.65 5.86 8.47-.2.74-.76 2.75-.87 3.17-.14.55.2.54.42.39.18-.12 2.84-1.88 4-2.65.84.13 1.7.22 2.59.22 6.63 0 12-4.58 12-10.2S30.63 12 24 12z" fill="${lc.buttonText}"/></svg>
 </div>
 <p class="msg">スマートフォンで QR コードを読み取ってください</p>
 <div class="qr">

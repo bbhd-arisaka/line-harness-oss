@@ -118,6 +118,27 @@ describe('/r/:ref — 流入経路分析の流入経路', () => {
     expect(JSON.parse(decodeURIComponent(m![1]))).toEqual({ utm_source: 'hpb', campaign_id: 'C-1' });
     expect(html).not.toContain('zzz');
   });
+  it('文言・配色: 設定した見出し・ボタン・色が出る。注意書き・「こちら」は消せる。既定のままなら、これまでの見た目', async () => {
+    const style = JSON.stringify({ title: 'ご予約は友だち追加から', buttonText: 'LINEを開く', colors: { button: '#ff6600', pageBg: '#101010' }, showHelp: false, hintText: '開かないときは長押し' });
+    dbMocks.getEntryRouteByRefCode.mockResolvedValue(route({ landing_style: style }));
+    const html = await (await get(url)).text();
+    expect(html).toContain('ご予約は友だち追加から');
+    expect(html).toContain('LINEを開く');
+    expect(html).toContain('background:#ff6600');
+    expect(html).toContain('background:#101010');
+    expect(html).toContain('開かないときは長押し');
+    expect(html).not.toContain('うまく開けない方は');
+    expect(html).not.toContain('友達追加して始める');
+    // 文字は、HTMLとして解釈されない
+    dbMocks.getEntryRouteByRefCode.mockResolvedValue(route({ landing_style: JSON.stringify({ title: '<b>x</b>' }) }));
+    expect(await (await get(url)).text()).toContain('&lt;b&gt;x&lt;/b&gt;');
+    // 既定
+    dbMocks.getEntryRouteByRefCode.mockResolvedValue(route());
+    const d = await (await get(url)).text();
+    expect(d).toContain('友達追加して始める');
+    expect(d).toContain('background:#06c755');
+    expect(d).toContain('うまく開けない方は');
+  });
   it('旧来の流入経路(アクションが無い)は、有効期間などの新しい判定をしない', async () => {
     dbMocks.getEntryRouteByRefCode.mockResolvedValue(route({ actions: null, valid_to: '2020-01-01T00:00' }));
     expect(await (await get(url)).text()).toContain('liff.line.me/2008163446-AAAAAAAA');
