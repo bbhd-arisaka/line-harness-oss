@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { LightningIcon } from '@phosphor-icons/react'
+import { Button } from '@cloudflare/kumo/components/button'
+import { Dialog } from '@cloudflare/kumo/components/dialog'
+import { Input } from '@cloudflare/kumo/components/input'
 import Header from '@/components/layout/header'
 import ActionSettingsModal from '@/components/friend-add/action-settings-modal'
 import { useActionLookups } from '@/components/friend-add/use-action-lookups'
@@ -15,6 +18,7 @@ import type { FriendAddActionItem } from '@/lib/friend-add-actions'
 import type { InflowFolder, InflowRoute } from '@/lib/inflow-routes'
 
 const NONE = ''
+const NEW_FOLDER = '__new_folder__'
 const inputCls = 'h-10 w-full rounded border border-[#cacace] px-3 text-sm outline-none focus:border-[#069e04] disabled:bg-[#f7f7f9] disabled:text-[#757578]'
 const labelCls = 'mb-1 flex items-center gap-2 text-xs font-bold'
 
@@ -77,6 +81,11 @@ export default function InflowRouteEditPage() {
   const [actionModal, setActionModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // フォルダを、その場で作る
+  const [folderDialog, setFolderDialog] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [folderError, setFolderError] = useState('')
 
   const lookups = useActionLookups(accountId)
   const isEdit = !!editId
@@ -180,6 +189,26 @@ export default function InflowRouteEditPage() {
     }
   }
 
+  const createFolder = async () => {
+    const name = newFolderName.trim()
+    if (!name || creatingFolder || !accountId) return
+    setCreatingFolder(true)
+    setFolderError('')
+    try {
+      const res = await api.inflow.createFolder(accountId, name)
+      if (res.success) {
+        setFolders((prev) => [...prev, { id: res.data.id, name: res.data.name, count: 0 }])
+        setFolderId(res.data.id)
+        setFolderDialog(false)
+        setNewFolderName('')
+      }
+    } catch (err) {
+      setFolderError(errorText(err, 'フォルダを作れませんでした'))
+    } finally {
+      setCreatingFolder(false)
+    }
+  }
+
   const title = isEdit ? '流入経路編集' : '流入経路登録'
 
   return (
@@ -202,7 +231,21 @@ export default function InflowRouteEditPage() {
             </div>
             <div className="w-[13rem]">
               <label className={labelCls}>フォルダ名</label>
-              <select value={folderId} onChange={(e) => setFolderId(e.target.value)} className={`${inputCls} bg-white`} aria-label="フォルダ名">
+              <select
+                value={folderId}
+                onChange={(e) => {
+                  if (e.target.value === NEW_FOLDER) {
+                    setNewFolderName('')
+                    setFolderError('')
+                    setFolderDialog(true)
+                    return
+                  }
+                  setFolderId(e.target.value)
+                }}
+                className={`${inputCls} bg-white`}
+                aria-label="フォルダ名"
+              >
+                <option value={NEW_FOLDER}>＋ 新しいフォルダ</option>
                 <option value="">未分類</option>
                 {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
@@ -376,6 +419,18 @@ export default function InflowRouteEditPage() {
           {error && <p className="text-sm text-[#e5451f]">{error}</p>}
         </div>
       )}
+
+      <Dialog.Root open={folderDialog} onOpenChange={(open) => { if (!open && !creatingFolder) setFolderDialog(false) }}>
+        <Dialog className="w-full max-w-sm p-5">
+          <Dialog.Title>新しいフォルダ</Dialog.Title>
+          <Input label="フォルダ名" autoFocus value={newFolderName} onValueChange={setNewFolderName} className="mt-4" />
+          {folderError ? <p className="mt-2 text-sm text-[#e5451f]">{folderError}</p> : null}
+          <div className="mt-5 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setFolderDialog(false)} disabled={creatingFolder}>キャンセル</Button>
+            <Button type="button" variant="primary" loading={creatingFolder} onClick={() => void createFolder()} disabled={!newFolderName.trim()}>作る</Button>
+          </div>
+        </Dialog>
+      </Dialog.Root>
 
       {actionModal ? (
         <ActionSettingsModal

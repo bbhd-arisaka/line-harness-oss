@@ -261,6 +261,8 @@ export function createApiClient(options: ApiClientOptions) {
       request<{ folders: InflowFolder[]; unfiledCount: number }>('GET', '/api/inflow/folders', { query: { lineAccountId: accountId } }),
     listInflowRoutes: (accountId: string) =>
       request<{ items: InflowRoute[]; total: number }>('GET', '/api/inflow/routes', { query: { lineAccountId: accountId, folder: 'all', pageSize: 100 } }),
+    createInflowFolder: (accountId: string, name: string) =>
+      request<{ id: string; name: string }>('POST', '/api/inflow/folders', { body: { lineAccountId: accountId, name } }),
     getInflowRoute: (id: string) => request<InflowRoute>('GET', `/api/inflow/routes/${encodeURIComponent(id)}`),
     createInflowRoute: (input: InflowRouteInput) => request<InflowRoute>('POST', '/api/inflow/routes', { body: input }),
     updateInflowRoute: (id: string, input: InflowRouteInput) => request<InflowRoute>('PUT', `/api/inflow/routes/${encodeURIComponent(id)}`, { body: input }),

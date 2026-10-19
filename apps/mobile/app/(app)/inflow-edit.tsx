@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/state/services';
@@ -25,6 +25,7 @@ import { setSelectedInflow } from '../../src/state/inflow-selection';
 import { MIN_TAP, useColors } from '../../src/theme/theme';
 
 const NONE = '__none__';
+const NEW_FOLDER = '__new_folder__';
 type Picker = 'folder' | 'scenario' | 'tag' | 'fromDate' | 'fromTime' | 'toDate' | 'toTime' | null;
 
 function Segmented<T extends string>({ value, options, disabled, onChange }: { value: T; options: Array<{ v: T; label: string }>; disabled?: boolean; onChange: (v: T) => void }) {
@@ -84,6 +85,11 @@ function InflowEditScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<Picker>(null);
+  // フォルダを、その場で作る
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -154,6 +160,24 @@ function InflowEditScreen() {
       setError(describeError(e, '保存できませんでした'));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function createFolder() {
+    const name = newFolderName.trim();
+    if (!name || creatingFolder) return;
+    setCreatingFolder(true);
+    setFolderError(null);
+    try {
+      const f = await api.createInflowFolder(accountId, name);
+      setFolders((prev) => [...prev, { id: f.id, name: f.name, count: 0 }]);
+      set({ folderId: f.id });
+      setNewFolderOpen(false);
+      setNewFolderName('');
+    } catch (e) {
+      setFolderError(describeError(e, 'フォルダを作れませんでした'));
+    } finally {
+      setCreatingFolder(false);
     }
   }
 
@@ -286,13 +310,44 @@ function InflowEditScreen() {
       <PickModal
         visible={picker === 'folder'}
         title="フォルダ"
-        items={[{ id: NONE, label: '未分類' }, ...folders.map((f) => ({ id: f.id, label: f.name }))]}
+        items={[{ id: NEW_FOLDER, label: '＋ 新しいフォルダ' }, { id: NONE, label: '未分類' }, ...folders.map((f) => ({ id: f.id, label: f.name }))]}
         onPick={(item) => {
-          set({ folderId: item.id === NONE ? null : item.id });
           setPicker(null);
+          if (item.id === NEW_FOLDER) {
+            setNewFolderName('');
+            setFolderError(null);
+            // 選ぶ画面が閉じ終わってから開く(iPhone では、2つの画面が同時に切り替わると開かないことがある)
+            setTimeout(() => setNewFolderOpen(true), 350);
+            return;
+          }
+          set({ folderId: item.id === NONE ? null : item.id });
         }}
         onClose={() => setPicker(null)}
       />
+      <Modal visible={newFolderOpen} transparent animationType="fade" onRequestClose={() => setNewFolderOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBack}>
+          <View style={[styles.modalCard, { backgroundColor: c.card }]}>
+            <Text style={{ color: c.text, fontSize: 17, fontWeight: '700' }}>新しいフォルダ</Text>
+            <TextInput
+              value={newFolderName}
+              onChangeText={setNewFolderName}
+              autoFocus
+              maxLength={100}
+              placeholder="フォルダ名"
+              placeholderTextColor={c.textMuted}
+              accessibilityLabel="フォルダ名"
+              returnKeyType="done"
+              onSubmitEditing={() => void createFolder()}
+              style={[styles.input, { backgroundColor: c.inputBackground, color: c.text, marginTop: 12 }]}
+            />
+            {folderError ? <Text style={{ color: c.danger, fontSize: 14, marginTop: 8 }} accessibilityRole="alert">{folderError}</Text> : null}
+            <View style={styles.modalButtons}>
+              <Button title="キャンセル" variant="secondary" disabled={creatingFolder} onPress={() => setNewFolderOpen(false)} style={{ flex: 1 }} />
+              <Button title="作る" loading={creatingFolder} disabled={!newFolderName.trim()} onPress={() => void createFolder()} style={{ flex: 1 }} />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
       <PickModal
         visible={picker === 'scenario'}
         title="シナリオ"
@@ -368,6 +423,9 @@ const styles = StyleSheet.create({
   row2: { flexDirection: 'row', gap: 10 },
   segmented: { flexDirection: 'row', gap: 8 },
   segment: { flex: 1, minHeight: MIN_TAP, borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, justifyContent: 'center' },
+  modalBack: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
+  modalCard: { borderRadius: 16, padding: 20 },
+  modalButtons: { flexDirection: 'row', gap: 10, marginTop: 16 },
   tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12 },
 });
