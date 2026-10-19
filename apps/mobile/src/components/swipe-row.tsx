@@ -27,7 +27,10 @@ export function closeOpenSwipeRow(): void {
 export function swallowTouchWhileOpen(pageX: number, pageY: number): boolean {
   if (!openRowClose) return false;
   if (!openRect || inside(openRect, pageX, pageY)) return false; // 範囲がまだ分からないうちは、何もしない
-  openRowClose();
+  const close = openRowClose;
+  openRowClose = null; // 先に解除する(閉じ損ねても、画面が反応しなくならないように)
+  openRect = null;
+  close();
   return true;
 }
 
@@ -67,6 +70,8 @@ export function SwipeRow({
   const [isOpen, setIsOpen] = useState(false);
   const openRef = useRef(false);
   const closeSelfRef = useRef<() => void>(() => undefined);
+  // 「いま開いている行」の目印。再描画のたびに変わらない同じ関数を使う(変わると、閉じたあとも「開いている」が残り、画面が反応しなくなる)
+  const stableClose = useRef(() => closeSelfRef.current()).current;
   const xRef = useRef(OPEN_W); // 最後に分かった、スクロール位置
   const draggingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,12 +94,12 @@ export function SwipeRow({
     setIsOpen(next);
     if (next) {
       hapticSelect(); // 開いたとき、かすかに
-      if (openRowClose && openRowClose !== closeSelfRef.current) openRowClose();
-      openRowClose = closeSelfRef.current;
+      if (openRowClose && openRowClose !== stableClose) openRowClose();
+      openRowClose = stableClose;
       wrapRef.current?.measureInWindow((x, y, w, h) => {
-        if (openRowClose === closeSelfRef.current) openRect = { x, y, w, h };
+        if (openRowClose === stableClose) openRect = { x, y, w, h };
       });
-    } else if (openRowClose === closeSelfRef.current) {
+    } else if (openRowClose === stableClose) {
       openRowClose = null;
       openRect = null;
     }
@@ -120,7 +125,7 @@ export function SwipeRow({
   useEffect(
     () => () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (openRowClose === closeSelfRef.current) {
+      if (openRowClose === stableClose) {
         openRowClose = null;
         openRect = null;
       }
