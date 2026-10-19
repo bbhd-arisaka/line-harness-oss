@@ -1,4 +1,5 @@
 import { jstNow } from './utils.js';
+import { recordFriendEvent } from './friend-events.js';
 export interface EntryRoute {
   id: string;
   ref_code: string;
@@ -296,6 +297,41 @@ export async function recordRefTracking(
       .prepare(`UPDATE friends SET last_ref_code = ?, last_ref_at = ? WHERE id = ?`)
       .bind(opts.refCode, now, opts.friendId)
       .run();
+
+    // 流入経路が踏まれたことを、その友だちの個別トークの履歴に残す(中央の小さな行)。記録できなくても、計測そのものは有効
+    if (opts.entryRouteId) {
+      try {
+        const route = await db
+          .prepare('SELECT name, line_account_id FROM entry_routes WHERE id = ?')
+          .bind(opts.entryRouteId)
+          .first<{ name: string; line_account_id: string | null }>();
+        if (route) {
+          const text = `流入経路「${route.name}」を読み取りました`;
+          // 通信のやり直しなどで、ほぼ同時に2回記録されても、1行だけにする
+          const since = new Date(Date.now() + 9 * 3600_000 - 120_000).toISOString().slice(0, 23);
+          const dup = await db
+            .prepare('SELECT 1 AS x FROM friend_events WHERE friend_id = ? AND event_type = ? AND text = ? AND created_at >= ? LIMIT 1')
+            .bind(opts.friendId, 'inflow_route', text, since)
+            .first();
+          if (!dup) {
+            const seen = await db
+              .prepare('SELECT COUNT(*) AS n FROM ref_tracking WHERE friend_id = ? AND entry_route_id = ?')
+              .bind(opts.friendId, opts.entryRouteId)
+              .first<{ n: number }>();
+            await recordFriendEvent(db, {
+              friendId: opts.friendId,
+              lineAccountId: route.line_account_id,
+              type: 'inflow_route',
+              text: (seen?.n ?? 0) > 1 ? `流入経路「${route.name}」をもう一度読み取りました` : text,
+              actor: '流入経路',
+              detail: { entryRouteId: opts.entryRouteId, refCode: opts.refCode },
+            });
+          }
+        }
+      } catch (error) {
+        console.error('inflow route event record failed:', error);
+      }
+    }
   }
 
   return (await db
