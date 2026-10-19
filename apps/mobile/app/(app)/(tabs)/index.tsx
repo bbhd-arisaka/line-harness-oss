@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { hapticLongPress } from '../../../src/lib/haptics';
 import { AccountBar } from '../../../src/components/account-bar';
 import { Avatar, EmptyView, ErrorView, LoadingView, StatusBadge } from '../../../src/components/ui';
 import { api } from '../../../src/state/services';
@@ -38,7 +39,7 @@ const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: 
   return (
     <Pressable
       onPress={() => onPress(chat.friendId)}
-      onLongPress={onLongPress ? () => onLongPress(chat) : undefined}
+      onLongPress={onLongPress ? () => { hapticLongPress(); onLongPress(chat); } : undefined}
       delayLongPress={400}
       accessibilityRole="button"
       accessibilityLabel={`${chat.pinned ? 'ピン留め。' : ''}${chat.friendName}。${unread ? '未対応。' : ''}${messagePreview(chat)}`}
@@ -50,7 +51,7 @@ const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: 
         {/* ピン留め: プロフィール画像の右下に、青い丸+白いピン(普通のLINEと同じ) */}
         {chat.pinned ? (
           <View style={[styles.pinBadge, { borderColor: c.card }]} accessibilityLabel="ピン留め">
-            <Ionicons name="pin" size={12} color="#ffffff" />
+            <MaterialCommunityIcons name="pin" size={14} color="#ffffff" />
           </View>
         ) : null}
       </View>
@@ -321,7 +322,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
           keyboardDismissMode="on-drag"
           onScrollBeginDrag={closeOpenSwipeRow}
           renderItem={({ item }) => (
-            <SwipeRow label={item.pinned ? 'ピン留め解除' : 'ピン留め'} icon={item.pinned ? 'pin-outline' : 'pin'} color="#4f6bed" onTrigger={() => void togglePinChat(item)}>
+            <SwipeRow label={item.pinned ? 'ピン留め解除' : 'ピン留め'} icon={item.pinned ? 'pin-off' : 'pin'} color="#4f6bed" onTrigger={() => void togglePinChat(item)}>
               <ChatRow chat={item} onPress={openChat} onLongPress={onLongPressChat} selected={item.friendId === selectedId} />
             </SwipeRow>
           )}
@@ -386,6 +387,6 @@ const styles = StyleSheet.create({
   name: { flex: 1, fontSize: 16 },
   preview: { flex: 1, fontSize: 14 },
   unreadDot: { position: 'absolute', top: -1, right: -1, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
-  pinBadge: { position: 'absolute', right: -3, bottom: -3, width: 22, height: 22, borderRadius: 11, borderWidth: 2, backgroundColor: '#4f6bed', alignItems: 'center', justifyContent: 'center' },
+  pinBadge: { position: 'absolute', right: -4, bottom: -4, width: 24, height: 24, borderRadius: 12, borderWidth: 2, backgroundColor: '#4f6bed', alignItems: 'center', justifyContent: 'center' },
   banner: { padding: 10, margin: 12, borderRadius: 10 },
 });

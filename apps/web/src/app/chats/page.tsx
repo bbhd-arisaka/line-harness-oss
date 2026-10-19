@@ -1351,8 +1351,8 @@ ${t.messageContent}` : t.messageContent))
                           <FriendAvatar friendId={chat.friendId} url={chat.friendPictureUrl} name={chat.friendName} />
                           {/* ピン留め: プロフィール画像の右下に、青い丸+白いピン(普通のLINEと同じ) */}
                           {chat.pinned ? (
-                            <span className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#4f6bed] text-white" aria-label="ピン留め">
-                              <PushPinIcon size={10} weight="fill" />
+                            <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[#4f6bed] text-white" aria-label="ピン留め">
+                              <PushPinIcon size={12} weight="fill" />
                             </span>
                           ) : null}
                         </span>

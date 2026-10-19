@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, type StyleProp, type TextStyle } from 'react-native';
+import { hapticLongPress } from '../lib/haptics';
 
 /**
  * トークの文章(吹き出し・フォームの回答カードなど、メッセージの文字は、すべてこれで出す)。
@@ -58,7 +59,7 @@ export function MessageText({
   );
   if (!selectable || !text) return body;
   return (
-    <Pressable onLongPress={() => setSelecting(true)} delayLongPress={350} accessibilityRole="text">
+    <Pressable onLongPress={() => { hapticLongPress(); setSelecting(true); }} delayLongPress={350} accessibilityRole="text">
       {body}
     </Pressable>
   );

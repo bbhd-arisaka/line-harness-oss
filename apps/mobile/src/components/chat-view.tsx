@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../state/services';
 import { pickAndUploadImage } from '../state/image-upload';
@@ -444,7 +444,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
           {chat ? (
             <View style={{ flexDirection: 'row' }}>
               <Pressable onPress={() => void togglePin()} accessibilityRole="button" accessibilityLabel={chat.pinned ? 'ピン留めを外す' : 'ピン留めする'} style={styles.headerButton}>
-                <Ionicons name={chat.pinned ? 'pin' : 'pin-outline'} size={24} color={chat.pinned ? '#4f6bed' : c.textMuted} />
+                <MaterialCommunityIcons name={chat.pinned ? 'pin' : 'pin-outline'} size={26} color={chat.pinned ? '#4f6bed' : c.textMuted} />
               </Pressable>
               <Pressable
                 onPress={() => router.push({ pathname: '/friend/[id]', params: { id: chat.friendId, from: 'chat' } })}
@@ -465,7 +465,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
               chat ? (
                 <View style={{ flexDirection: 'row' }}>
                   <Pressable onPress={() => void togglePin()} accessibilityRole="button" accessibilityLabel={chat.pinned ? 'ピン留めを外す' : 'ピン留めする'} style={styles.headerButton}>
-                    <Ionicons name={chat.pinned ? 'pin' : 'pin-outline'} size={24} color={chat.pinned ? '#4f6bed' : c.textMuted} />
+                    <MaterialCommunityIcons name={chat.pinned ? 'pin' : 'pin-outline'} size={26} color={chat.pinned ? '#4f6bed' : c.textMuted} />
                   </Pressable>
                   <Pressable
                     onPress={() => router.push({ pathname: '/friend/[id]', params: { id: chat.friendId, from: 'chat' } })}

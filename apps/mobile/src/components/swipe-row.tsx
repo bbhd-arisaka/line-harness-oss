@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { hapticSelect, hapticSuccess } from '../lib/haptics';
 
 const OPEN_W = 88; // 開いたときの、操作ボタンの幅
 
@@ -29,7 +30,7 @@ export function SwipeRow({
 }: {
   children: React.ReactNode;
   label: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
   color: string;
   onTrigger: () => void;
   disabled?: boolean;
@@ -44,6 +45,7 @@ export function SwipeRow({
     openRef.current = next;
     setIsOpen(next);
     if (next) {
+      hapticSelect(); // 開いたとき、かすかに
       if (openRowClose && openRowClose !== closeSelfRef.current) openRowClose();
       openRowClose = closeSelfRef.current;
     } else if (openRowClose === closeSelfRef.current) {
@@ -101,11 +103,12 @@ export function SwipeRow({
               accessibilityLabel={label}
               onPress={() => {
                 closeSelfRef.current();
+                hapticSuccess();
                 onTrigger();
               }}
               style={[styles.action, { backgroundColor: color }]}
             >
-              <Ionicons name={icon} size={22} color="#ffffff" />
+              <MaterialCommunityIcons name={icon} size={24} color="#ffffff" />
               <Text style={styles.label}>{label}</Text>
             </Pressable>
             <View style={{ width }}>
