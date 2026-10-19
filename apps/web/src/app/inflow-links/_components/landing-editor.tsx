@@ -85,7 +85,7 @@ export function LandingPreviewFrame({ style, openUrl }: { style: LandingStyle; o
         ) : null}
       </div>
       <div
-        className={`mx-auto overflow-hidden border border-[#cacace] bg-white shadow-sm ${kind === 'mobile' ? 'w-[300px] rounded-[28px] border-[6px] border-[#2b2b2e]' : 'w-full rounded-lg'}`}
+        className={`mx-auto overflow-hidden bg-white shadow-sm ${kind === 'mobile' ? 'w-[300px] rounded-[28px] border-[6px] border-[#2b2b2e]' : 'w-full rounded-lg border border-[#cacace]'}`}
         style={{ height: kind === 'mobile' ? 560 : 420 }}
       >
         <iframe title="友だち追加ページのプレビュー" srcDoc={html} sandbox="" className="h-full w-full border-0" />
