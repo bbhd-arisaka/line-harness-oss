@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { type NativeScrollEvent, type NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { hapticSelect, hapticSuccess } from '../lib/haptics';
 
@@ -68,10 +68,15 @@ export function SwipeRow({
     [],
   );
 
-  // スクロールが止まった位置で、開いている/閉じているを決める(止まる位置は、スクロールの吸い付きで 0 か OPEN_W)
-  const onSettled = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const open = e.nativeEvent.contentOffset.x < OPEN_W / 2;
-    if (open !== openRef.current) setOpenState(open);
+  // 指を離したときに、開く/閉じるを、はっきり決める。
+  // 標準の吸い付き(近い方へ)だと、半分近くまで開けないと閉じてしまい、「開けない」と感じるため、少し動かしただけで開くようにする
+  //  - 閉じているとき: 24pt 以上ひらく、または右へはらう(速度)と、開く
+  //  - 開いているとき: 28pt 以上とじる、または左へはらうと、閉じる
+  const settle = (x: number, vx: number) => {
+    const reveal = OPEN_W - x; // どれだけ開いたか(0=閉じ・OPEN_W=全開)
+    const wantOpen = openRef.current ? !(reveal < OPEN_W - 28 || vx > 0.25) : reveal >= 24 || vx < -0.25;
+    ref.current?.scrollTo({ x: wantOpen ? 0 : OPEN_W, animated: true });
+    if (wantOpen !== openRef.current) setOpenState(wantOpen);
   };
 
   return (
@@ -86,16 +91,10 @@ export function SwipeRow({
           alwaysBounceHorizontal={false}
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
-          snapToOffsets={[0, OPEN_W]}
-          snapToAlignment="start"
           contentOffset={{ x: OPEN_W, y: 0 }}
           scrollEventThrottle={32}
           keyboardShouldPersistTaps="handled"
-          onMomentumScrollEnd={onSettled}
-          onScrollEndDrag={(e) => {
-            const x = e.nativeEvent.contentOffset.x;
-            if (x <= 1 || x >= OPEN_W - 1) onSettled(e);
-          }}
+          onScrollEndDrag={(e) => settle(e.nativeEvent.contentOffset.x, e.nativeEvent.velocity?.x ?? 0)}
         >
           <View style={{ flexDirection: 'row', width: width + OPEN_W }}>
             <Pressable
