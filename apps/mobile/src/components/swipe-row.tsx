@@ -4,14 +4,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { hapticSelect, hapticSuccess } from '../lib/haptics';
 
 const OPEN_W = 88; // 開いたときの、操作ボタンの幅
-const CLOSED_OFFSET = { x: OPEN_W, y: 0 }; // 毎回あたらしい値を渡すと、再描画のたびに位置が戻ることがあるため、固定
+const START = { x: OPEN_W, y: 0 }; // 閉じた位置(行が見える位置)。毎回あたらしい値を渡さないよう、固定
 
-/** いま開いている行(同時に開くのは1行だけ)。一覧のスクロールを始めたときなどに、閉じる */
+/** いま開いている行(同時に開くのは1行だけ)。一覧の縦スクロールを始めたときなどに、閉じる */
 let openRowClose: (() => void) | null = null;
-let openedAt = 0;
 export function closeOpenSwipeRow(): void {
-  // 開いた直後(指を離して間もない)は閉じない。斜めにスライドしたとき、一覧の縦スクロールの開始で、開いた行が勝手に閉じるのを防ぐ
-  if (Date.now() - openedAt < 700) return;
   openRowClose?.();
 }
 
@@ -20,9 +17,13 @@ export function closeOpenSwipeRow(): void {
  *
  * 【作り】行ごとに、横向きの ScrollView(iPhone 標準のスクロール)にする。左に操作ボタン・右に行を並べ、ふだんは行が見える位置
  * (ボタンの幅ぶん右にずらした位置)に止めておく。右へスライド=左へスクロール=ボタンが現れる。
- * 縦と横の振り分け・指への追従・勢い・止まる位置(開く/閉じる)は、すべて iPhone 標準のスクロールの動きで、JS の計算に頼らない
- * (自前のジェスチャーだと、一覧の縦スクロールと同時に動いてしまい、引っかかるため)。
- *  - 開いているとき: 行を押す・ほかの行を開く・一覧を縦にスクロールすると、閉じる
+ *
+ * 【開く/閉じるの決め方は、すべて iPhone 標準のスクロールに任せる】
+ *  - 止まる位置は、「開いた位置」か「閉じた位置」の2か所だけ(snapToOffsets)。指を離した瞬間に、指の動いた向き(速さが 0 のときは近い方)で
+ *    どちらかに決まるので、中途半端な位置では止まらない。
+ *  - 自前で scrollTo して補正する、という作りにはしない(勢いのスクロールと競合して、開き途中で止まる・戻る原因になったため)。
+ *  - 開いているか閉じているかは、スクロールが止まった位置から読み取るだけ(状態と見た目が食い違わない)。
+ *  - プログラムから動かすのは「ボタンを押した・ほかの行を開いた・一覧を縦にスクロールした」ときの閉じる動作だけ。
  */
 export function SwipeRow({
   children,
@@ -46,13 +47,13 @@ export function SwipeRow({
   const closeSelfRef = useRef<() => void>(() => undefined);
 
   const setOpenState = (next: boolean) => {
+    if (openRef.current === next) return;
     openRef.current = next;
     setIsOpen(next);
     if (next) {
       hapticSelect(); // 開いたとき、かすかに
       if (openRowClose && openRowClose !== closeSelfRef.current) openRowClose();
       openRowClose = closeSelfRef.current;
-      openedAt = Date.now();
     } else if (openRowClose === closeSelfRef.current) {
       openRowClose = null;
     }
@@ -62,7 +63,13 @@ export function SwipeRow({
     setOpenState(false);
   };
 
-  // 幅が分かったら、閉じた位置(行が見える位置)に置く
+  // 止まった位置から、開いている/閉じているを読み取る(途中の位置のときは、何もしない。そのあとの止まる動きで決まる)
+  const read = (x: number) => {
+    if (x <= 1) setOpenState(true);
+    else if (x >= OPEN_W - 1) setOpenState(false);
+  };
+
+  // 幅が分かったら、閉じた位置に置く
   useEffect(() => {
     if (width > 0) ref.current?.scrollTo({ x: OPEN_W, animated: false });
   }, [width]);
@@ -72,23 +79,6 @@ export function SwipeRow({
     },
     [],
   );
-
-  // 指を離したときに、開く/閉じるを、はっきり決める。
-  // 標準の吸い付き(近い方へ)だと、半分近くまで開けないと閉じてしまい、「開けない」と感じるため、少し動かしただけで開くようにする
-  //  - 閉じているとき: 24pt 以上ひらく、または右へはらう(速度)と、開く
-  //  - 開いているとき: 28pt 以上とじる、または左へはらうと、閉じる
-  const settle = (x: number, vx: number) => {
-    const reveal = OPEN_W - x; // どれだけ開いたか(0=閉じ・OPEN_W=全開)
-    const wantOpen = openRef.current ? !(reveal < OPEN_W - 28 || vx > 0.25) : reveal >= 16 || vx < -0.2;
-    ref.current?.scrollTo({ x: wantOpen ? 0 : OPEN_W, animated: true });
-    if (wantOpen !== openRef.current) setOpenState(wantOpen);
-  };
-  // 勢いのスクロールが終わったとき、中途半端な位置(開き途中)で止まっていたら、いまの状態の位置にそろえる。
-  // 「開いたのに戻る」「閉じたつもりが半開き」を防ぐ最後の安全網
-  const align = (x: number) => {
-    const target = openRef.current ? 0 : OPEN_W;
-    if (Math.abs(x - target) > 1) ref.current?.scrollTo({ x: target, animated: true });
-  };
 
   return (
     <View style={styles.wrap} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
@@ -102,11 +92,14 @@ export function SwipeRow({
           alwaysBounceHorizontal={false}
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
-          contentOffset={CLOSED_OFFSET}
-          scrollEventThrottle={32}
+          snapToOffsets={[0, OPEN_W]}
+          snapToStart
+          snapToEnd
+          disableIntervalMomentum
+          contentOffset={START}
           keyboardShouldPersistTaps="handled"
-          onScrollEndDrag={(e) => settle(e.nativeEvent.contentOffset.x, e.nativeEvent.velocity?.x ?? 0)}
-          onMomentumScrollEnd={(e) => align(e.nativeEvent.contentOffset.x)}
+          onScrollEndDrag={(e) => read(e.nativeEvent.contentOffset.x)}
+          onMomentumScrollEnd={(e) => read(e.nativeEvent.contentOffset.x)}
         >
           <View style={{ flexDirection: 'row', width: width + OPEN_W }}>
             <Pressable
