@@ -26,14 +26,14 @@ import { replyViaHarnessProxy } from '../services/line-proxy-send.js';
 import type { HarnessProxyDispatch } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import { ensureSchedulerArmed } from '../durable-objects/tenant-scheduler.js';
-import { notifyFriendAdded, notifyIncomingMessage } from '../services/push-notify.js';
+import { notifyFriendAdded, notifyFriendBlocked, notifyIncomingMessage } from '../services/push-notify.js';
 import { publishChatEvent } from '../services/chat-events.js';
 import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import { ignoresFriendAddSettings } from '../services/inflow-route-runtime.js';
-import type { FriendAddedNotice, IncomingMessageNotice } from '../services/push-notify.js';
+import type { FriendAddedNotice, FriendBlockedNotice, IncomingMessageNotice } from '../services/push-notify.js';
 
 const webhook = new Hono<Env>();
 
@@ -210,6 +210,19 @@ webhook.post('/webhook', async (c) => {
     }
   };
 
+  // ブロックされたときのアプリ通知(同じく背景で実行。並行運用中も送る=アプリへの通知で、LINEには何も送らない)
+  const onFriendBlocked = (notice: FriendBlockedNotice): void => {
+    try {
+      c.executionCtx.waitUntil(
+        notifyFriendBlocked(c.env, db, notice).catch((err) => {
+          console.error('[webhook] friend-blocked push failed', err instanceof Error ? err.message : 'error');
+        }),
+      );
+    } catch (err) {
+      console.error('[webhook] friend-blocked push failed', err instanceof Error ? err.message : 'error');
+    }
+  };
+
   // 開いている管理画面(Web)へ、トークの新着をその場で知らせる(失敗しても処理は止めない)
   const onChatEvent = (e: { kind: ChatEventKind; friendId: string; accountId: string | null }): void => {
     try {
@@ -240,6 +253,7 @@ webhook.post('/webhook', async (c) => {
           parallelMode,
           onFriendAdded,
           onChatEvent,
+          onFriendBlocked,
         );
       } catch (err) {
         console.error('Error handling webhook event:', err);
@@ -295,6 +309,8 @@ async function handleEvent(
   onFriendAdded?: (notice: FriendAddedNotice) => void,
   /** 開いている管理画面(Web)へ、トークの新着を知らせる */
   onChatEvent?: (e: { kind: ChatEventKind; friendId: string; accountId: string | null }) => void,
+  /** ブロックされたときのアプリ通知 */
+  onFriendBlocked?: (notice: FriendBlockedNotice) => void,
 ): Promise<void> {
   if (event.type === 'follow') {
     const userId =
@@ -503,10 +519,13 @@ async function handleEvent(
     await updateFriendFollowStatus(db, userId, false, lineAccountId);
     // 通知設定(ブロック時)
     const blocked = await db
-      .prepare('SELECT id FROM friends WHERE line_user_id = ? AND (line_account_id = ? OR (? IS NULL AND line_account_id IS NULL)) LIMIT 1')
+      .prepare('SELECT id, display_name, real_name FROM friends WHERE line_user_id = ? AND (line_account_id = ? OR (? IS NULL AND line_account_id IS NULL)) LIMIT 1')
       .bind(userId, lineAccountId ?? null, lineAccountId ?? null)
-      .first<{ id: string }>();
-    if (blocked) await notifyEvent(db, { accountId: lineAccountId, timing: 'friend_block', friendId: blocked.id });
+      .first<{ id: string; display_name: string | null; real_name: string | null }>();
+    if (blocked) {
+      await notifyEvent(db, { accountId: lineAccountId, timing: 'friend_block', friendId: blocked.id });
+      onFriendBlocked?.({ friendId: blocked.id, accountId: lineAccountId ?? null, friendName: blocked.real_name?.trim() || blocked.display_name });
+    }
     return;
   }
 

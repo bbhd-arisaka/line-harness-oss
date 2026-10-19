@@ -120,6 +120,7 @@ export const APP_PUSH_KINDS = [
   { key: 'form_answered', label: 'フォームの回答', description: 'お客様がフォームに回答したとき', defaultOn: true },
   { key: 'friend_added', label: '友だち追加', description: 'お客様がはじめて友だち追加したとき', defaultOn: true },
   { key: 'friend_readded', label: '友だち再追加', description: 'ブロックを解除して、お客様が友だちに戻ったとき', defaultOn: false },
+  { key: 'friend_blocked', label: 'ブロック', description: 'お客様にブロックされたとき', defaultOn: false },
 ] as const;
 export type AppPushKind = (typeof APP_PUSH_KINDS)[number]['key'];
 export const isAppPushKind = (x: unknown): x is AppPushKind => APP_PUSH_KINDS.some((k) => k.key === x);

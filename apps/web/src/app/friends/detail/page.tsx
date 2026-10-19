@@ -163,7 +163,6 @@ export default function FriendDetailPage() {
   // ── 本名・システム表示名・個別メモ(ホームタブの「基本」セクション) ──────────
   const [editingProfile, setEditingProfile] = useState(false)
   const [draftRealName, setDraftRealName] = useState('')
-  const [draftDisplayName, setDraftDisplayName] = useState('')
   const [draftMemo, setDraftMemo] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
   // 流入経路(つけ外し)。編集を始めたときに、この友だちの公式アカウントの流入経路を読み込む
@@ -180,7 +179,6 @@ export default function FriendDetailPage() {
         .catch(() => { /* 選べないだけ */ })
     }
     setDraftRealName(friend.realName ?? '')
-    setDraftDisplayName(friend.systemDisplayName ?? '')
     setDraftMemo(friend.memo ?? '')
     setEditingProfile(true)
   }
@@ -191,7 +189,6 @@ export default function FriendDetailPage() {
     try {
       const res = await api.friends.updateProfile(friend.id, {
         realName: draftRealName.trim() || null,
-        systemDisplayName: draftDisplayName.trim() || null,
         memo: draftMemo.trim() || null,
       })
       if (res.success && res.data) {
@@ -346,7 +343,6 @@ export default function FriendDetailPage() {
                 {editingProfile ? (
                   <div className="space-y-3">
                     <Input label="本名" value={draftRealName} onValueChange={setDraftRealName} placeholder="山田花子" />
-                    <Input label="システム表示名" value={draftDisplayName} onValueChange={setDraftDisplayName} placeholder="表示名" />
                     <div>
                       <label className="mb-1 block text-sm text-kumo-default" htmlFor="friend-inflow-route">流入経路</label>
                       <select
@@ -373,10 +369,6 @@ export default function FriendDetailPage() {
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">本名</dt>
                       <dd className="text-kumo-strong">{friend.realName || '未登録'}</dd>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <dt className="text-kumo-subtle">システム表示名</dt>
-                      <dd className="text-kumo-strong">{friend.systemDisplayName || '未登録'}</dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">流入経路</dt>

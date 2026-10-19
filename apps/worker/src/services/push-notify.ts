@@ -196,6 +196,32 @@ export interface FriendAddedNotice {
   returning: boolean;
 }
 
+export interface FriendBlockedNotice {
+  friendId: string;
+  accountId: string | null;
+  friendName?: string | null;
+}
+
+/** ブロックされたときの本文(通知に出す1行) */
+export function describeFriendBlocked(): string {
+  return 'ブロックされました';
+}
+
+/** お客様にブロックされたとき、アプリの端末に通知する(「ブロック」の通知をオンにした端末だけ。初期はオフ) */
+export async function notifyFriendBlocked(
+  env: ApnsEnv,
+  db: D1Database,
+  notice: FriendBlockedNotice,
+  options: ApnsSendOptions = {},
+): Promise<void> {
+  await sendPush(
+    env,
+    db,
+    { kind: 'friend_blocked', friendId: notice.friendId, accountId: notice.accountId, friendName: notice.friendName, body: describeFriendBlocked() },
+    options,
+  );
+}
+
 /** 友だち追加の本文(通知に出す1行) */
 export function describeFriendAdded(returning: boolean): string {
   return returning ? '友だちに戻りました(ブロック解除・再追加)' : '友だち追加されました';

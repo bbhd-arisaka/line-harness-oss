@@ -100,7 +100,7 @@ describe('Lステップ引き継ぎ', () => {
 
     const f1 = sqlite.prepare('SELECT real_name, system_display_name, metadata, created_at, first_followed_at FROM friends WHERE id=?').get('f1') as Record<string, string>;
     expect(f1.real_name).toBe('山田 太郎');
-    expect(f1.system_display_name).toBe('(大門店)山田 太郎');
+    expect(f1.system_display_name).toBeNull(); // システム表示名は廃止(Lステップの値は取り込まない)
     expect(JSON.parse(f1.metadata)).toEqual({ memo_old: '残す', ls_name: '山田', phone: '0801', ls_first: 'あり' });
     expect(f1.created_at).toBe('2025-09-30T14:40:17.000+09:00');
     expect(f1.first_followed_at).toBe('2025-09-30T14:40:17.000+09:00');

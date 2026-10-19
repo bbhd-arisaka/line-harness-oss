@@ -290,7 +290,6 @@ export function BlockCard({
                 items={[
                   { label: '友だち情報', on: hasFriendTarget, click: () => setFriendTarget(hasFriendTarget ? null : '') },
                   { label: '本名', on: block.registrationTargets.some((t) => t.type === 'real_name'), click: () => toggleTarget({ type: 'real_name' }) },
-                  { label: 'システム表示名', on: block.registrationTargets.some((t) => t.type === 'display_name'), click: () => toggleTarget({ type: 'display_name' }) },
                   { label: '個別メモ', on: block.registrationTargets.some((t) => t.type === 'memo'), click: () => toggleTarget({ type: 'memo' }) },
                 ]}
               />

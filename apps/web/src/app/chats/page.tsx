@@ -1344,7 +1344,15 @@ ${t.messageContent}` : t.messageContent))
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <FriendAvatar friendId={chat.friendId} url={chat.friendPictureUrl} name={chat.friendName} />
+                        <span className="relative flex-shrink-0">
+                          <FriendAvatar friendId={chat.friendId} url={chat.friendPictureUrl} name={chat.friendName} />
+                          {/* ピン留め: プロフィール画像の右下に、青い丸+白いピン(普通のLINEと同じ) */}
+                          {chat.pinned ? (
+                            <span className="absolute -bottom-0.5 -right-0.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#4f6bed] text-white" aria-label="ピン留め">
+                              <PushPinIcon size={10} weight="fill" />
+                            </span>
+                          ) : null}
+                        </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -1361,7 +1369,7 @@ ${t.messageContent}` : t.messageContent))
                                 title={chat.pinned ? 'ピン留めを外す' : 'ピン留めする'}
                                 onClick={(e) => { e.stopPropagation(); void togglePin(chat) }}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void togglePin(chat) } }}
-                                className={`rounded p-0.5 transition-opacity ${chat.pinned ? 'text-gray-600' : 'text-gray-400 opacity-0 hover:text-gray-700 group-hover:opacity-100 focus:opacity-100'}`}
+                                className={`rounded p-0.5 transition-opacity ${chat.pinned ? 'text-[#4f6bed] opacity-0 group-hover:opacity-100 focus:opacity-100' : 'text-gray-400 opacity-0 hover:text-gray-700 group-hover:opacity-100 focus:opacity-100'}`}
                               >
                                 <PushPinIcon size={14} weight={chat.pinned ? 'fill' : 'regular'} />
                               </span>
@@ -1460,7 +1468,7 @@ ${t.messageContent}` : t.messageContent))
                         aria-label={isChatPinned(chatDetail) ? 'ピン留めを外す' : 'ピン留めする'}
                         title={isChatPinned(chatDetail) ? 'ピン留めを外す' : 'ピン留めする'}
                         onClick={() => void togglePin(chatDetail)}
-                        className={`rounded p-1 hover:bg-gray-100 ${isChatPinned(chatDetail) ? 'text-gray-700' : 'text-gray-400'}`}
+                        className={`rounded p-1 hover:bg-gray-100 ${isChatPinned(chatDetail) ? 'text-[#4f6bed]' : 'text-gray-400'}`}
                       >
                         <PushPinIcon size={16} weight={isChatPinned(chatDetail) ? 'fill' : 'regular'} />
                       </button>

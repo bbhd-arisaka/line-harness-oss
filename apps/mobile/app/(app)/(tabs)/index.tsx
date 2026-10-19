@@ -44,6 +44,12 @@ const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: 
       <View>
         <Avatar uri={chat.friendPictureUrl} name={chat.friendName} size={48} />
         {unread ? <View style={[styles.unreadDot, { backgroundColor: c.danger, borderColor: c.card }]} /> : null}
+        {/* ピン留め: プロフィール画像の右下に、青い丸+白いピン(普通のLINEと同じ) */}
+        {chat.pinned ? (
+          <View style={[styles.pinBadge, { borderColor: c.card }]} accessibilityLabel="ピン留め">
+            <Ionicons name="pin" size={12} color="#ffffff" />
+          </View>
+        ) : null}
       </View>
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
@@ -51,7 +57,6 @@ const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: 
             {chat.friendName}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            {chat.pinned ? <Ionicons name="pin" size={13} color={c.textMuted} /> : null}
             <Text style={{ color: unread ? c.danger : c.textMuted, fontSize: 12 }}>{formatListTime(chat.lastMessageAt)}</Text>
           </View>
         </View>
@@ -354,5 +359,6 @@ const styles = StyleSheet.create({
   name: { flex: 1, fontSize: 16 },
   preview: { flex: 1, fontSize: 14 },
   unreadDot: { position: 'absolute', top: -1, right: -1, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
+  pinBadge: { position: 'absolute', right: -3, bottom: -3, width: 22, height: 22, borderRadius: 11, borderWidth: 2, backgroundColor: '#4f6bed', alignItems: 'center', justifyContent: 'center' },
   banner: { padding: 10, margin: 12, borderRadius: 10 },
 });

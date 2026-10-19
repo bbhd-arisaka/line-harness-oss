@@ -30,7 +30,7 @@ const FriendRow = memo(function FriendRow({ friend, onPress }: { friend: Friend;
         <Text style={{ color: c.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
           {name}
         </Text>
-        {friend.realName?.trim() || friend.systemDisplayName?.trim() ? (
+        {friend.realName?.trim() ? (
           <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 1 }} numberOfLines={1}>
             LINE名: {friend.displayName ?? '-'}
           </Text>

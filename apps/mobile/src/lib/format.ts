@@ -1,13 +1,12 @@
 // 表示用の整形(名前の優先順位・日時・吹き出し)。React Native に依存しない純粋な関数だけ。
 import type { ChatEvent, ChatMessage, ChatStatus, FriendFieldDefinition, FriendRichMenu } from './types';
 
-/** 友だちの表示名: 本名 > システム表示名 > LINE名(Web の resolveFriendName と同じ) */
+/** 友だちの表示名: 本名 > LINE名(Web の resolveFriendName と同じ) */
 export function resolveFriendName(f: {
   realName?: string | null;
-  systemDisplayName?: string | null;
   displayName?: string | null;
 }): string {
-  return f.realName?.trim() || f.systemDisplayName?.trim() || f.displayName || '名前なし';
+  return f.realName?.trim() || f.displayName || '名前なし';
 }
 
 /** アイコンが無いときの頭文字 */

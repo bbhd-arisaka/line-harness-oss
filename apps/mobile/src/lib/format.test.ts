@@ -25,10 +25,10 @@ import type { ChatEvent, ChatMessage } from './types';
 
 describe('resolveFriendName(本名 > システム表示名 > LINE名)', () => {
   it('優先順位どおり', () => {
-    expect(resolveFriendName({ realName: '山田太郎', systemDisplayName: 'タロ', displayName: 'taro' })).toBe('山田太郎');
-    expect(resolveFriendName({ realName: '', systemDisplayName: 'タロ', displayName: 'taro' })).toBe('タロ');
-    expect(resolveFriendName({ realName: '  ', systemDisplayName: null, displayName: 'taro' })).toBe('taro');
-    expect(resolveFriendName({ realName: null, systemDisplayName: null, displayName: null })).toBe('名前なし');
+    expect(resolveFriendName({ realName: '山田太郎', displayName: 'taro' })).toBe('山田太郎');
+    expect(resolveFriendName({ realName: '', displayName: 'taro' })).toBe('taro');
+    expect(resolveFriendName({ realName: '  ', displayName: 'taro' })).toBe('taro');
+    expect(resolveFriendName({ realName: null, displayName: null })).toBe('名前なし');
   });
   it('頭文字', () => {
     expect(nameInitial('山田')).toBe('山');

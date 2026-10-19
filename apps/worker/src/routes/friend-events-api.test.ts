@@ -99,14 +99,15 @@ describe('スタッフ操作の記録', () => {
   });
 
   test('PUT profile: 変わった項目をまとめて記録する。変わらなければ記録しない', async () => {
+    // システム表示名は廃止: 送られても、書き込まず、記録にも出ない
     await put('/api/friends/f1/profile', { realName: '山田 太郎', systemDisplayName: '山田さん', memo: 'ひみつ' });
     await put('/api/friends/f1/profile', { realName: '山田 太郎', memo: 'ひみつ' });
     expect(eventRows()).toEqual([
       {
         event_type: 'profile_changed',
-        text: '本名・システム表示名・個別メモを変更しました',
+        text: '本名・個別メモを変更しました',
         actor: '佐藤',
-        detail: '{"fields":["本名","システム表示名","個別メモ"]}',
+        detail: '{"fields":["本名","個別メモ"]}',
       },
     ]);
   });

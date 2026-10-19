@@ -115,7 +115,8 @@
     "107_broadcast_extra_messages.sql",
     "108_entry_route_analysis.sql",
     "109_chat_pin.sql",
-    "110_inflow_landing_style.sql"
+    "110_inflow_landing_style.sql",
+    "111_remove_system_display_name.sql"
   ],
-  "migrationCount": 116
+  "migrationCount": 117
 }

@@ -91,7 +91,7 @@ export function validateFriends(x: unknown, fieldKeys: Set<string>): DatasetFrie
       beyondFriendId: id,
       lstepId: f?.lstepId ? str(f.lstepId, 32) : undefined,
       realName: f?.realName ? str(f.realName, 200) : null,
-      systemDisplayName: f?.systemDisplayName ? str(f.systemDisplayName, 200) : null,
+      systemDisplayName: null, // システム表示名は廃止(Lステップの値は取り込まない)
       addedAt,
       tags: Array.isArray(f?.tags) ? [...new Set((f.tags as unknown[]).map((t) => str(t, 100).trim()).filter(Boolean))] : [],
       values,

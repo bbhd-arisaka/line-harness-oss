@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
 import { APP_PUSH_KINDS } from '@line-crm/db';
-import { describeFormAnswered, describeFriendAdded, describeMessageForPush, notifyFormAnswered, notifyFriendAdded, notifyIncomingMessage, resolvePushRecipients } from './push-notify.js';
+import { describeFormAnswered, describeFriendAdded, describeMessageForPush, notifyFormAnswered, notifyFriendAdded, notifyFriendBlocked, describeFriendBlocked, notifyIncomingMessage, resolvePushRecipients } from './push-notify.js';
 import { resetApnsJwtCache } from './apns.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
@@ -207,6 +207,21 @@ describe('通知の設定は、公式アカウントごと', () => {
   });
 });
 
+describe('ブロックの通知', () => {
+  it('設定画面の通知の種類に「ブロック」がある(初期オフ)。オンにした端末にだけ、「ブロックされました」を送る', async () => {
+    expect(APP_PUSH_KINDS.find((k) => k.key === 'friend_blocked')).toMatchObject({ label: 'ブロック', defaultOn: false });
+    const { db, sqlite, staff, session } = setup();
+    staff('o', 'owner'); session('o', 'DEFAULT'); session('o', 'ENABLED');
+    sqlite.prepare(`UPDATE app_sessions SET enabled_push_kinds = '["friend_blocked"]' WHERE apns_token = 'ENABLED'`).run();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    await notifyFriendBlocked(await env(), db, { friendId: 'fr1', accountId: 'A', friendName: 'はなこ' }, { fetchImpl });
+    expect(fetchImpl.mock.calls.map((c) => (c as [string])[0])).toEqual(['https://api.push.apple.com/3/device/ENABLED']);
+    const [, init] = fetchImpl.mock.calls[0] as [string, Init];
+    expect(JSON.parse(init.body as string)).toMatchObject({ aps: { alert: { body: 'ブロックされました' } } });
+    expect(describeFriendBlocked()).toBe('ブロックされました');
+  });
+});
+
 describe('友だち追加の通知', () => {
   it('友だち名・公式アカウント名・chatId を付けて送る。「友だち追加」を止めた端末には送らない', async () => {
     const { db, sqlite, staff, session } = setup();
@@ -230,7 +245,7 @@ describe('友だち追加の通知', () => {
   });
   it('設定画面に出す通知の種類に「友だち追加」「友だち再追加」がある。再追加だけ初期オフ', () => {
     expect(APP_PUSH_KINDS.map((k) => k.key)).toEqual(expect.arrayContaining(['friend_added', 'friend_readded']));
-    expect(APP_PUSH_KINDS.filter((k) => !k.defaultOn).map((k) => k.key)).toEqual(['friend_readded']);
+    expect(APP_PUSH_KINDS.filter((k) => !k.defaultOn).map((k) => k.key)).toEqual(['friend_readded', 'friend_blocked']);
   });
   it('再追加(ブロック解除)は初期オフ: オンにした端末にだけ送る。はじめての追加の設定には影響しない', async () => {
     const { db, sqlite, staff, session } = setup();

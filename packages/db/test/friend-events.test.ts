@@ -178,11 +178,11 @@ describe('友だち情報・プロフィールの変更', () => {
     expect(events().map((e) => e.text)).toEqual(['友だち情報「住所」を変更しました']);
   });
 
-  test('本名・システム表示名・個別メモは、変わった項目をまとめて記録する(値は入れない)', async () => {
+  test('本名・個別メモは、変わった項目をまとめて記録する(値は入れない)。システム表示名は廃止(渡されても無視)', async () => {
     await updateFriendRegistrationFields(db, 'f1', { realName: '山田', systemDisplayName: '山田さん', memo: '' }, { actor: 'フォーム' });
     await updateFriendRegistrationFields(db, 'f1', { realName: '山田', memo: 'ひみつメモ' });
     expect(events().map((e) => [e.event_type, e.text, e.actor])).toEqual([
-      ['profile_changed', '本名・システム表示名を変更しました', 'フォーム'],
+      ['profile_changed', '本名を変更しました', 'フォーム'],
       ['profile_changed', '個別メモを変更しました', null],
     ]);
     expect(JSON.stringify(events())).not.toContain('ひみつメモ');

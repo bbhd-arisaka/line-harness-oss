@@ -196,10 +196,9 @@ export interface UpdatedChat {
   notes: string | null;
 }
 
-/** PUT /api/friends/:id/profile のリクエスト(送った項目だけ更新される。本名・システム表示名は20文字まで) */
+/** PUT /api/friends/:id/profile のリクエスト(送った項目だけ更新される。本名は20文字まで) */
 export interface FriendProfileInput {
   realName?: string | null;
-  systemDisplayName?: string | null;
   memo?: string | null;
 }
 
@@ -220,7 +219,6 @@ export interface Friend {
   isFollowing: boolean;
   metadata: Record<string, unknown>;
   realName: string | null;
-  systemDisplayName: string | null;
   memo: string | null;
   refCode: string | null;
   lineAccountId: string | null;

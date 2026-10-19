@@ -67,7 +67,7 @@ const nextUid = () => seq++
 
 function newCondition(type: FriendCondition['type']): FriendCondition {
   switch (type) {
-    case 'name': return { type, value: '', targets: ['display', 'real', 'system'] }
+    case 'name': return { type, value: '', targets: ['display', 'real'] }
     case 'memo': return { type, op: 'contains', value: '' }
     case 'statusMessage': return { type, value: '' }
     case 'addedDate': return { type, from: null, to: null }
@@ -120,7 +120,6 @@ function ConditionRow({
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           <Checkbox label="LINE登録名" checked={cond.targets.includes('display')} onCheckedChange={(v) => toggle('display', v)} />
           <Checkbox label="本名" checked={cond.targets.includes('real')} onCheckedChange={(v) => toggle('real', v)} />
-          <Checkbox label="システム表示名" checked={cond.targets.includes('system')} onCheckedChange={(v) => toggle('system', v)} />
           <span className="text-xs text-kumo-subtle">から検索</span>
         </div>
       </div>

@@ -550,6 +550,12 @@ CREATE TABLE IF NOT EXISTS friend_scores (
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
+CREATE TABLE IF NOT EXISTS friend_system_display_name_backup (
+  friend_id   TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  backed_up_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
 CREATE TABLE IF NOT EXISTS friend_tags (
   friend_id   TEXT NOT NULL REFERENCES friends (id) ON DELETE CASCADE,
   tag_id      TEXT NOT NULL REFERENCES tags (id) ON DELETE CASCADE,

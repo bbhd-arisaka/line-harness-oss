@@ -283,7 +283,6 @@ export default function ImportsPage() {
               <tr><td>新しく作るタグ</td><td className="text-right">{plan.definitions.tags.toCreate}件(全{plan.definitions.tags.total})</td></tr>
               <tr><td>反映する友だち</td><td className="text-right">{plan.friends.inAccount}人</td></tr>
               <tr><td>　うち、本名を入れる</td><td className="text-right">{plan.friends.willSetRealName}人(上書き {plan.friends.willOverwriteRealName}人)</td></tr>
-              <tr><td>　うち、システム表示名を入れる</td><td className="text-right">{plan.friends.willSetSystemDisplayName}人</td></tr>
               <tr><td>　うち、友だち情報の値を入れる</td><td className="text-right">{plan.friends.withValues}人(上書き {plan.friends.overwritingValues}人)</td></tr>
               <tr><td>　タグを付ける(新規の付与)</td><td className="text-right">{plan.friends.newTagAssignments}件({plan.friends.withTags}人)</td></tr>
               {plan.forms && (

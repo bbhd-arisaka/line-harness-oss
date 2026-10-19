@@ -22,7 +22,7 @@ export interface FriendNameFields {
 
 /**
  * Lステップの「表示名編集 (対象: ○○)」モーダル。
- * LINE登録名(読み取り専用) / 本名 / システム表示名 の3項目、各20文字まで。
+ * LINE登録名(読み取り専用) / 本名 の2項目、各20文字まで。
  */
 export function FriendNameEditDialog({
   friend,
@@ -36,16 +36,14 @@ export function FriendNameEditDialog({
   onSaved: (updated: { realName: string | null; systemDisplayName: string | null }) => void
 }) {
   const [realName, setRealName] = useState('')
-  const [systemDisplayName, setSystemDisplayName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) return
     setRealName(friend.realName ?? '')
-    setSystemDisplayName(friend.systemDisplayName ?? '')
     setError('')
-  }, [open, friend.realName, friend.systemDisplayName])
+  }, [open, friend.realName])
 
   async function save() {
     setSaving(true)
@@ -53,14 +51,13 @@ export function FriendNameEditDialog({
     try {
       const next = {
         realName: realName.trim() || null,
-        systemDisplayName: systemDisplayName.trim() || null,
       }
       const res = await api.friends.updateProfile(friend.id, next)
       if (!res.success) {
         setError(('error' in res && typeof res.error === 'string' && res.error) || '保存に失敗しました')
         return
       }
-      onSaved(next)
+      onSaved({ ...next, systemDisplayName: null })
       onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存に失敗しました')
@@ -72,7 +69,6 @@ export function FriendNameEditDialog({
   const rows: Array<{ label: string; value: string; onChange?: (v: string) => void }> = [
     { label: 'LINE登録名', value: friend.displayName ?? '' },
     { label: '本名', value: realName, onChange: setRealName },
-    { label: 'システム表示名', value: systemDisplayName, onChange: setSystemDisplayName },
   ]
 
   return (

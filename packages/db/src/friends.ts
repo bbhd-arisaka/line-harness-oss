@@ -64,10 +64,7 @@ export async function updateFriendRegistrationFields(
     sets.push('display_name = ?'); values.push(updates.displayName ?? null);
     if (before && !same(before.display_name, updates.displayName)) changedProfile.push('表示名');
   }
-  if ('systemDisplayName' in updates) {
-    sets.push('system_display_name = ?'); values.push(updates.systemDisplayName ?? null);
-    if (before && !same(before.system_display_name, updates.systemDisplayName)) changedProfile.push('システム表示名');
-  }
+  // システム表示名は廃止した(渡されても、書き込まない)
   if ('memo' in updates) {
     sets.push('memo = ?'); values.push(updates.memo ?? null);
     if (before && !same(before.memo, updates.memo)) changedProfile.push('個別メモ');
