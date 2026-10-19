@@ -934,7 +934,6 @@ export default function ChatsPage() {
         setChatDetail((prev) => (prev && prev.id === sendingChatId) ? {
           ...prev,
           lastMessageAt: now,
-          status: 'in_progress',
           messages: [
             ...(prev.messages ?? []),
             {
@@ -954,7 +953,6 @@ export default function ChatsPage() {
           const updated = prev.map((c) => c.id === sendingChatId ? {
             ...c,
             lastMessageAt: now,
-            status: 'in_progress' as const,
             lastMessageContent: '[画像]',
             lastMessageDirection: 'outgoing' as const,
             lastMessageType: 'image' as const,
@@ -985,7 +983,6 @@ export default function ChatsPage() {
         setChatDetail((prev) => (prev && prev.id === sendingChatId) ? {
           ...prev,
           lastMessageAt: now,
-          status: 'in_progress',
           messages: [
             ...(prev.messages ?? []),
             {
@@ -1006,14 +1003,13 @@ export default function ChatsPage() {
           const updated = prev.map((c) => c.id === sendingChatId ? {
             ...c,
             lastMessageAt: now,
-            status: 'in_progress' as const,
             // 一覧の preview も即時更新する。server 側も direction/source を問わず
             // 実際の最新メッセージを返すため、次回 loadChats() 後も同じ表示になる。
             lastMessageContent: content,
             lastMessageDirection: 'outgoing' as const,
             lastMessageType: 'text' as const,
           } : c)
-          // Drop rows that no longer match the current tab (e.g. replying from 未読 moves chat to in_progress)
+          // Drop rows that no longer match the current tab (送信しても、対応状況は変わらない)
           // 未対応モード時は status filter を skip (worker 側で status を絞ってないため
           // 楽観更新で applied するとリストが歪む — Codex Round 1)
           let filtered = currentUnansweredOnly

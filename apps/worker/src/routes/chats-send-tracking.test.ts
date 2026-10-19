@@ -148,9 +148,16 @@ describe('chat reply tracking and delivery logs', () => {
     expect((await send({ content: RAW_URL }, 'friend-a')).status).toBe(200);
     const chat = fixture.sqlite.prepare("SELECT id,status FROM chats WHERE friend_id='friend-a'").get() as { id: string; status: string };
     expect(chat.id).not.toBe('friend-a');
-    expect(chat.status).toBe('in_progress');
     expect(requests[0].messages).toEqual([{ type: 'text', text: `${WORKER}/t/${links()[0].short_code}?f=friend-a` }]);
     expectLogMatches(requests[0].messages[0]);
+  });
+
+  it('送っただけでは、対応状況は変わらない(未対応は未対応・対応済みは対応済みのまま)', async () => {
+    for (const status of ['unread', 'in_progress', 'resolved']) {
+      fixture.sqlite.prepare('UPDATE chats SET status = ? WHERE id = ?').run(status, 'chat-a');
+      expect((await send({ content: 'こんにちは', trackLinks: false })).status).toBe(200);
+      expect(fixture.sqlite.prepare("SELECT status FROM chats WHERE id='chat-a'").get()).toEqual({ status });
+    }
   });
 
   it('retains the owner ID when an unassigned legacy friend uses the sole active account', async () => {

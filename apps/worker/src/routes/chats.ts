@@ -789,8 +789,9 @@ chats.post('/api/chats/:id/send', async (c) => {
       await publishChatEventInBackground(c.env, ctx, { kind: 'sent', friendId: friend.id, accountId: lineAccountId ?? null });
     }
 
-    // チャットの最終メッセージ日時を更新（chat.id を直接使う — friend_id で呼ばれても resolveOrCreateChat 済み）
-    await updateChat(c.env.DB, chat.id, { status: 'in_progress', lastMessageAt: jstNow() });
+    // チャットの最終メッセージ日時を更新（chat.id を直接使う — friend_id で呼ばれても resolveOrCreateChat 済み）。
+    // 対応状況(未対応・対応中・対応済み)は、送っただけでは変えない(変えるのは、スタッフが押したときと、お客様から届いたとき)
+    await updateChat(c.env.DB, chat.id, { lastMessageAt: jstNow() });
 
     return c.json({ success: true, data: { sent: true, messageId: logId } });
   } catch (err) {
