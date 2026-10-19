@@ -4,10 +4,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { hapticSelect, hapticSuccess } from '../lib/haptics';
 
 const OPEN_W = 88; // 開いたときの、操作ボタンの幅
+const CLOSED_OFFSET = { x: OPEN_W, y: 0 }; // 毎回あたらしい値を渡すと、再描画のたびに位置が戻ることがあるため、固定
 
 /** いま開いている行(同時に開くのは1行だけ)。一覧のスクロールを始めたときなどに、閉じる */
 let openRowClose: (() => void) | null = null;
+let openedAt = 0;
 export function closeOpenSwipeRow(): void {
+  // 開いた直後(指を離して間もない)は閉じない。斜めにスライドしたとき、一覧の縦スクロールの開始で、開いた行が勝手に閉じるのを防ぐ
+  if (Date.now() - openedAt < 700) return;
   openRowClose?.();
 }
 
@@ -48,6 +52,7 @@ export function SwipeRow({
       hapticSelect(); // 開いたとき、かすかに
       if (openRowClose && openRowClose !== closeSelfRef.current) openRowClose();
       openRowClose = closeSelfRef.current;
+      openedAt = Date.now();
     } else if (openRowClose === closeSelfRef.current) {
       openRowClose = null;
     }
@@ -74,9 +79,15 @@ export function SwipeRow({
   //  - 開いているとき: 28pt 以上とじる、または左へはらうと、閉じる
   const settle = (x: number, vx: number) => {
     const reveal = OPEN_W - x; // どれだけ開いたか(0=閉じ・OPEN_W=全開)
-    const wantOpen = openRef.current ? !(reveal < OPEN_W - 28 || vx > 0.25) : reveal >= 24 || vx < -0.25;
+    const wantOpen = openRef.current ? !(reveal < OPEN_W - 28 || vx > 0.25) : reveal >= 16 || vx < -0.2;
     ref.current?.scrollTo({ x: wantOpen ? 0 : OPEN_W, animated: true });
     if (wantOpen !== openRef.current) setOpenState(wantOpen);
+  };
+  // 勢いのスクロールが終わったとき、中途半端な位置(開き途中)で止まっていたら、いまの状態の位置にそろえる。
+  // 「開いたのに戻る」「閉じたつもりが半開き」を防ぐ最後の安全網
+  const align = (x: number) => {
+    const target = openRef.current ? 0 : OPEN_W;
+    if (Math.abs(x - target) > 1) ref.current?.scrollTo({ x: target, animated: true });
   };
 
   return (
@@ -91,10 +102,11 @@ export function SwipeRow({
           alwaysBounceHorizontal={false}
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
-          contentOffset={{ x: OPEN_W, y: 0 }}
+          contentOffset={CLOSED_OFFSET}
           scrollEventThrottle={32}
           keyboardShouldPersistTaps="handled"
           onScrollEndDrag={(e) => settle(e.nativeEvent.contentOffset.x, e.nativeEvent.velocity?.x ?? 0)}
+          onMomentumScrollEnd={(e) => align(e.nativeEvent.contentOffset.x)}
         >
           <View style={{ flexDirection: 'row', width: width + OPEN_W }}>
             <Pressable
