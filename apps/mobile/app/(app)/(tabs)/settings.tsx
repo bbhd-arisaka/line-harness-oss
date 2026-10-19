@@ -163,7 +163,6 @@ function SettingsScreen() {
       >
         <View style={{ flex: 1 }}>
           <Text style={{ color: c.text, fontSize: 16, fontWeight: '700' }}>友だち追加のQRコード・URL</Text>
-          <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 2 }}>QRは画像で保存、URLはワンタップでコピーできます</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={c.primaryText} />
       </Pressable>
@@ -203,7 +202,6 @@ function SettingsScreen() {
               <View key={k.key} style={styles.accountRow}>
                 <View style={{ flex: 1, marginRight: 12 }}>
                   <Text style={{ color: c.text, fontSize: 15 }}>{k.label}</Text>
-                  <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 1 }}>{k.description}</Text>
                 </View>
                 <Switch
                   accessibilityLabel={`${k.label}の通知`}

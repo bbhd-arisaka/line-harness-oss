@@ -132,28 +132,15 @@ const BubbleView = memo(function BubbleView({
           </Pressable>
         ) : (
           // 文章は、その場で好きな範囲を選べる(長押し→ハンドルをドラッグ→「コピー」)。
-          // 大きさは見えない Text で決め、同じ位置に、読み取り専用の入力欄(iPhone で範囲を選べる)を重ねる
-          <View>
-            <Text
-              accessible={false}
-              importantForAccessibility="no-hide-descendants"
-              style={[styles.bubbleText, { fontStyle: alt ? 'italic' : 'normal', opacity: 0 }]}
-            >
-              {bubble.text}
-            </Text>
-            <TextInput
-              value={bubble.text}
-              multiline
-              editable={false}
-              scrollEnabled={false}
-              accessibilityLabel="メッセージ"
-              style={[
-                StyleSheet.absoluteFill,
-                styles.bubbleText,
-                { color: out ? c.bubbleOutgoingText : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' },
-              ]}
-            />
-          </View>
+          // 読み取り専用の入力欄そのもので大きさも決める(別の部品と重ねると、空行などの高さがずれて、最後の行がはみ出すため)
+          <TextInput
+            value={bubble.text}
+            multiline
+            editable={false}
+            scrollEnabled={false}
+            accessibilityLabel="メッセージ"
+            style={[styles.bubbleText, { color: out ? c.bubbleOutgoingText : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' }]}
+          />
         )}
       </View>
       {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
