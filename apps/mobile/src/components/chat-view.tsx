@@ -15,6 +15,7 @@ import { appendTemplateText, imageContent, planCompose, templateNote } from '../
 import { useInterval } from '../state/hooks';
 import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow, type FormAnswerCard } from '../lib/format';
 import { STATUS_LABEL } from '../lib/format';
+import { StatusChip } from './status-chip';
 import type { ChatDetail, ChatStatus, FormOption, TemplateOption } from '../lib/types';
 import { ImageViewer } from '../components/image-viewer';
 import { ErrorView, LoadingView } from '../components/ui';
@@ -487,26 +488,9 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
           {chat ? (
             <View style={[styles.statusBar, { backgroundColor: c.card, borderBottomColor: c.border }]}>
               <View style={styles.segments} accessibilityRole="radiogroup">
-                {STATUS_ORDER.map((s) => {
-                  const active = chat.status === s;
-                  const palette = s === 'unread' ? c.danger : s === 'in_progress' ? c.warning : c.primaryButton;
-                  return (
-                    <Pressable
-                      key={s}
-                      onPress={() => void changeStatus(s)}
-                      disabled={statusBusy}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: active, disabled: statusBusy }}
-                      accessibilityLabel={STATUS_LABEL[s]}
-                      style={[
-                        styles.segment,
-                        { backgroundColor: active ? palette : c.inputBackground, opacity: statusBusy && !active ? 0.5 : 1 },
-                      ]}
-                    >
-                      <Text style={{ color: active ? '#ffffff' : c.textSub, fontSize: 13, fontWeight: '700' }}>{STATUS_LABEL[s]}</Text>
-                    </Pressable>
-                  );
-                })}
+                {STATUS_ORDER.map((s) => (
+                  <StatusChip key={s} label={STATUS_LABEL[s]} status={s} active={chat.status === s} disabled={statusBusy} onPress={() => void changeStatus(s)} />
+                ))}
               </View>
             </View>
           ) : null}
@@ -679,8 +663,8 @@ const styles = StyleSheet.create({
   paneHeader: { minHeight: MIN_TAP + 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 16, paddingRight: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   paneTitle: { flex: 1, fontSize: 17, fontWeight: '700' },
   headerButton: { width: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
-  statusBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
-  segments: { flex: 1, flexDirection: 'row', gap: 6 },
+  statusBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  segments: { flex: 1, flexDirection: 'row', gap: 8 },
   segment: { flex: 1, minHeight: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   limitNote: { fontSize: 11, textAlign: 'center', paddingVertical: 10, paddingHorizontal: 16 },
   bubbleRow: { flexDirection: 'row', alignItems: 'flex-end', marginVertical: 3, gap: 6 },

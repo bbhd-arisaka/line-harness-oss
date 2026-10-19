@@ -17,6 +17,7 @@ import { useUnread } from '../../../src/state/unread';
 import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
 import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
 import { parseChatFilter } from '../../../src/lib/home';
+import { StatusChip } from '../../../src/components/status-chip';
 
 const PAGE_SIZE = 50;
 
@@ -241,20 +242,9 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
         </View>
       </View>
       <View style={[styles.filters, { backgroundColor: c.card, borderBottomColor: c.border }]}>
-        {FILTERS.map((f) => {
-          const active = f.key === filter;
-          return (
-            <Pressable
-              key={f.key}
-              onPress={() => setFilter(f.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={[styles.chip, { backgroundColor: active ? c.primaryButton : c.inputBackground }]}
-            >
-              <Text style={{ color: active ? '#ffffff' : c.textSub, fontSize: 14, fontWeight: '700' }}>{f.label}</Text>
-            </Pressable>
-          );
-        })}
+        {FILTERS.map((f) => (
+          <StatusChip key={f.key} label={f.label} status={f.key} active={f.key === filter} showDot={false} onPress={() => setFilter(f.key)} />
+        ))}
       </View>
 
       {loading ? (
@@ -321,7 +311,6 @@ const styles = StyleSheet.create({
   searchBox: { minHeight: 40, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   searchInput: { flex: 1, minHeight: 40, fontSize: 16 },
   filters: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  chip: { minHeight: 36, minWidth: MIN_TAP + 8, paddingHorizontal: 12, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   row: { minHeight: 72, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   rowBody: { flex: 1, marginLeft: 12 },
   rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },

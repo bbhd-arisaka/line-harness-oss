@@ -195,13 +195,6 @@ function FriendDetailScreen() {
               onChangeText={(v) => setDraft({ ...draft, realName: v })}
               editable={!saving}
             />
-            <EditField
-              label="システム表示名"
-              hint={`${charLength(draft.systemDisplayName.trim())}/${NAME_MAX_LENGTH}文字`}
-              value={draft.systemDisplayName}
-              onChangeText={(v) => setDraft({ ...draft, systemDisplayName: v })}
-              editable={!saving}
-            />
             <Field label="LINE名(変更できません)" value={f.displayName} />
           </Card>
 
@@ -238,7 +231,6 @@ function FriendDetailScreen() {
           <SectionTitle>名前</SectionTitle>
           <Card>
             <Field label="本名" value={f.realName?.trim()} />
-            <Field label="システム表示名" value={f.systemDisplayName?.trim()} />
             <Field label="LINE名" value={f.displayName} />
           </Card>
 
