@@ -18,7 +18,7 @@ import { mergeFreshPage } from '../../../src/lib/chat-list-merge';
 import { ACTIVITY_RETRY_MS, subscribeChatActivity } from '../../../src/lib/chat-activity';
 import { parseChatFilter } from '../../../src/lib/home';
 import { StatusChip } from '../../../src/components/status-chip';
-import { SwipeRow } from '../../../src/components/swipe-row';
+import { SwipeRow, closeOpenSwipeRow } from '../../../src/components/swipe-row';
 import { FadeIn } from '../../../src/components/fade-in';
 import { animateLayout } from '../../../src/lib/motion';
 
@@ -319,6 +319,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
           keyExtractor={(it) => it.id}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          onScrollBeginDrag={closeOpenSwipeRow}
           renderItem={({ item }) => (
             <SwipeRow label={item.pinned ? 'ピン留め解除' : 'ピン留め'} icon={item.pinned ? 'pin-outline' : 'pin'} color="#4f6bed" onTrigger={() => void togglePinChat(item)}>
               <ChatRow chat={item} onPress={openChat} onLongPress={onLongPressChat} selected={item.friendId === selectedId} />

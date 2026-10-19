@@ -1,13 +1,21 @@
-import { useRef } from 'react';
-import { Animated, Easing, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const MAX = 92; // 開く幅
-const TRIGGER = 64; // ここまで引いて離すと、実行する
+const OPEN_W = 88; // 開いたときの、操作ボタンの幅
+
+/** いま開いている行(同時に開くのは1行だけ)。一覧のスクロールを始めたときなどに、閉じる */
+let openRowClose: (() => void) | null = null;
+export function closeOpenSwipeRow(): void {
+  openRowClose?.();
+}
 
 /**
- * 行を右へスライドすると、左側に操作(ピン留めなど)が現れ、一定以上引いて離すと実行する(普通のLINEと同じ)。
- * 縦のスクロールは邪魔しない(横の動きが、縦より十分大きいときだけ反応する)。
+ * 行を右へスライドすると、左に操作ボタン(ピン留めなど)が現れる。ボタンを押すと実行して閉じる(普通のLINEと同じ)。
+ *  - 半分より開けて離す/勢いよくはらうと、開いたままになる。足りなければ、閉じる
+ *  - 開いているとき: 行を押す・左へ戻す・ほかの行を開く・一覧をスクロールすると、閉じる
+ *  - 縦のスクロールは邪魔しない(横の動きが、縦より十分大きいときだけ反応する)
+ * 動きは JS のアニメーション(ネイティブ駆動にしない): ネイティブ駆動のあとに setValue すると、値が固まることがあるため
  */
 export function SwipeRow({
   children,
@@ -25,42 +33,87 @@ export function SwipeRow({
   disabled?: boolean;
 }) {
   const x = useRef(new Animated.Value(0)).current;
+  const isOpenRef = useRef(false);
+  const startRef = useRef(0);
+  const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef(onTrigger);
   triggerRef.current = onTrigger;
   const disabledRef = useRef(disabled);
   disabledRef.current = disabled;
-  const back = () => Animated.timing(x, { toValue: 0, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+
+  const closeSelfRef = useRef<() => void>(() => undefined);
+  const settle = useCallback(
+    (toOpen: boolean) => {
+      isOpenRef.current = toOpen;
+      setIsOpen(toOpen);
+      Animated.timing(x, { toValue: toOpen ? OPEN_W : 0, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+      if (toOpen) {
+        if (openRowClose && openRowClose !== closeSelfRef.current) openRowClose();
+        openRowClose = closeSelfRef.current;
+      } else if (openRowClose === closeSelfRef.current) {
+        openRowClose = null;
+      }
+    },
+    [x],
+  );
+  closeSelfRef.current = () => settle(false);
+
+  useEffect(
+    () => () => {
+      if (openRowClose === closeSelfRef.current) openRowClose = null;
+    },
+    [],
+  );
 
   const pan = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => !disabledRef.current && g.dx > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6,
-      onPanResponderGrant: () => x.stopAnimation(),
+      // 右へ(閉じているとき)・開いているときは、左へも
+      onMoveShouldSetPanResponder: (_, g) =>
+        !disabledRef.current && Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6 && (g.dx > 0 || isOpenRef.current),
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        x.stopAnimation((v) => {
+          startRef.current = v;
+        });
+      },
       onPanResponderMove: (_, g) => {
+        const v = startRef.current + g.dx;
         // 開く幅を超えたぶんは、重く(ゴムのように)
-        const d = g.dx <= MAX ? g.dx : MAX + (g.dx - MAX) * 0.25;
-        x.setValue(Math.max(0, d));
+        x.setValue(v < 0 ? 0 : v > OPEN_W ? OPEN_W + (v - OPEN_W) * 0.2 : v);
       },
       onPanResponderRelease: (_, g) => {
-        back();
-        if (g.dx >= TRIGGER) triggerRef.current();
+        const v = startRef.current + g.dx;
+        settle(v + g.vx * 60 > OPEN_W / 2);
       },
-      onPanResponderTerminate: back,
+      onPanResponderTerminate: () => settle(isOpenRef.current),
     }),
   ).current;
 
   return (
     <View style={styles.wrap} {...pan.panHandlers}>
-      <View style={[styles.action, { backgroundColor: color }]} pointerEvents="none">
-        <Ionicons name={icon} size={20} color="#ffffff" />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        onPress={() => {
+          settle(false);
+          triggerRef.current();
+        }}
+        style={[styles.action, { backgroundColor: color }]}
+      >
+        <Ionicons name={icon} size={22} color="#ffffff" />
         <Text style={styles.label}>{label}</Text>
-      </View>
-      <Animated.View style={{ transform: [{ translateX: x }] }}>{children}</Animated.View>
+      </Pressable>
+      <Animated.View style={{ transform: [{ translateX: x }] }}>
+        {children}
+        {/* 開いているときは、行を押しても開かず、閉じるだけ */}
+        {isOpen ? <Pressable accessibilityLabel="閉じる" onPress={() => settle(false)} style={StyleSheet.absoluteFill} /> : null}
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { overflow: 'hidden' },
-  action: { position: 'absolute', left: 0, top: 0, bottom: 0, width: MAX + 40, paddingLeft: 14, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 3 },
+  action: { position: 'absolute', left: 0, top: 0, bottom: 0, width: OPEN_W, alignItems: 'center', justifyContent: 'center', gap: 4 },
   label: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
 });
