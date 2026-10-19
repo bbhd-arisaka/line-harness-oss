@@ -93,6 +93,29 @@ function FormAnswerCardView({ card, time, avatar, onOpen }: { card: FormAnswerCa
   );
 }
 
+/**
+ * 吹き出しの文章。その場で好きな範囲を選べる(長押し→ハンドルをドラッグ→「コピー」)。
+ * 読み取り専用の入力欄(iPhone で範囲を選べる)に出す。入力欄は、事前の測り方と実際の折り返しがずれて、
+ * 最後の行がはみ出すことがあるので、実際に描いたあとの高さ(onContentSizeChange)で高さを決め直す。
+ */
+function SelectableText({ text, color, italic }: { text: string; color: string; italic: boolean }) {
+  const [height, setHeight] = useState<number | null>(null);
+  return (
+    <TextInput
+      value={text}
+      multiline
+      editable={false}
+      scrollEnabled={false}
+      accessibilityLabel="メッセージ"
+      onContentSizeChange={(e) => {
+        const h = Math.ceil(e.nativeEvent.contentSize.height);
+        setHeight((prev) => (prev === h ? prev : h));
+      }}
+      style={[styles.bubbleText, height !== null ? { height } : null, { color, fontStyle: italic ? 'italic' : 'normal' }]}
+    />
+  );
+}
+
 const BubbleView = memo(function BubbleView({
   bubble,
   onImagePress,
@@ -131,16 +154,7 @@ const BubbleView = memo(function BubbleView({
             <Image source={{ uri: bubble.imageUrl }} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
           </Pressable>
         ) : (
-          // 文章は、その場で好きな範囲を選べる(長押し→ハンドルをドラッグ→「コピー」)。
-          // 読み取り専用の入力欄そのもので大きさも決める(別の部品と重ねると、空行などの高さがずれて、最後の行がはみ出すため)
-          <TextInput
-            value={bubble.text}
-            multiline
-            editable={false}
-            scrollEnabled={false}
-            accessibilityLabel="メッセージ"
-            style={[styles.bubbleText, { color: out ? c.bubbleOutgoingText : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' }]}
-          />
+          <SelectableText text={bubble.text} color={out ? c.bubbleOutgoingText : c.bubbleIncomingText} italic={alt} />
         )}
       </View>
       {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
