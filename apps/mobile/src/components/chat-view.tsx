@@ -95,24 +95,26 @@ function FormAnswerCardView({ card, time, avatar, onOpen }: { card: FormAnswerCa
 
 /**
  * 吹き出しの文章。その場で好きな範囲を選べる(長押し→ハンドルをドラッグ→「コピー」)。
- * 読み取り専用の入力欄(iPhone で範囲を選べる)に出す。入力欄は、事前の測り方と実際の折り返しがずれて、
- * 最後の行がはみ出すことがあるので、実際に描いたあとの高さ(onContentSizeChange)で高さを決め直す。
+ * 大きさは、見えない Text で決める。その上に、同じ書式の読み取り専用の入力欄(iPhone で範囲を選べる)を重ねる。
+ * 入力欄は、描く幅が Text より少し狭く、折り返しが1行増えて最後の行がはみ出すことがあったので、
+ * 右に 12 だけ広げて重ねる(広い分には、折り返しは増えない。吹き出しの外にはみ出す分は、何も描かれない)。
  */
 function SelectableText({ text, color, italic }: { text: string; color: string; italic: boolean }) {
-  const [height, setHeight] = useState<number | null>(null);
+  const fontStyle = italic ? 'italic' : 'normal';
   return (
-    <TextInput
-      value={text}
-      multiline
-      editable={false}
-      scrollEnabled={false}
-      accessibilityLabel="メッセージ"
-      onContentSizeChange={(e) => {
-        const h = Math.ceil(e.nativeEvent.contentSize.height);
-        setHeight((prev) => (prev === h ? prev : h));
-      }}
-      style={[styles.bubbleText, height !== null ? { height } : null, { color, fontStyle: italic ? 'italic' : 'normal' }]}
-    />
+    <View>
+      <Text accessible={false} importantForAccessibility="no-hide-descendants" style={[styles.bubbleText, { fontStyle, opacity: 0 }]}>
+        {text}
+      </Text>
+      <TextInput
+        value={text}
+        multiline
+        editable={false}
+        scrollEnabled={false}
+        accessibilityLabel="メッセージ"
+        style={[styles.bubbleText, { position: 'absolute', left: 0, top: 0, bottom: 0, right: -12, color, fontStyle }]}
+      />
+    </View>
   );
 }
 
