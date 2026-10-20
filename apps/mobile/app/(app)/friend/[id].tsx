@@ -273,7 +273,6 @@ function FriendDetailScreen() {
           <Card>
             <Field label="本名" value={f.realName?.trim()} />
             <Field label="LINE名" value={f.displayName} />
-            <Field label="流入経路" value={f.inflowRoute?.name ?? null} />
           </Card>
 
           <SectionTitle>メモ</SectionTitle>
@@ -353,6 +352,7 @@ function FriendDetailScreen() {
       <SectionTitle>その他</SectionTitle>
       <Card>
         <Field label="友だち追加日" value={formatDateTime(f.createdAt)} />
+        <Field label="流入経路" value={f.inflowRoute?.name ?? null} />
       </Card>
     </ScrollView>
   );
