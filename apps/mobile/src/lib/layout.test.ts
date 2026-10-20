@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONTENT_MAX_WIDTH, LIST_PANE_WIDTH, SPLIT_MIN, contentMaxWidth, isSplitLayout } from './layout';
+import { CONTENT_MAX_WIDTH, LIST_PANE_WIDTH, SPLIT_MIN, WIDE_TEXT_SCALE, contentMaxWidth, isSplitLayout, textScale } from './layout';
 
 describe('contentMaxWidth', () => {
   it('iPhone は画面いっぱい、iPad は読みやすい幅に制限する', () => {
@@ -24,5 +24,14 @@ describe('isSplitLayout', () => {
   it('2列にする幅では、他の画面の中身の幅制限も効く', () => {
     expect(SPLIT_MIN).toBeGreaterThanOrEqual(CONTENT_MAX_WIDTH + 40);
     expect(LIST_PANE_WIDTH).toBeLessThan(SPLIT_MIN / 2);
+  });
+});
+
+describe('textScale', () => {
+  it('iPhone はそのまま、iPad など広い画面は文字を大きくする', () => {
+    expect(textScale(390)).toBe(1);
+    expect(textScale(699)).toBe(1);
+    expect(textScale(744)).toBe(WIDE_TEXT_SCALE);
+    expect(textScale(1032)).toBe(WIDE_TEXT_SCALE);
   });
 });

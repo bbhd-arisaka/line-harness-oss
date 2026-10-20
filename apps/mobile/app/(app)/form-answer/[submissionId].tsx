@@ -9,6 +9,7 @@ import { formatDateTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
 import type { FormAnswerDetail } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
+import { fs } from '../../../src/theme/scale';
 
 /** トークの「回答結果を見る」から開く、フォームの回答結果(項目名と回答の一覧) */
 function FormAnswerScreen() {
@@ -45,17 +46,17 @@ function FormAnswerScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={styles.content}>
       <Card>
-        <Text style={{ color: c.text, fontSize: 17, fontWeight: '700' }}>{detail.formName}</Text>
-        <Text style={{ color: c.textSub, fontSize: 13, marginTop: 6 }}>回答者: {detail.friendName}</Text>
-        <Text style={{ color: c.textSub, fontSize: 13, marginTop: 2 }}>回答日時: {formatDateTime(detail.answeredAt)}</Text>
+        <Text style={{ color: c.text, fontSize: fs(17), fontWeight: '700' }}>{detail.formName}</Text>
+        <Text style={{ color: c.textSub, fontSize: fs(13), marginTop: 6 }}>回答者: {detail.friendName}</Text>
+        <Text style={{ color: c.textSub, fontSize: fs(13), marginTop: 2 }}>回答日時: {formatDateTime(detail.answeredAt)}</Text>
       </Card>
       <Card>
         {detail.items.length === 0 ? (
-          <Text style={{ color: c.textMuted, fontSize: 14 }}>回答の項目がありません</Text>
+          <Text style={{ color: c.textMuted, fontSize: fs(14) }}>回答の項目がありません</Text>
         ) : (
           detail.items.map((it, i) => (
             <View key={`${it.label}-${i}`} style={[styles.item, i > 0 ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border } : null]}>
-              <Text style={{ color: c.textMuted, fontSize: 12 }}>{it.label}</Text>
+              <Text style={{ color: c.textMuted, fontSize: fs(12) }}>{it.label}</Text>
               {it.isFile ? (
                 <Pressable
                   onPress={() => void Linking.openURL(it.value)}
@@ -63,10 +64,10 @@ function FormAnswerScreen() {
                   accessibilityLabel={`${it.label}の添付ファイルを開く`}
                   style={{ minHeight: MIN_TAP, justifyContent: 'center' }}
                 >
-                  <Text style={{ color: c.primaryText, fontSize: 15, fontWeight: '600' }}>📎 添付ファイルを開く</Text>
+                  <Text style={{ color: c.primaryText, fontSize: fs(15), fontWeight: '600' }}>📎 添付ファイルを開く</Text>
                 </Pressable>
               ) : (
-                <MessageText text={it.value} style={{ color: c.text, fontSize: 16, lineHeight: 23, marginTop: 2 }} />
+                <MessageText text={it.value} style={{ color: c.text, fontSize: fs(16), lineHeight: fs(23), marginTop: 2 }} />
               )}
             </View>
           ))

@@ -21,3 +21,10 @@ export function contentMaxWidth(windowWidth: number): number | null {
 export function isSplitLayout(windowWidth: number): boolean {
   return windowWidth >= SPLIT_MIN;
 }
+
+/** iPad など広い画面での、文字の拡大率(フォームの回答結果・友だち情報など、読む画面を見やすくする) */
+export const WIDE_TEXT_SCALE = 1.3;
+
+export function textScale(windowWidth: number): number {
+  return windowWidth >= WIDE_SCREEN_MIN ? WIDE_TEXT_SCALE : 1;
+}

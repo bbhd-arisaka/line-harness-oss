@@ -17,8 +17,12 @@ interface FieldDef {
   type?: unknown;
 }
 
-/** 見出し・説明など、回答の無いブロック */
-const NON_ANSWER_TYPES = new Set(['heading', 'description', 'divider', 'section', 'text_block', 'paragraph']);
+/**
+ * 見出し・小見出し・説明文・画像・ボタンなど、回答の無いブロック。
+ * フォーム編集画面の「表示だけの部品」(heading / subheading / paragraph / image / button)と同じものを含める。
+ * (小見出しが抜けていると、「お名前」の小見出しと「お名前」の入力欄が、同じ項目名で2つ並んでしまう)
+ */
+const NON_ANSWER_TYPES = new Set(['heading', 'subheading', 'paragraph', 'image', 'button', 'description', 'divider', 'section', 'text_block']);
 
 function parseJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
@@ -37,7 +41,7 @@ function display(value: unknown): string {
   return String(value);
 }
 
-/** 内部の項目(_で始まる)は出さない。フォームの項目の並び順で、そのあとに、定義に無い回答を足す */
+/** 内部の項目(_で始まる)・見出しなどの表示だけの部品は出さない。フォームの項目の並び順で、そのあとに、定義に無い回答(空でないもの)を足す */
 export function buildAnswerItems(fieldsJson: string | null | undefined, dataJson: string | null | undefined): AnswerItem[] {
   const fields = parseJson<FieldDef[]>(fieldsJson, []);
   const data = parseJson<Record<string, unknown>>(dataJson, {});
@@ -48,14 +52,17 @@ export function buildAnswerItems(fieldsJson: string | null | undefined, dataJson
   for (const f of Array.isArray(fields) ? fields : []) {
     const name = typeof f.name === 'string' ? f.name : '';
     if (!name || name.startsWith('_')) continue;
-    if (typeof f.type === 'string' && NON_ANSWER_TYPES.has(f.type)) continue;
+    // 表示だけの部品は出さない。回答のデータ側にも同じ名前の空の値が入っていることがあるので、あとで「定義に無い回答」として出さないよう、使用済みにする
     used.add(name);
+    if (typeof f.type === 'string' && NON_ANSWER_TYPES.has(f.type)) continue;
     const label = typeof f.label === 'string' && f.label.trim() ? f.label : name;
     const v = data[name];
     items.push(isFileValue(v) ? { label, value: v, isFile: true } : { label, value: display(v) });
   }
   for (const [name, v] of Object.entries(data)) {
     if (used.has(name) || name.startsWith('_')) continue;
+    // 定義に無く、中身も空の回答は出さない(項目名が内部の名前のまま並ぶだけになる)
+    if (display(v) === '-') continue;
     items.push(isFileValue(v) ? { label: name, value: v, isFile: true } : { label: name, value: display(v) });
   }
   return items;

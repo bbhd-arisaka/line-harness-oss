@@ -19,6 +19,7 @@ interface Submission {
 interface FormField { name: string; label: string; type?: string }
 
 const PAGE_SIZE = 30
+const DISPLAY_ONLY = new Set(['heading', 'subheading', 'paragraph', 'image', 'button', 'divider'])
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('ja-JP', {
@@ -85,9 +86,12 @@ export default function FormAnswersPage() {
   }, [fields])
 
   const keys = useMemo(() => {
-    const inData = new Set(submissions.flatMap((s) => Object.keys(s.data)))
+    // 見出し・小見出し・テキストなど、回答の無い部品は出さない(回答のデータに、空の値で名前だけ入っていることがある)
+    const displayOnly = new Set(fields.filter((f) => DISPLAY_ONLY.has(String(f.type))).map((f) => f.name))
+    const inData = new Set(submissions.flatMap((s) => Object.keys(s.data)).filter((k) => !displayOnly.has(k)))
     const ordered = fields.map((f) => f.name).filter((n) => inData.has(n))
-    for (const k of inData) if (!ordered.includes(k)) ordered.push(k)
+    // 定義に無い回答は、中身が1件でもあるものだけ後ろに足す
+    for (const k of inData) if (!ordered.includes(k) && submissions.some((s) => formatValue(s.data[k]) !== '—')) ordered.push(k)
     return ordered
   }, [fields, submissions])
 

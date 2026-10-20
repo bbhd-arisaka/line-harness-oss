@@ -13,6 +13,7 @@ import { charLength, draftFromFriend, NAME_MAX_LENGTH, planProfileUpdate, type P
 import type { Tag } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 import { withReadableWidth } from '../../../src/components/readable-width';
+import { fs } from '../../../src/theme/scale';
 
 function tagColor(color: string | undefined, fallback: string): string {
   return color && /^#[0-9a-f]{3,8}$/i.test(color) ? color : fallback;
@@ -22,8 +23,8 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   const c = useColors();
   return (
     <View style={styles.field}>
-      <Text style={{ color: c.textMuted, fontSize: 12 }}>{label}</Text>
-      <MessageText text={value || '未設定'} style={{ color: value ? c.text : c.textMuted, fontSize: 15, marginTop: 2 }} />
+      <Text style={{ color: c.textMuted, fontSize: fs(12) }}>{label}</Text>
+      <MessageText text={value || '未設定'} style={{ color: value ? c.text : c.textMuted, fontSize: fs(15), marginTop: 2 }} />
     </View>
   );
 }
@@ -47,8 +48,8 @@ function EditField({
   return (
     <View style={styles.field}>
       <View style={styles.editLabelRow}>
-        <Text style={{ color: c.textMuted, fontSize: 12 }}>{label}</Text>
-        {hint ? <Text style={{ color: c.textMuted, fontSize: 12 }}>{hint}</Text> : null}
+        <Text style={{ color: c.textMuted, fontSize: fs(12) }}>{label}</Text>
+        {hint ? <Text style={{ color: c.textMuted, fontSize: fs(12) }}>{hint}</Text> : null}
       </View>
       <TextInput
         value={value}
@@ -75,7 +76,7 @@ function TagChip({ tag }: { tag: Tag }) {
   return (
     <View style={[styles.tag, { borderColor: c.border, backgroundColor: c.inputBackground }]}>
       <View style={[styles.tagDot, { backgroundColor: color }]} />
-      <Text style={{ color: c.text, fontSize: 13 }}>{tag.name}</Text>
+      <Text style={{ color: c.text, fontSize: fs(13) }}>{tag.name}</Text>
     </View>
   );
 }
@@ -180,7 +181,7 @@ function FriendDetailScreen() {
                 accessibilityLabel="名前とメモを編集する"
                 style={styles.headerButton}
               >
-                <Text style={{ color: c.primaryText, fontSize: 16, fontWeight: '700' }}>編集</Text>
+                <Text style={{ color: c.primaryText, fontSize: fs(16), fontWeight: '700' }}>編集</Text>
               </Pressable>
             ),
         }}
@@ -189,8 +190,8 @@ function FriendDetailScreen() {
       <View style={styles.header}>
         <Avatar uri={f.pictureUrl} name={name} size={80} />
         <Text style={[styles.title, { color: c.text }]}>{name}</Text>
-        {f.statusMessage ? <Text style={{ color: c.textMuted, fontSize: 13, marginTop: 4, textAlign: 'center' }}>{f.statusMessage}</Text> : null}
-        {!f.isFollowing ? <Text style={{ color: c.danger, fontSize: 13, marginTop: 6, fontWeight: '700' }}>ブロック中(メッセージは届きません)</Text> : null}
+        {f.statusMessage ? <Text style={{ color: c.textMuted, fontSize: fs(13), marginTop: 4, textAlign: 'center' }}>{f.statusMessage}</Text> : null}
+        {!f.isFollowing ? <Text style={{ color: c.danger, fontSize: fs(13), marginTop: 6, fontWeight: '700' }}>ブロック中(メッセージは届きません)</Text> : null}
       </View>
 
       {from !== 'chat' ? (
@@ -199,7 +200,7 @@ function FriendDetailScreen() {
 
       {savedNotice && !draft ? (
         <View style={[styles.notice, { backgroundColor: c.primarySoft }]} accessibilityRole="alert">
-          <Text style={{ color: c.primaryText, fontSize: 13, fontWeight: '700' }}>保存しました</Text>
+          <Text style={{ color: c.primaryText, fontSize: fs(13), fontWeight: '700' }}>保存しました</Text>
         </View>
       ) : null}
 
@@ -221,8 +222,8 @@ function FriendDetailScreen() {
               onPress={() => setRoutePicker(true)}
               style={[styles.field, { minHeight: MIN_TAP }]}
             >
-              <Text style={{ color: c.textMuted, fontSize: 12 }}>流入経路</Text>
-              <Text style={{ color: routeDraft ? c.text : c.textMuted, fontSize: 15, marginTop: 2, fontWeight: '600' }}>
+              <Text style={{ color: c.textMuted, fontSize: fs(12) }}>流入経路</Text>
+              <Text style={{ color: routeDraft ? c.text : c.textMuted, fontSize: fs(15), marginTop: 2, fontWeight: '600' }}>
                 {routes.find((r) => r.id === routeDraft)?.name ?? (routeDraft ? (f.inflowRoute?.name ?? '選択中') : 'なし')}
               </Text>
             </Pressable>
@@ -251,7 +252,7 @@ function FriendDetailScreen() {
 
           {saveError ? (
             <View style={[styles.notice, { backgroundColor: c.dangerSoft }]} accessibilityRole="alert">
-              <Text style={{ color: c.danger, fontSize: 13, lineHeight: 19 }}>{saveError}</Text>
+              <Text style={{ color: c.danger, fontSize: fs(13), lineHeight: fs(19) }}>{saveError}</Text>
             </View>
           ) : null}
           <Button title="保存する" onPress={() => void saveProfile()} loading={saving} style={{ marginTop: 16 }} />
@@ -277,7 +278,7 @@ function FriendDetailScreen() {
 
           <SectionTitle>メモ</SectionTitle>
           <Card>
-            <MessageText text={f.memo?.trim() || 'メモはありません'} style={{ color: f.memo?.trim() ? c.text : c.textMuted, fontSize: 15, lineHeight: 22 }} />
+            <MessageText text={f.memo?.trim() || 'メモはありません'} style={{ color: f.memo?.trim() ? c.text : c.textMuted, fontSize: fs(15), lineHeight: fs(22) }} />
           </Card>
         </>
       )}
@@ -291,7 +292,7 @@ function FriendDetailScreen() {
             ))}
           </View>
         ) : (
-          <Text style={{ color: c.textMuted, fontSize: 15 }}>タグはありません</Text>
+          <Text style={{ color: c.textMuted, fontSize: fs(15) }}>タグはありません</Text>
         )}
       </Card>
 
@@ -301,37 +302,37 @@ function FriendDetailScreen() {
           <ActivityIndicator color={c.primary} />
         ) : defs.error ? (
           <View>
-            <Text style={{ color: c.danger, fontSize: 13 }}>{defs.error}</Text>
+            <Text style={{ color: c.danger, fontSize: fs(13) }}>{defs.error}</Text>
             <Button title="再取得" variant="secondary" onPress={() => void defs.reload()} style={{ marginTop: 10 }} />
           </View>
         ) : infoRows.length > 0 ? (
           infoRows.map((r) => <Field key={r.key} label={r.label} value={r.value} />)
         ) : (
-          <Text style={{ color: c.textMuted, fontSize: 15 }}>入力されている項目はありません</Text>
+          <Text style={{ color: c.textMuted, fontSize: fs(15) }}>入力されている項目はありません</Text>
         )}
       </Card>
 
       <SectionTitle>いま設定されているリッチメニュー</SectionTitle>
       <Card>
         {menu.loading ? (
-          <Text style={{ color: c.textMuted, fontSize: 14 }}>読み込み中…</Text>
+          <Text style={{ color: c.textMuted, fontSize: fs(14) }}>読み込み中…</Text>
         ) : menu.error || !menuView ? (
           <View>
-            <Text style={{ color: c.danger, fontSize: 13 }}>取得に失敗しました{menu.error ? `(${menu.error})` : ''}</Text>
+            <Text style={{ color: c.danger, fontSize: fs(13) }}>取得に失敗しました{menu.error ? `(${menu.error})` : ''}</Text>
             <Button title="再取得" variant="secondary" onPress={() => void menu.reload()} style={{ marginTop: 10 }} />
           </View>
         ) : menuView.state === 'none' ? (
-          <Text style={{ color: c.textMuted, fontSize: 15 }}>{menuView.title}</Text>
+          <Text style={{ color: c.textMuted, fontSize: fs(15) }}>{menuView.title}</Text>
         ) : (
           <View>
             <View style={styles.menuTitleRow}>
-              <Text style={{ color: c.text, fontSize: 15, fontWeight: '700', flexShrink: 1 }}>{menuView.title}</Text>
+              <Text style={{ color: c.text, fontSize: fs(15), fontWeight: '700', flexShrink: 1 }}>{menuView.title}</Text>
               <View style={[styles.badge, { backgroundColor: menuView.badge === '個別に設定' ? c.primarySoft : c.inputBackground }]}>
-                <Text style={{ color: menuView.badge === '個別に設定' ? c.primaryText : c.textMuted, fontSize: 11, fontWeight: '700' }}>{menuView.badge}</Text>
+                <Text style={{ color: menuView.badge === '個別に設定' ? c.primaryText : c.textMuted, fontSize: fs(11), fontWeight: '700' }}>{menuView.badge}</Text>
               </View>
             </View>
             {menuView.details.map((d) => (
-              <Text key={d} style={{ color: c.textMuted, fontSize: 13, marginTop: 4 }}>
+              <Text key={d} style={{ color: c.textMuted, fontSize: fs(13), marginTop: 4 }}>
                 {d}
               </Text>
             ))}
@@ -361,12 +362,12 @@ function FriendDetailScreen() {
 const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 48 },
   header: { alignItems: 'center', paddingTop: 8 },
-  title: { fontSize: 22, fontWeight: '800', marginTop: 12, textAlign: 'center' },
+  title: { fontSize: fs(22), fontWeight: '800', marginTop: 12, textAlign: 'center' },
   field: { paddingVertical: 6 },
   headerButton: { minWidth: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
   notice: { marginTop: 16, padding: 12, borderRadius: 10 },
   editLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  input: { minHeight: MIN_TAP, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
+  input: { minHeight: MIN_TAP, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: fs(16) },
   inputMultiline: { minHeight: 120, textAlignVertical: 'top' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: StyleSheet.hairlineWidth },

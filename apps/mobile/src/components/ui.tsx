@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Image, Platform, Pressable, StyleSheet, Text,
 import { MIN_TAP, useColors } from '../theme/theme';
 import { nameInitial, statusLabel } from '../lib/format';
 import { DefaultAvatar } from './default-avatar';
+import { fs } from '../theme/scale';
 
 export function Button({
   title,
@@ -151,6 +152,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   centerTitle: { fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 6 },
   centerText: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 8 },
-  sectionTitle: { fontSize: 12, fontWeight: '700', marginTop: 20, marginBottom: 8, marginLeft: 4 },
+  sectionTitle: { fontSize: fs(12), fontWeight: '700', marginTop: 20, marginBottom: 8, marginLeft: 4 },
   card: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 12 },
 });

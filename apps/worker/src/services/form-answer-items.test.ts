@@ -29,6 +29,18 @@ describe('buildAnswerItems(回答結果の一覧)', () => {
     expect(items.map((i) => i.label)).toEqual(['お名前', 'メニュー', 'f_note', '写真', 'extra']);
     expect(items.at(-1)).toEqual({ label: 'extra', value: '1' });
   });
+  it('小見出し・テキスト・画像・ボタンは出さない。回答データ側の空の値(見出しの名前)も、項目名のまま並べない', () => {
+    const f = JSON.stringify([
+      { name: 'heading_customer', label: 'お客様について', type: 'heading' },
+      { name: 'sub_name', label: 'お名前', type: 'subheading' },
+      { name: 'name', label: 'お名前', type: 'text' },
+      { name: 'para_privacy', label: '同意事項…', type: 'paragraph' },
+      { name: 'pic', label: '', type: 'image' },
+      { name: 'go', label: '送信', type: 'button' },
+    ]);
+    const data = JSON.stringify({ heading_customer: '', sub_name: '', name: '山田', para_privacy: '', pic: '', go: '', old_unknown: '' });
+    expect(buildAnswerItems(f, data)).toEqual([{ label: 'お名前', value: '山田' }]);
+  });
   it('壊れた JSON・空でも落ちない', () => {
     expect(buildAnswerItems('not json', 'not json')).toEqual([]);
     expect(buildAnswerItems(null, null)).toEqual([]);
