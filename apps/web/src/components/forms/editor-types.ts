@@ -354,6 +354,9 @@ export function blocksToApi(blocks: BlockDraft[]): ApiField[] {
 /** 「オプション設定」「デザイン設定」のうち、フォーム本体の専用カラムを持たない項目。 */
 export interface LstepOptions {
   pageTitle?: string
+  /** フォームの上に出す見出し(空ならフォーム名)。hideTitle=true で出さない */
+  displayTitle?: string
+  hideTitle?: boolean
   submitLabel?: string
   nextLabel?: string
   buttonStyle?: 'default' | 'rounded' | 'square'
@@ -388,6 +391,10 @@ export interface FormDraft {
   capacityLimit: string
   answerLimitPerFriend: 'unlimited' | 'once'
   lstep: LstepOptions
+  // リンクプレビュー(OGP)。空なら、フォーム名などから自動で作られる
+  ogTitle: string
+  ogDescription: string
+  ogImageUrl: string
   // デザイン設定
   themeMainColor: string
   themeSubColor: string
@@ -423,6 +430,9 @@ export function emptyDraft(folderId: string): FormDraft {
     capacityLimit: '',
     answerLimitPerFriend: 'unlimited',
     lstep: {},
+    ogTitle: '',
+    ogDescription: '',
+    ogImageUrl: '',
     themeMainColor: '',
     themeSubColor: '',
     primaryColor: '',
@@ -466,6 +476,9 @@ export function draftFromApi(form: Record<string, unknown>): FormDraft {
     capacityLimit: form.capacityLimit != null ? String(form.capacityLimit) : '',
     answerLimitPerFriend: form.answerLimitPerFriend === 'once' ? 'once' : 'unlimited',
     lstep,
+    ogTitle: str(form.ogTitle),
+    ogDescription: str(form.ogDescription),
+    ogImageUrl: str(form.ogImageUrl),
     themeMainColor: str(form.themeMainColor),
     themeSubColor: str(form.themeSubColor),
     primaryColor: str(form.primaryColor),
@@ -520,6 +533,9 @@ export function draftToPayload(d: FormDraft) {
     customCssEnabled: d.customCssEnabled,
     customCss: nz(d.customCss),
     lstepOptions: d.lstep,
+    ogTitle: nz(d.ogTitle),
+    ogDescription: nz(d.ogDescription),
+    ogImageUrl: nz(d.ogImageUrl),
   }
 }
 

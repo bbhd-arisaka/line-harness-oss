@@ -7,6 +7,7 @@ import { TagInsertBar } from '@/components/ui/tag-insert-bar'
 import { TaggedText } from './tagged-text'
 import { Modal as SharedModal } from '@/components/ui/modal'
 import type { FormDraft, LstepOptions } from './editor-types'
+import ImageUploader from '@/components/shared/image-uploader'
 
 /** Lステップ風モーダル: 緑の見出し・右上×・下に「閉じる」「保存する」。背景は暗く+ぼかし、開閉はフェード。 */
 function ModalFrame({
@@ -288,9 +289,28 @@ export function OptionModal({
         </Sub>
       </Row>
 
-      <Row label="ページタイトル設定">
-        <Sub label="ページタイトル名">
+      <Row label="フォームのタイトル">
+        <Sub label="ページ上部の見出し">
+          <input className={input} placeholder={d.name || 'フォーム名'} maxLength={100} disabled={Boolean(l.hideTitle)} value={l.displayTitle ?? ''} onChange={(e) => setL({ displayTitle: e.target.value })} aria-label="ページ上部の見出し" />
+          <label className={check}>
+            <input type="checkbox" checked={Boolean(l.hideTitle)} onChange={(e) => setL({ hideTitle: e.target.checked })} />
+            見出しを表示しない
+          </label>
+        </Sub>
+        <Sub label="ページタイトル名(ブラウザ)">
           <input className={input} placeholder="回答フォーム" value={l.pageTitle ?? ''} onChange={(e) => setL({ pageTitle: e.target.value })} />
+        </Sub>
+      </Row>
+
+      <Row label="リンクプレビュー(OGP)">
+        <Sub label="タイトル">
+          <input className={input} maxLength={80} placeholder={l.displayTitle || d.name || 'フォーム名'} value={d.ogTitle} onChange={(e) => set({ ogTitle: e.target.value })} aria-label="リンクプレビューのタイトル" />
+        </Sub>
+        <Sub label="説明文">
+          <textarea className="w-full rounded border border-[#cacace] px-3 py-2 text-sm leading-6 outline-none focus:border-[#069e04]" rows={3} maxLength={200} value={d.ogDescription} onChange={(e) => set({ ogDescription: e.target.value })} aria-label="リンクプレビューの説明文" />
+        </Sub>
+        <Sub label="画像">
+          <ImageUploader mode="url" value={d.ogImageUrl ? { mode: 'url', url: d.ogImageUrl } : null} onChange={(v) => set({ ogImageUrl: v && v.mode === 'url' ? v.url : '' })} />
         </Sub>
       </Row>
 

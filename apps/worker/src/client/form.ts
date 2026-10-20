@@ -118,6 +118,9 @@ interface FormDef {
 
 interface LstepOptions {
   pageTitle?: string;
+  /** フォームの上に出す見出し(空ならフォーム名)・hideTitle=true で見出しを出さない */
+  displayTitle?: string;
+  hideTitle?: boolean;
   submitLabel?: string;
   nextLabel?: string;
   buttonStyle?: 'default' | 'rounded' | 'square';
@@ -279,7 +282,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
     ? `<p class="form-field-description">${escapeHtml(field.description).replace(/\n/g, '<br>')}</p>`
     : '';
   const placeholder = field.placeholder ? ` placeholder="${escapeHtml(field.placeholder)}"` : '';
-  const requiredMark = field.required ? '<span class="required-mark">*</span>' : '';
+  const requiredMark = field.required ? '<span class="required-mark">必須</span>' : '';
 
   // If this is an x_username field, render a fuzzy-search autocomplete input
   if (field.name === 'x_username') {
@@ -693,6 +696,75 @@ function injectStyles(): void {
     .consultation-confirmed h2 { margin:8px 0; color:#1f2937; font-size:21px; }
     .consultation-confirmed .time { margin:14px 0; padding:13px; border-radius:12px; background:#ecfdf3; color:#166534; font-size:17px; font-weight:700; }
     .consultation-confirmed .note { color:#6b7280; font-size:12px; line-height:1.6; }
+
+    /* ===== 見やすさ・入力しやすさ(標準デザイン) =====
+       誰でも迷わず入力できるように: 大きい入力欄・はっきりした「必須」・大きい選択肢カード・見やすい日付欄。
+       フォームごとの色(--form-accent など)は、そのまま使う。 */
+    .form-page { max-width: 680px; padding: 8px 4px 24px; }
+    .form-header { margin-bottom: 20px; }
+    .form-header h1 { font-size: 22px; line-height: 1.45; font-weight: 800; }
+    .form-description { font-size: 15px; line-height: 1.7; }
+    .form-body { padding: 24px 18px; border-radius: 16px; box-shadow: 0 2px 14px rgba(0,0,0,0.09); }
+    @media (min-width: 560px) { .form-body { padding: 32px 36px; } }
+    .form-field { margin-bottom: 30px; }
+    .form-label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 16px; font-weight: 700; line-height: 1.5; margin-bottom: 10px; }
+    .required-mark { display: inline-block; margin: 0; padding: 4px 7px; border-radius: 5px; background: var(--form-error); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: 0.02em; }
+    .form-field-description { font-size: 13px; line-height: 1.6; margin: 0 0 10px; color: #666; }
+    .form-input, .form-textarea, .form-select {
+      min-height: 54px; padding: 14px 16px; border: 2px solid #d5dae1; border-radius: 12px;
+      background-color: #fff; font-size: 17px; line-height: 1.4; color: var(--form-text);
+    }
+    .form-textarea { min-height: 150px; line-height: 1.6; }
+    .form-input::placeholder, .form-textarea::placeholder { color: #a5abb5; }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      border-color: var(--form-accent); background-color: #fff;
+      box-shadow: 0 0 0 4px rgba(6, 199, 85, 0.2);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--form-accent) 22%, transparent);
+    }
+    .form-select { padding-right: 44px; background-position: right 16px center; }
+    /* 日付・日時の入力欄: iPhone で、箱が細くつぶれて文字が小さくなるのを防ぐ */
+    input[type="date"].form-input, input[type="datetime-local"].form-input, input[type="time"].form-input {
+      display: block; height: 54px; min-height: 54px; text-align: left; -webkit-appearance: none; appearance: none;
+    }
+    input[type="date"].form-input::-webkit-date-and-time-value,
+    input[type="datetime-local"].form-input::-webkit-date-and-time-value { text-align: left; min-height: 1.5em; margin: 0; }
+    .date-ymd { display: flex; gap: 10px; }
+    .date-ymd .form-select { padding-left: 14px; padding-right: 32px; background-position: right 12px center; text-align: left; }
+    .radio-group, .checkbox-group { gap: 12px; }
+    .radio-group.two-col, .checkbox-group.two-col { grid-template-columns: 1fr; }
+    @media (min-width: 480px) { .radio-group.two-col, .checkbox-group.two-col { grid-template-columns: 1fr 1fr; } }
+    .radio-label, .checkbox-label {
+      min-height: 54px; padding: 14px 16px; gap: 12px; border: 2px solid #d5dae1; border-radius: 12px;
+      background: #fff; font-size: 16px; line-height: 1.45; -webkit-tap-highlight-color: transparent;
+    }
+    .radio-label:has(input:checked), .checkbox-label:has(input:checked) {
+      border-color: var(--form-accent); background: rgba(6, 199, 85, 0.1);
+      background: color-mix(in srgb, var(--form-accent) 10%, #fff); font-weight: 700;
+    }
+    .radio-label input, .checkbox-label input { width: 22px; height: 22px; flex-shrink: 0; }
+    .radio-label input[type="radio"] { width: 22px; height: 22px; }
+    .checkbox-label input[type="checkbox"] {
+      appearance: none; -webkit-appearance: none; position: relative; border: 2px solid #b4bbc6; border-radius: 6px; background: #fff; cursor: pointer;
+    }
+    .checkbox-label input[type="checkbox"]:checked { background: var(--form-accent); border-color: var(--form-accent); }
+    .checkbox-label input[type="checkbox"]:checked::after {
+      content: ''; position: absolute; left: 6px; top: 2px; width: 6px; height: 12px; border: solid #fff; border-width: 0 3px 3px 0; transform: rotate(45deg);
+    }
+    .form-section-heading { margin: 36px 0 16px; padding: 14px 16px; border-radius: 10px; font-size: 18px; line-height: 1.4; }
+    .form-section-subheading { margin: 24px 0 10px; padding-left: 10px; border-left: 4px solid var(--form-accent); font-size: 16px; line-height: 1.5; color: var(--form-text); }
+    .form-paragraph { margin: 10px 0 18px; padding: 14px 16px; border-radius: 10px; background: #f5f6f8; font-size: 14px; line-height: 1.9; color: #444; }
+    .file-drop { padding: 16px; border: 2px dashed #c4cad3; border-radius: 12px; background: #fafbfc; }
+    .submit-btn {
+      min-height: 58px; margin-top: 16px; border-radius: 14px; font-size: 18px;
+      box-shadow: 0 4px 12px rgba(6, 199, 85, 0.3);
+      box-shadow: 0 4px 12px color-mix(in srgb, var(--form-accent) 32%, transparent);
+    }
+    .submit-btn.secondary { box-shadow: none; }
+    .submit-btn:disabled { box-shadow: none; }
+    .form-error { font-size: 13px; margin-top: 6px; }
+    .section-indicator { font-size: 14px; }
+    .section-progress { height: 8px; border-radius: 4px; }
+    @media (max-width: 380px) { .form-body { padding: 20px 14px; } .form-header h1 { font-size: 20px; } }
   `;
   document.head.appendChild(style);
 }
@@ -752,6 +824,14 @@ function render(): void {
     customStyleEl.textContent = formDef.customCss;
   }
   const app = getApp();
+  // 標準のフォームは、広い画面(タブレット・PC)でも読みやすい幅に。外側の枠(#app)の幅の制限を、フォームのときだけ広げる
+  app.style.maxWidth = '680px';
+  app.style.padding = '16px 12px 40px';
+  document.body.style.alignItems = 'flex-start';
+  const headingText = (formDef.lstepOptions?.displayTitle ?? '').trim() || formDef.name;
+  const titleHtml = formDef.lstepOptions?.hideTitle
+    ? ''
+    : `<h1>${escapeHtml(headingText).replace(/\\n|\n/g, '<br>')}</h1>`;
   const safeHeaderImageUrl = safeHttpsUrl(formDef.headerImageUrl);
   const headerImageHtml = safeHeaderImageUrl
     ? `<img class="form-header-image" src="${escapeHtml(safeHeaderImageUrl)}" alt="" />`
@@ -779,7 +859,7 @@ function render(): void {
       <div class="form-page">
         <div class="form-header">
           ${headerImageHtml}
-          <h1>${escapeHtml(formDef.name).replace(/\\n|\n/g, '<br>')}</h1>
+          ${titleHtml}
           ${formDef.description && !formDef.hasSubmitWebhook ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
           ${profileHtml}
         </div>
@@ -909,7 +989,7 @@ function render(): void {
       <div class="form-page">
         <div class="form-header">
           ${headerImageHtml}
-          <h1>${escapeHtml(formDef.name).replace(/\\n|\n/g, '<br>')}</h1>
+          ${titleHtml}
           ${formDef.description && !formDef.hasSubmitWebhook ? `<p class="form-description">${escapeHtml(formDef.description).replace(/\\n|\n/g, '<br>')}</p>` : ''}
           ${profileHtml}
         </div>
