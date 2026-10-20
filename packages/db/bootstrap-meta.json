@@ -116,7 +116,9 @@
     "108_entry_route_analysis.sql",
     "109_chat_pin.sql",
     "110_inflow_landing_style.sql",
-    "111_remove_system_display_name.sql"
+    "111_remove_system_display_name.sql",
+    "112_templates_lstep.sql",
+    "113_template_taps.sql"
   ],
-  "migrationCount": 117
+  "migrationCount": 119
 }

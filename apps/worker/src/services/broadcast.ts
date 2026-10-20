@@ -1,4 +1,5 @@
 import { BroadcastDeliveryError, BROADCAST_RECORDING_ERROR, broadcastDeliveryFailure, isDefiniteLineRejection } from './broadcast-delivery-error.js';
+import { rawMessagesOf } from './raw-message.js';
 import { expandFormLinks } from './form-link.js';
 import { BroadcastSenderError, resolveBroadcastSender } from './broadcast-sender.js';
 import { extractFlexAltText } from '../utils/flex-alt-text.js';
@@ -305,7 +306,10 @@ export async function processBroadcastSend(
   }
   assertNoUnresolvedBroadcastVariables(finalContent);
   const altText = (broadcast as unknown as Record<string, unknown>).alt_text as string | undefined;
-  const message = buildMessage(finalType, finalContent, altText || undefined);
+  const firstMessages = buildMessages(finalType, finalContent, altText || undefined);
+  const message = firstMessages[0];
+  // テンプレート自身が2通以上のとき(長い文章の分割・質問の前文つき など)の、2通目以降。上から順に、すぐ後ろに続ける
+  const firstTail = firstMessages.slice(1);
   // 2通目以降(最大4通): フォームのタグ→リンク、URL→計測リンク、{{liff_id}} を済ませて、上から順に送る
   const extraPrepared = await prepareExtraMessages(db, parseExtraMessages(broadcast.extra_messages), {
     workerUrl,
@@ -314,7 +318,7 @@ export async function processBroadcastSend(
     applyTracking: true,
   });
   const extraSent = renderMessageItems(applyLiff(extraPrepared.items, sendLiffId), {}, buildMessage);
-  const messages: Message[] = [message, ...extraSent.map((e) => e.message)];
+  const messages: Message[] = [message, ...firstTail, ...extraSent.map((e) => e.message)].slice(0, 5);
   // 配信の記録(トーク履歴)に残す、全メッセージ。1通目は従来どおり元の内容
   const logItems: Array<{ type: string; content: string }> = [
     { type: broadcast.message_type, content: broadcast.message_content },
@@ -415,7 +419,7 @@ export async function processBroadcastSend(
             ...extraKeyParts,
           );
           attempted = true;
-          await lineClient.multicast(lineUserIds, [batchMessage, ...extraSent.map((e) => e.message)], [unit], retryKey);
+          await lineClient.multicast(lineUserIds, [batchMessage, ...firstTail, ...extraSent.map((e) => e.message)].slice(0, 5), [unit], retryKey);
           batchAccepted = true;
           accepted = true;
           successCount += batch.length;
@@ -694,7 +698,10 @@ async function processQueuedBroadcastBatches(
     finalContent = renderBroadcastMessageContent(finalType, finalContent, { liffId: queuedLiffId });
   }
   const altText = raw.alt_text as string | undefined;
-  const message = buildMessage(finalType, finalContent, altText || undefined);
+  const firstMessages = buildMessages(finalType, finalContent, altText || undefined);
+  const message = firstMessages[0];
+  // テンプレート自身が2通以上のとき(長い文章の分割・質問の前文つき など)の、2通目以降。上から順に、すぐ後ろに続ける
+  const firstTail = firstMessages.slice(1);
 
   // 2通目以降(最大4通)。フォームのタグ→リンクは毎回、URL→計測リンクは「最初の1回だけ」(やり直すと計測リンクが二重にできるため)。
   // 計測リンクへ変えたら、次のバッチ以降のために保存する(1通目と同じ)。
@@ -814,7 +821,7 @@ async function processQueuedBroadcastBatches(
       ...queuedExtraKeyParts,
     );
     const allExtra = renderMessageItems(extraItems, {}, buildMessage);
-    const { requestId } = await lineClient.broadcast([message, ...allExtra.map((e) => e.message)], retryKey);
+    const { requestId } = await lineClient.broadcast([message, ...firstTail, ...allExtra.map((e) => e.message)].slice(0, 5), retryKey);
     await updateBroadcastLineRequestId(db, broadcast.id, requestId, null);
     await createBroadcastInsight(db, broadcast.id);
     await updateBroadcastStatus(db, broadcast.id, 'sent', { totalCount: followerCount, successCount: followerCount });
@@ -896,7 +903,9 @@ async function processQueuedBroadcastBatches(
             realName: friend.real_name,
           });
           assertNoUnresolvedBroadcastVariables(renderedContent);
-          const personalizedMessage = buildMessage(finalType, renderedContent, altText || undefined);
+          const personalizedMessages = buildMessages(finalType, renderedContent, altText || undefined);
+          const personalizedMessage = personalizedMessages[0];
+          const personalizedTail = personalizedMessages.slice(1);
           // 2通目以降も、この友だちの名前を入れて作る(上から順に、1リクエストで送る)
           const personalizedExtra = renderMessageItems(extraItems, { displayName: friend.display_name, realName: friend.real_name }, buildMessage);
           const retryKey = await createBroadcastRetryKey(
@@ -907,7 +916,7 @@ async function processQueuedBroadcastBatches(
             renderedContent,
             ...personalizedExtra.flatMap((e) => [e.type, e.content]),
           );
-          await lineClient.pushMessage(friend.line_user_id, [personalizedMessage, ...personalizedExtra.map((e) => e.message)], retryKey, [unit]);
+          await lineClient.pushMessage(friend.line_user_id, [personalizedMessage, ...personalizedTail, ...personalizedExtra.map((e) => e.message)].slice(0, 5), retryKey, [unit]);
           recipientAccepted = true;
 
           // 全メッセージの記録を、1回のまとまりで残す(途中までしか残らない状態を避ける)
@@ -974,7 +983,7 @@ async function processQueuedBroadcastBatches(
         JSON.stringify(batchMessage),
         ...queuedExtraKeyParts,
       );
-      await lineClient.multicast(lineUserIds, [batchMessage, ...sharedExtra.map((e) => e.message)], [unit], retryKey);
+      await lineClient.multicast(lineUserIds, [batchMessage, ...firstTail, ...sharedExtra.map((e) => e.message)].slice(0, 5), [unit], retryKey);
     } catch (err) {
       console.error(`Queued broadcast batch ${batchIndex} send failed:`, broadcastDeliveryFailure(err));
       await setBroadcastLastError(db, broadcast.id, [recordingError, broadcastDeliveryFailure(err)].filter(Boolean).join("\n"));
@@ -1022,6 +1031,13 @@ function applyLiff(items: BroadcastMessageItem[], liffId: string | null): Broadc
   return items.map((m) => ({ ...m, content: renderBroadcastMessageContent(m.type, m.content, { liffId }) }));
 }
 
+/** 送る LINE メッセージ(1通以上)。2通以上のテンプレート(長い文章の分割・質問の前文つき など)は上から順に全部 */
+export function buildMessages(messageType: string, messageContent: string, altText?: string): Message[] {
+  const raw = rawMessagesOf(messageType, messageContent);
+  if (raw) return raw.slice(0, 5);
+  return [buildMessage(messageType, messageContent, altText)];
+}
+
 export function buildMessage(messageType: string, messageContent: string, altText?: string): Message {
   if (messageType === 'text') {
     return { type: 'text', text: messageContent };
@@ -1044,6 +1060,9 @@ export function buildMessage(messageType: string, messageContent: string, altTex
   }
 
   if (messageType === 'flex') {
+    // テンプレートの「そのまま送る」箱(スタンプ・位置情報・質問など)。1通目を返す(2通以上は buildMessages)
+    const raw = rawMessagesOf(messageType, messageContent);
+    if (raw) return raw[0];
     try {
       const contents = JSON.parse(messageContent);
       return { type: 'flex', altText: altText || extractFlexAltText(contents), contents };

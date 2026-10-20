@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '@/components/ui/modal'
 import { api } from '@/lib/api'
+import { parseRawMessages } from '@line-crm/shared'
 
 export interface ChatTemplate {
   id: string
@@ -25,6 +26,14 @@ const FILTERS: Array<{ key: TypeFilter; label: string }> = [
 /** 一覧に出す、中身の短い説明(テキストは冒頭。差し込みのタグコードは、文字のまま見せない) */
 export function templatePreview(t: Pick<ChatTemplate, 'messageType' | 'messageContent'>): string {
   if (t.messageType === 'image') return '[画像]'
+  // テンプレート機能(Lステップ同形)で作ったもの: 中身の LINE メッセージの並びから説明を作る
+  const raw = parseRawMessages(t.messageType, t.messageContent)
+  if (raw) {
+    const names: Record<string, string> = { text: 'テキスト', sticker: 'スタンプ', image: '画像', imagemap: '画像', template: '質問', flex: 'Flex メッセージ', location: '位置情報', audio: '音声', video: '動画' }
+    const first = raw[0]
+    const head = first.type === 'text' && typeof first.text === 'string' ? first.text.replace(/\s+/g, ' ').trim().slice(0, 60) : `[${names[first.type] ?? first.type}]`
+    return raw.length > 1 ? `${head} ほか${raw.length - 1}通` : head
+  }
   if (t.messageType === 'flex') return '[Flex メッセージ]'
   return t.messageContent
     .replace(/\{\{\s*form_url:\S+?\s*\}\}/g, '[フォーム]')

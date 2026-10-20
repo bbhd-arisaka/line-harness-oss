@@ -20,6 +20,8 @@ import {
 import type { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import { jitterDeliveryTime, addJitter, sleep } from './stealth.js';
+import { rawMessagesOf } from './raw-message.js';
+import { renderDateVariables } from './date-variables.js';
 import { getQuotaUsage, quotaEnabled, type QuotaEnv } from './quota.js';
 
 /**
@@ -40,7 +42,8 @@ export function expandVariables(
   messageType?: string,
   liffId?: string | null,
 ): string {
-  let result = content;
+  // 配信日の差し込み語({{date.mdw}} など)
+  let result = renderDateVariables(content);
   result = result.replace(/\{\{name\}\}/g, friend.display_name || '');
   result = result.replace(/\{\{uid\}\}/g, friend.user_id || '');
   result = result.replace(/\{\{friend_id\}\}/g, friend.id);
@@ -363,7 +366,8 @@ async function processSingleDelivery(
     lineAccountId: deliveryAccountId ?? null,
     friendId: friend.id,
   });
-  const message = buildMessage(tracked.messageType, tracked.content);
+  const messages = buildMessages(tracked.messageType, tracked.content);
+  const message = messages[0];
   // Resolve the correct LINE client for this friend's account
   let deliveryClient = lineClient;
   if (deliveryAccountId) {
@@ -379,7 +383,7 @@ async function processSingleDelivery(
     const { LineClient: LC } = await import('@line-crm/line-sdk');
     deliveryClient = new LC(account.channel_access_token);
   }
-  await deliveryClient.pushMessage(friend.line_user_id, [message]);
+  await deliveryClient.pushMessage(friend.line_user_id, messages);
 
   // Log what we actually pushed: variables expanded, URLs auto-tracked, AND
   // any cleanEmptyNodes() mutation or parse-failure text fallback applied by
@@ -587,6 +591,16 @@ export function messageToLogPayload(message: Message): { messageType: string; co
   return { messageType: message.type, content: JSON.stringify(message) };
 }
 
+/**
+ * 送る LINE メッセージ(1通以上)。テンプレートが2通以上(長い文章の分割・質問の前文つき など)のときは、上から順に全部返す。
+ * 1通のものは、これまでの buildMessage と同じ。LINE の1回の送信は最大5通まで。
+ */
+export function buildMessages(messageType: string, messageContent: string, altText?: string): Message[] {
+  const raw = rawMessagesOf(messageType, messageContent);
+  if (raw) return raw.slice(0, 5);
+  return [buildMessage(messageType, messageContent, altText)];
+}
+
 export function buildMessage(messageType: string, messageContent: string, altText?: string): Message {
   if (messageType === 'text') {
     return { type: 'text', text: messageContent };
@@ -611,6 +625,9 @@ export function buildMessage(messageType: string, messageContent: string, altTex
   }
 
   if (messageType === 'flex') {
+    // テンプレートの「そのまま送る」箱(スタンプ・位置情報・質問など)。1通目を返す(2通以上は buildMessages)
+    const raw = rawMessagesOf(messageType, messageContent);
+    if (raw) return raw[0];
     try {
       const contents = JSON.parse(messageContent);
       // Remove empty text nodes (from {{#if_ref}} conditional blocks)

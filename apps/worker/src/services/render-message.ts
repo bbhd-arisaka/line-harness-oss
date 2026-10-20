@@ -1,3 +1,5 @@
+import { hasDateVariable, renderDateVariables } from './date-variables.js';
+
 // Broadcast template variables are expanded by L Harness before calling
 // the Messaging API. LINE's official textV2.substitution supports mentions
 // and LINE emoji only; it does not provide arbitrary recipient-name strings.
@@ -19,7 +21,7 @@ const FORM_TAG_VARIABLE_RE = /^form_url:\S+$/;
 
 export function getUnsupportedBroadcastVariables(content: string): string[] {
   return getBroadcastVariables(content).filter(
-    (name) => !SUPPORTED_BROADCAST_VARIABLES.has(name) && !FORM_TAG_VARIABLE_RE.test(name),
+    (name) => !SUPPORTED_BROADCAST_VARIABLES.has(name) && !FORM_TAG_VARIABLE_RE.test(name) && !hasDateVariable(name),
   );
 }
 
@@ -49,7 +51,8 @@ export function renderMessageContent(
     ? liffIdOrContext ?? {}
     : { liffId: liffIdOrContext };
 
-  let result = content;
+  // 配信日の差し込み語({{date.mdw}} など)は、送る日の日付に。友だちによらないので、ここで一緒に置き換える
+  let result = renderDateVariables(content);
   if (context.liffId) result = result.replace(/\{\{\s*liff_id\s*\}\}/g, context.liffId);
   if (context.displayName) result = result.replace(/\{\{\s*name\s*\}\}/g, context.displayName);
   const real = context.realName?.trim() || context.displayName;

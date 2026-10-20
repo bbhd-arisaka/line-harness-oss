@@ -5,6 +5,7 @@ import { logOutgoingMessage } from './event-bus.js';
 import { renderBroadcastMessageContent } from './render-message.js';
 import {
   buildMessage,
+  buildMessages,
   expandVariables,
   messageToLogPayload,
   resolveMetadata,
@@ -138,11 +139,12 @@ export async function matchAndReply(
         { liffId },
       );
     }
-    const replyMsg = buildMessage(resolved.messageType, expandedContent);
+    const replyMsgs = buildMessages(resolved.messageType, expandedContent);
+    const replyMsg = replyMsgs[0];
     if (replyMessage) {
-      await replyMessage(replyToken, [replyMsg]);
+      await replyMessage(replyToken, replyMsgs);
     } else {
-      await lineClient.replyMessage(replyToken, [replyMsg]);
+      await lineClient.replyMessage(replyToken, replyMsgs);
     }
     replyTokenConsumed = true;
 

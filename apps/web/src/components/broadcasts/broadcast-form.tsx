@@ -18,6 +18,8 @@ interface BroadcastFormProps {
   tags: Tag[]
   onSuccess: () => void
   onCancel: () => void
+  /** テンプレートから作るとき: 最初から入れておくタイトルとメッセージ */
+  seed?: { title: string; messages: DraftMessage[] }
 }
 
 interface FormState {
@@ -33,13 +35,13 @@ interface FormState {
   trackLinks: boolean
 }
 
-export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFormProps) {
+export default function BroadcastForm({ tags, onSuccess, onCancel, seed }: BroadcastFormProps) {
   const { selectedAccountId } = useAccount()
   // Network timeout後の再クリックでも同じ作成要求として扱い、二重予約を防ぐ。
   const createIdempotencyKey = useRef(crypto.randomUUID())
   const [form, setForm] = useState<FormState>({
-    title: '',
-    messages: [newDraftMessage()],
+    title: seed?.title ?? '',
+    messages: seed?.messages.length ? seed.messages : [newDraftMessage()],
     targetType: 'all',
     targetTagId: '',
     scheduledAt: '',

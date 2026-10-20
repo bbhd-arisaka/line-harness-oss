@@ -37,6 +37,7 @@ import type {
 import { getApiBase } from './api-base'
 import type { FriendFilter } from './friend-filter'
 import type { FriendAddActionItem, FriendAddKindItem, FriendAddSettingItem } from './friend-add-actions'
+import type { TemplateFolderItem, TemplateSummary, TemplateDetail, TemplateInput, TemplateSender, TemplateDraft, PackItemView, PackDetail } from './template-library'
 import type { InflowFolder, InflowRoute, InflowRouteInput, InflowStats } from './inflow-routes'
 
 /** ホーム(トップ)の集計。GET /api/home */
@@ -562,6 +563,58 @@ export const api = {
     /** 友だち追加ページのプレビューの HTML(保存前の設定から、実際のページと同じものを作る) */
     landingPreview: (style: unknown, kind: 'mobile' | 'pc', url?: string) =>
       fetchApi<ApiResponse<{ html: string }>>('/api/inflow/landing-preview', { method: 'POST', body: JSON.stringify({ style, kind, url }) }),
+  },
+  /** テンプレート(Lステップ同形)。/api/tpl/* */
+  tpl: {
+    folders: (lineAccountId: string) =>
+      fetchApi<ApiResponse<{ folders: TemplateFolderItem[]; unfiledCount: number }>>(`/api/tpl/folders?lineAccountId=${encodeURIComponent(lineAccountId)}`),
+    createFolder: (lineAccountId: string, name: string) =>
+      fetchApi<ApiResponse<{ id: string; name: string }>>('/api/tpl/folders', { method: 'POST', body: JSON.stringify({ lineAccountId, name }) }),
+    renameFolder: (id: string, name: string) =>
+      fetchApi<ApiResponse<{ id: string; name: string }>>(`/api/tpl/folders/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    deleteFolder: (id: string) => fetchApi<ApiResponse<null>>(`/api/tpl/folders/${id}`, { method: 'DELETE' }),
+    reorderFolders: (lineAccountId: string, ids: string[]) =>
+      fetchApi<ApiResponse<null>>('/api/tpl/folders/order', { method: 'PUT', body: JSON.stringify({ lineAccountId, ids }) }),
+    items: (p: { lineAccountId: string; folder: string; q?: string; page?: number; pageSize?: number }) => {
+      const qs = new URLSearchParams({ lineAccountId: p.lineAccountId, folder: p.folder })
+      if (p.q) qs.set('q', p.q)
+      if (p.page) qs.set('page', String(p.page))
+      if (p.pageSize) qs.set('pageSize', String(p.pageSize))
+      return fetchApi<ApiResponse<{ items: TemplateSummary[]; total: number; page: number; pageSize: number }>>(`/api/tpl/items?${qs}`)
+    },
+    item: (id: string) => fetchApi<ApiResponse<TemplateDetail>>(`/api/tpl/items/${id}`),
+    create: (data: TemplateInput) => fetchApi<ApiResponse<TemplateDetail>>('/api/tpl/items', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<TemplateInput> & { legacyContent?: string }) =>
+      fetchApi<ApiResponse<TemplateDetail>>(`/api/tpl/items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    remove: (id: string) => fetchApi<ApiResponse<null>>(`/api/tpl/items/${id}`, { method: 'DELETE' }),
+    removeMany: (ids: string[]) => fetchApi<ApiResponse<null>>('/api/tpl/items/delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+    copy: (id: string) => fetchApi<ApiResponse<TemplateDetail>>(`/api/tpl/items/${id}/copy`, { method: 'POST' }),
+    stats: (id: string) =>
+      fetchApi<ApiResponse<{ available: boolean; answeredFriends: number; panels: Array<{ title: string; choices: Array<{ choice: number; label: string; friends: number; taps: number }> }> }>>(`/api/tpl/items/${id}/stats`),
+    move: (ids: string[], folderId: string | null) => fetchApi<ApiResponse<null>>('/api/tpl/items/move', { method: 'PUT', body: JSON.stringify({ ids, folderId }) }),
+    reorder: (ids: string[]) => fetchApi<ApiResponse<null>>('/api/tpl/items/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
+    preview: (data: { editorType: string; editorData: unknown; senderId?: string | null; templateId?: string }) =>
+      fetchApi<ApiResponse<{ messages: Array<Record<string, unknown>> }>>('/api/tpl/preview', { method: 'POST', body: JSON.stringify(data) }),
+    testSend: (data: { lineAccountId: string; editorType?: string; editorData?: unknown; senderId?: string | null; friendIds?: string[]; packId?: string }) =>
+      fetchApi<ApiResponse<{ sent: number; failed: number }>>('/api/tpl/test-send', { method: 'POST', body: JSON.stringify(data) }),
+    testSendSaved: (id: string, data: { lineAccountId?: string; friendIds?: string[] }) =>
+      fetchApi<ApiResponse<{ sent: number; failed: number }>>(`/api/tpl/items/${id}/test-send`, { method: 'POST', body: JSON.stringify(data) }),
+    senders: (lineAccountId: string) => fetchApi<ApiResponse<TemplateSender[]>>(`/api/tpl/senders?lineAccountId=${encodeURIComponent(lineAccountId)}`),
+    createSender: (lineAccountId: string, name: string, iconUrl: string | null) =>
+      fetchApi<ApiResponse<TemplateSender>>('/api/tpl/senders', { method: 'POST', body: JSON.stringify({ lineAccountId, name, iconUrl }) }),
+    deleteSender: (id: string) => fetchApi<ApiResponse<null>>(`/api/tpl/senders/${id}`, { method: 'DELETE' }),
+    drafts: (lineAccountId: string) => fetchApi<ApiResponse<TemplateDraft[]>>(`/api/tpl/drafts?lineAccountId=${encodeURIComponent(lineAccountId)}`),
+    draft: (id: string) => fetchApi<ApiResponse<TemplateDraft>>(`/api/tpl/drafts/${id}`),
+    saveDraft: (data: Record<string, unknown>, id?: string | null) =>
+      fetchApi<ApiResponse<TemplateDraft>>(id ? `/api/tpl/drafts/${id}` : '/api/tpl/drafts', { method: id ? 'PUT' : 'POST', body: JSON.stringify(data) }),
+    deleteDrafts: (ids: string[]) => fetchApi<ApiResponse<null>>('/api/tpl/drafts/delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+    pack: (id: string) => fetchApi<ApiResponse<PackDetail>>(`/api/tpl/packs/${id}`),
+    addPackItem: (packId: string, data: { templateId?: string; editorType?: string; editorData?: unknown }) =>
+      fetchApi<ApiResponse<PackItemView>>(`/api/tpl/packs/${packId}/items`, { method: 'POST', body: JSON.stringify(data) }),
+    updatePackItem: (id: string, data: { editorType: string; editorData: unknown }) =>
+      fetchApi<ApiResponse<PackItemView>>(`/api/tpl/pack-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deletePackItem: (id: string) => fetchApi<ApiResponse<null>>(`/api/tpl/pack-items/${id}`, { method: 'DELETE' }),
+    reorderPackItems: (packId: string, ids: string[]) => fetchApi<ApiResponse<null>>(`/api/tpl/packs/${packId}/order`, { method: 'PUT', body: JSON.stringify({ ids }) }),
   },
   friendAddSettings: {
     get: (lineAccountId: string) =>
@@ -1921,6 +1974,16 @@ export const api = {
       return fetchApi<ApiResponse<{ id: string; key: string; url: string; mimeType: string; size: number }>>('/api/images', {
         method: 'POST',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: buf,
+      })
+    },
+    /** 音声(m4a)・動画(mp4)のアップロード。95MB まで(Workers の受け取り上限)。テンプレートの音声・動画メッセージ用 */
+    mediaFile: async (file: File, kind: 'audio' | 'video'): Promise<ApiResponse<{ key: string; url: string; mimeType: string; size: number }>> => {
+      const buf = await file.arrayBuffer()
+      const type = file.type || (kind === 'audio' ? 'audio/mp4' : 'video/mp4')
+      return fetchApi<ApiResponse<{ key: string; url: string; mimeType: string; size: number }>>(`/api/media-files?kind=${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': type, 'X-Filename': encodeURIComponent(file.name) },
         body: buf,
       })
     },

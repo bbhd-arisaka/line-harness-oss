@@ -18,7 +18,7 @@ import {
 import type { EntryRoute, Friend } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
 import { matchAndReply } from '../services/auto-reply.js';
-import { buildMessage } from '../services/step-delivery.js';
+import { buildMessage, buildMessages } from '../services/step-delivery.js';
 import { pushImmediateFirstStep } from '../services/immediate-first-step.js';
 import type { Env } from '../index.js';
 import { awardActivityMileage } from '../services/activity-mileage.js';
@@ -30,6 +30,7 @@ import { notifyFriendAdded, notifyFriendBlocked, notifyIncomingMessage } from '.
 import { publishChatEvent } from '../services/chat-events.js';
 import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
+import { TEMPLATE_POSTBACK_PREFIX, handleTemplatePostback } from '../services/template-postback.js';
 import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import { ignoresFriendAddSettings } from '../services/inflow-route-runtime.js';
@@ -455,8 +456,8 @@ async function handleEvent(
         try {
           const template = await getMessageTemplateById(db, referralRoute.intro_template_id);
           if (template) {
-            const message = buildMessage(template.message_type, template.message_content);
-            await lineClient.pushMessage(userId, [message]);
+            const messages = buildMessages(template.message_type, template.message_content);
+            await lineClient.pushMessage(userId, messages);
             console.log(`[follow] referral intro push sent route=${referralRoute.id}`);
           }
         } catch (err) {
@@ -567,6 +568,20 @@ async function handleEvent(
           ? (token, messages) => replyViaHarnessProxy(workerUrl, lineAccessToken, token, messages, proxyDispatch)
           : undefined,
       });
+    }
+
+    // テンプレート(質問・カルーセル・フレックス)のボタン: 回数制限・返信・タグ・情報欄・シナリオ・アクション。自動応答には回さない
+    // (並行運用中のアカウントは、Lステップが応答するので何もしない)
+    if (!parallelMode && postbackData.startsWith(TEMPLATE_POSTBACK_PREFIX)) {
+      const handled = await handleTemplatePostback(db, lineClient, friend, postbackData, event.replyToken, {
+        lineAccountId,
+        lineAccessToken,
+        workerUrl,
+        replyMessage: workerUrl
+          ? (token, messages) => replyViaHarnessProxy(workerUrl, lineAccessToken, token, messages, proxyDispatch)
+          : undefined,
+      });
+      if (handled) return;
     }
 
     // postback data を auto_replies にマッチさせて返信 (テキスト経路と共通)。

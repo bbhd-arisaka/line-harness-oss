@@ -18,6 +18,7 @@ import { Tabs } from '@cloudflare/kumo/components/tabs'
 import type { Tag } from '@line-crm/shared'
 import { api, type ApiBroadcast, type BroadcastInsight } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
+import type { DraftMessage } from '@/components/broadcasts/message-list-editor'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 
@@ -63,6 +64,21 @@ function BroadcastList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  // テンプレート一覧の「一斉配信を作成」から来たとき: そのテンプレートを最初から入れた状態で作成画面を開く
+  const templateId = useSearchParams().get('template')
+  const [seed, setSeed] = useState<{ title: string; messages: DraftMessage[] } | null>(null)
+  useEffect(() => {
+    if (!templateId) return
+    api.tpl
+      .item(templateId)
+      .then((r) => {
+        if (!r.success) return
+        const type = r.data.messageType === 'text' || r.data.messageType === 'image' ? r.data.messageType : 'flex'
+        setSeed({ title: r.data.name, messages: [{ key: crypto.randomUUID(), type, content: r.data.messageContent }] })
+        setShowCreate(true)
+      })
+      .catch(() => {})
+  }, [templateId])
   const [insights, setInsights] = useState<Record<string, BroadcastInsight>>({})
   const [fetchingInsight, setFetchingInsight] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<BroadcastTab>('all')
@@ -141,7 +157,7 @@ function BroadcastList() {
 
       {error ? <Banner className="mb-4" variant="error" title="操作を完了できませんでした" description={error} /> : null}
 
-      {showCreate ? <BroadcastForm tags={tags} onSuccess={() => { setShowCreate(false); void load() }} onCancel={() => setShowCreate(false)} /> : null}
+      {showCreate ? <BroadcastForm key={seed ? 'seed' : 'blank'} seed={seed ?? undefined} tags={tags} onSuccess={() => { setShowCreate(false); void load() }} onCancel={() => setShowCreate(false)} /> : null}
 
       {!loading && broadcasts.length > 0 ? (
         <Tabs

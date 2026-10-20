@@ -72,6 +72,38 @@ images.post('/api/images', async (c) => {
   }
 });
 
+// POST /api/media-files?kind=audio|video — 音声(m4a)・動画(mp4)のアップロード(テンプレートの音声・動画メッセージ用)。
+// 本文は生のファイル(Content-Type は audio/* / video/mp4)。Workers の受け取り上限(約100MB)に合わせ、95MB まで。
+// 保存先・公開URLは画像と同じ(/images/{uuid}.{ext})。
+const MEDIA_FILE_MAX = 95 * 1024 * 1024;
+images.post('/api/media-files', async (c) => {
+  try {
+    const kind = c.req.query('kind');
+    if (kind !== 'audio' && kind !== 'video') return c.json({ success: false, error: 'kind は audio か video です' }, 400);
+    const mimeType = (c.req.header('Content-Type') || '').split(';')[0].trim().toLowerCase();
+    const audioTypes: Record<string, string> = { 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'm4a' };
+    const videoTypes: Record<string, string> = { 'video/mp4': 'mp4' };
+    const ext = (kind === 'audio' ? audioTypes : videoTypes)[mimeType];
+    if (!ext) {
+      return c.json({ success: false, error: kind === 'audio' ? '音声は m4a 形式のみです' : '動画は mp4 形式のみです' }, 400);
+    }
+    const data = await c.req.arrayBuffer();
+    if (data.byteLength === 0) return c.json({ success: false, error: 'ファイルが空です' }, 400);
+    if (data.byteLength > MEDIA_FILE_MAX) return c.json({ success: false, error: 'ファイルが大きすぎます(95MBまで)' }, 400);
+    const filename = c.req.header('X-Filename') ? decodeURIComponent(c.req.header('X-Filename') as string) : undefined;
+    const key = `${crypto.randomUUID()}.${ext}`;
+    await c.env.IMAGES.put(key, data, {
+      httpMetadata: { contentType: kind === 'audio' ? 'audio/mp4' : 'video/mp4' },
+      customMetadata: { originalFilename: filename ?? key },
+    });
+    const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+    return c.json({ success: true, data: { key, url: `${workerUrl}/images/${key}`, mimeType, size: data.byteLength } }, 201);
+  } catch (err) {
+    console.error('POST /api/media-files error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // GET /api/media — 登録メディア一覧(Lステップの「登録メディア一覧」相当)。
 // フォームの画像ブロックや配信で使った画像を、アップロード済みの中から選べるようにする。
 // R2 直下の「{uuid}.{ext}」だけを対象にする(form-uploads/ など個人情報のフォルダは含めない)。
@@ -123,6 +155,23 @@ images.get('/images/:key', async (c) => {
   headers.set('Cache-Control', 'public, max-age=31536000, immutable');
   headers.set('ETag', object.etag);
 
+  return new Response(object.body, { headers });
+});
+
+// GET /imagemap/:key/:width — 画像リンク付きの画像(LINE の imagemap メッセージ)。
+// LINE は baseUrl の後ろに /1040 /700 /460 /300 /240 を付けて取りにくる。大きさを変えずに、同じ画像を返す
+// (比率が同じなら表示できる。LINE は 10MB までの JPEG/PNG を受け付ける)。公開(認証なし)。
+images.get('/imagemap/:key/:width', async (c) => {
+  const key = c.req.param('key');
+  if (key.includes('/') || key.includes('\\') || !/^\d+$/.test(c.req.param('width'))) {
+    return c.json({ success: false, error: 'Image not found' }, 404);
+  }
+  const object = await c.env.IMAGES.get(key);
+  if (!object) return c.json({ success: false, error: 'Image not found' }, 404);
+  const headers = new Headers();
+  headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png');
+  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  headers.set('ETag', object.etag);
   return new Response(object.body, { headers });
 });
 

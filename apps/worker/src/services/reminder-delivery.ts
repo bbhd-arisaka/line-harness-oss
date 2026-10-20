@@ -7,6 +7,7 @@ import { extractFlexAltText } from '../utils/flex-alt-text.js';
  * まだ配信されていないステップを配信する
  */
 
+import { rawMessagesOf } from './raw-message.js';
 import { expandFormLinks } from './form-link.js';
 import {
   getDueReminderDeliveries,
@@ -97,6 +98,8 @@ function buildMessage(messageType: string, messageContent: string, altText?: str
     }
   }
   if (messageType === 'flex') {
+    const raw = rawMessagesOf(messageType, messageContent);
+    if (raw) return raw[0];
     try {
       const contents = JSON.parse(messageContent);
       return { type: 'flex', altText: altText || extractFlexAltText(contents), contents };

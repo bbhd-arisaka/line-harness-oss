@@ -17,6 +17,11 @@ vi.mock('@line-crm/db', () => ({
 vi.mock('./event-bus.js', () => ({ logOutgoingMessage }));
 
 vi.mock('./step-delivery.js', () => ({
+  buildMessages: vi.fn((messageType: string, content: string) => [
+    messageType === 'flex'
+      ? { type: 'flex', altText: 'あなたのHarnessマイル', contents: JSON.parse(content) }
+      : { type: 'text', text: content },
+  ]),
   resolveMetadata: vi.fn().mockResolvedValue({}),
   expandVariables: vi.fn((content: string) => content),
   buildMessage: vi.fn((messageType: string, content: string) => {

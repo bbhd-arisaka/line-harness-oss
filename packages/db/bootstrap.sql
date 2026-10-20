@@ -1273,6 +1273,60 @@ CREATE TABLE IF NOT EXISTS tags (
   created_at                  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
+CREATE TABLE IF NOT EXISTS template_drafts (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT,
+  template_id     TEXT,
+  kind            TEXT NOT NULL DEFAULT 'standard',
+  editor_type     TEXT NOT NULL,
+  name            TEXT NOT NULL DEFAULT '',
+  folder_id       TEXT,
+  editor_data     TEXT NOT NULL,
+  sender_id       TEXT,
+  allow_sender_override INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE TABLE IF NOT EXISTS template_folders (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT,
+  name            TEXT NOT NULL,
+  display_order   INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE TABLE IF NOT EXISTS template_pack_items (
+  id           TEXT PRIMARY KEY,
+  pack_id      TEXT NOT NULL REFERENCES templates (id) ON DELETE CASCADE,
+  position     INTEGER NOT NULL DEFAULT 0,
+  template_id  TEXT REFERENCES templates (id) ON DELETE SET NULL,
+  editor_type  TEXT,
+  editor_data  TEXT,
+  message_type TEXT,
+  message_content TEXT,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE TABLE IF NOT EXISTS template_senders (
+  id              TEXT PRIMARY KEY,
+  line_account_id TEXT,
+  name            TEXT NOT NULL,
+  icon_url        TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE TABLE IF NOT EXISTS template_taps (
+  template_id TEXT NOT NULL,
+  friend_id   TEXT NOT NULL,
+  panel       INTEGER NOT NULL DEFAULT 0,
+  choice      INTEGER NOT NULL DEFAULT 0,
+  count       INTEGER NOT NULL DEFAULT 1,
+  first_at    TEXT NOT NULL,
+  last_at     TEXT NOT NULL,
+  PRIMARY KEY (template_id, friend_id, panel, choice)
+);
+
 CREATE TABLE IF NOT EXISTS templates (
   id              TEXT PRIMARY KEY,
   name            TEXT NOT NULL,
@@ -1281,7 +1335,7 @@ CREATE TABLE IF NOT EXISTS templates (
   message_content TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-);
+, line_account_id TEXT, folder_id TEXT, display_order INTEGER NOT NULL DEFAULT 0, kind TEXT NOT NULL DEFAULT 'standard', editor_type TEXT, editor_data TEXT, sender_id TEXT, allow_sender_override INTEGER NOT NULL DEFAULT 0);
 
 CREATE TABLE IF NOT EXISTS tracked_links (
   id TEXT PRIMARY KEY,
@@ -1751,6 +1805,20 @@ CREATE INDEX IF NOT EXISTS idx_staff_members_role ON staff_members(role);
 CREATE INDEX IF NOT EXISTS idx_stripe_events_friend ON stripe_events (friend_id);
 
 CREATE INDEX IF NOT EXISTS idx_stripe_events_type ON stripe_events (event_type);
+
+CREATE INDEX IF NOT EXISTS idx_template_drafts_account ON template_drafts (line_account_id, updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_template_folders_account ON template_folders (line_account_id, display_order);
+
+CREATE INDEX IF NOT EXISTS idx_template_pack_items_pack ON template_pack_items (pack_id, position);
+
+CREATE INDEX IF NOT EXISTS idx_template_pack_items_template ON template_pack_items (template_id);
+
+CREATE INDEX IF NOT EXISTS idx_template_senders_account ON template_senders (line_account_id);
+
+CREATE INDEX IF NOT EXISTS idx_template_taps_template ON template_taps (template_id, panel, choice);
+
+CREATE INDEX IF NOT EXISTS idx_templates_account_folder ON templates (line_account_id, folder_id, display_order);
 
 CREATE INDEX IF NOT EXISTS idx_templates_category ON templates (category);
 

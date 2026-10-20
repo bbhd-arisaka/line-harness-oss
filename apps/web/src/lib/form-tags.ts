@@ -33,7 +33,7 @@ export function splitFormTags(text: string): Array<{ text: string } | { formId: 
  * （1文字消すと効かなくなる記号を、人が直接さわらなくてよいようにする）。
  */
 export const VARIABLE_PATTERN =
-  '\{\{(name|real_name|friend_id|uid|liff_id|form|metadata\.[^}\s]+|reserve\.[^}\s]+)\}\}'
+  '\{\{(name|real_name|friend_id|uid|liff_id|form|metadata\.[^}\s]+|reserve\.[^}\s]+|date\.[a-z_]+|date_plus\.\d{1,4}\.[a-z_]+|date_until\.\d{4}-\d{2}-\d{2})\}\}'
 
 export type TagPart = { text: string } | { formId: string } | { variable: string }
 
@@ -83,6 +83,7 @@ const VARIABLE_LABELS: Record<string, string> = {
  * 友だち情報欄は名前をサーバーから読むので、読めるまで（または欄が消えたとき）はキーを出す。
  */
 export function variableLabel(key: string, fieldLabels?: ReadonlyMap<string, string>): string {
+  if (key.startsWith('date.') || key.startsWith('date_plus.') || key.startsWith('date_until.')) return dateVariableLabel(key)
   if (key.startsWith('metadata.')) {
     const fieldKey = key.slice('metadata.'.length)
     return `友だち情報：${fieldLabels?.get(fieldKey) ?? fieldKey}`
@@ -90,13 +91,37 @@ export function variableLabel(key: string, fieldLabels?: ReadonlyMap<string, str
   return VARIABLE_LABELS[key] ?? key
 }
 
+/** 配信日の書式(画面の選択肢と同じ。Worker の DATE_FORMATS と同じ名前) */
+export const DATE_FORMAT_OPTIONS: Array<{ id: string; label: string; example: string }> = [
+  { id: 'mdw', label: '月日と曜日', example: 'M月D日(W)' },
+  { id: 'ymdw', label: '年月日と曜日', example: 'YYYY年M月D日(W)' },
+  { id: 'md', label: '月日', example: 'M月D日' },
+  { id: 'ymd', label: '年月日', example: 'YYYY年M月D日' },
+  { id: 'mdw_s', label: '月日と曜日(スラッシュ区切り)', example: 'M/D(W)' },
+  { id: 'ymdw_s', label: '年月日と曜日(スラッシュ区切り)', example: 'YYYY/M/D(W)' },
+  { id: 'md_s', label: '月日(スラッシュ区切り)', example: 'M/D' },
+  { id: 'ymd_s', label: '年月日(スラッシュ区切り)', example: 'YYYY/M/D' },
+]
+
+/** 配信日の差し込み語の、枠に出す日本語名 */
+export function dateVariableLabel(key: string): string {
+  const fmtLabel = (id: string) => DATE_FORMAT_OPTIONS.find((o) => o.id === id)?.example ?? id
+  if (key.startsWith('date_until.')) return `${key.slice('date_until.'.length).replace(/-/g, '/')}までの日数`
+  if (key.startsWith('date_plus.')) {
+    const [, days, fmt] = key.split('.')
+    return `配信日の${days}日後(${fmtLabel(fmt)})`
+  }
+  return `配信日(${fmtLabel(key.slice('date.'.length))})`
+}
+
 /** 色の系統。同じ種類の語は同じ色にして、見分けやすくする */
-export function variableTone(key: string): 'name' | 'realName' | 'id' | 'info' | 'reserve' | 'other' {
+export function variableTone(key: string): 'name' | 'realName' | 'id' | 'info' | 'reserve' | 'date' | 'other' {
   if (key === 'name') return 'name'
   if (key === 'real_name') return 'realName'
   if (key === 'friend_id' || key === 'uid' || key === 'liff_id') return 'id'
   if (key.startsWith('metadata.')) return 'info'
   if (key.startsWith('reserve.')) return 'reserve'
+  if (key.startsWith('date')) return 'date'
   return 'other'
 }
 
@@ -106,6 +131,7 @@ const TONE_CLASS: Record<ReturnType<typeof variableTone>, string> = {
   id: 'border-slate-300 bg-slate-50 text-slate-700',
   info: 'border-emerald-300 bg-emerald-50 text-emerald-800',
   reserve: 'border-amber-300 bg-amber-50 text-amber-800',
+  date: 'border-rose-300 bg-rose-50 text-rose-800',
   other: 'border-violet-300 bg-violet-50 text-violet-800',
 }
 

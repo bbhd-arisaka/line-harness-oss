@@ -17,6 +17,7 @@ import {
 import { LineClient } from '@line-crm/line-sdk';
 import {
   buildMessage,
+  buildMessages,
   expandVariables,
   resolveMetadata,
   messageToLogPayload,
@@ -350,11 +351,12 @@ export async function pushImmediateFirstStep(
       ctx.workerUrl,
       { lineAccountId: friend.line_account_id ?? sendAccount?.id ?? null, friendId },
     );
-    const sentMessage = buildMessage(decorated.messageType, decorated.content);
+    const sentMessages = buildMessages(decorated.messageType, decorated.content);
+    const sentMessage = sentMessages[0];
 
     try {
       if (options?.reply) {
-        await options.reply.client.replyMessage(options.reply.replyToken, [sentMessage]);
+        await options.reply.client.replyMessage(options.reply.replyToken, sentMessages);
       } else {
         const pushTarget = options?.targetLineUserId ?? friend.line_user_id;
         if (!pushTarget) {
@@ -366,7 +368,7 @@ export async function pushImmediateFirstStep(
         // どのアカウントにも解決できなければ env が最後の砦。
         const accessToken = sendAccount?.channel_access_token || ctx.defaultAccessToken;
         const lineClient = new LineClient(accessToken);
-        await lineClient.pushMessage(pushTarget, [sentMessage]);
+        await lineClient.pushMessage(pushTarget, sentMessages);
       }
     } catch (err) {
       // The message never left LINE's API — release so the cron retries on

@@ -21,7 +21,7 @@ import {
 } from '@line-crm/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
-import { buildMessage } from '../services/step-delivery.js';
+import { buildMessages } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
 import { buildFriendFilterPieces, FilterError, parseFriendFilter } from '../services/friend-filter.js';
 import { isDemoLineUserId } from '../services/demo-friend.js';
@@ -832,8 +832,8 @@ friends.post('/api/friends/:id/messages', async (c) => {
       };
     }
 
-    const message = buildMessage(tracked.messageType, tracked.content, body.altText);
-    if (!isDemoLineUserId(friend.line_user_id)) await lineClient.pushMessage(friend.line_user_id, [message]);
+    const messages = buildMessages(tracked.messageType, tracked.content, body.altText);
+    if (!isDemoLineUserId(friend.line_user_id)) await lineClient.pushMessage(friend.line_user_id, messages);
 
     // Log outgoing message
     const logId = crypto.randomUUID();
