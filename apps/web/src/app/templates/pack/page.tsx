@@ -7,6 +7,7 @@ import type { EditorData, EditorType } from '@line-crm/shared'
 import { useActionLookups } from '@/components/friend-add/use-action-lookups'
 import Header from '@/components/layout/header'
 import { EditorBody, LiveEditorPreview, TypeTabs } from '@/components/templates/editor-body'
+import { TaggedText } from '@/components/forms/tagged-text'
 import LinePreview from '@/components/templates/line-preview'
 import TestSendDialog from '@/components/templates/test-send-dialog'
 import { DragHandle, btnGreen, btnWhite } from '@/components/lstep/ui'
@@ -257,7 +258,7 @@ export default function PackPage() {
               {it.templateId ? (
                 <span className="mr-2 inline-block rounded bg-[#fff4de] px-1.5 py-0.5 text-[10px] font-bold text-[#a86b00]">{it.templateMissing ? 'テンプレート削除済み' : `テンプレート: ${it.templateName}`}</span>
               ) : null}
-              <span className="break-words text-[#414143]">{it.summary}</span>
+              <span className="break-words text-[#414143]"><TaggedText text={it.summary} /></span>
             </span>
             <button type="button" onClick={() => (it.templateId ? setCaution(it) : setEditing({ item: it, initial: it.editorType ? { type: it.editorType as EditorType, data: it.editorData as EditorData } : null }))} className="h-8 rounded border border-[#cacace] px-3 text-xs hover:bg-[#f7f7f9]">編集</button>
             <button type="button" onClick={() => void remove(it)} className="h-8 rounded border border-[#e5451f] px-3 text-xs text-[#e5451f] hover:bg-[#fff5f3]">削除</button>

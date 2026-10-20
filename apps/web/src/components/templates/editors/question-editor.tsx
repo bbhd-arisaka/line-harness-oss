@@ -22,7 +22,6 @@ export default function QuestionEditor({ value, onChange, env }: TabProps<Questi
         maxLength={4500}
         rows={4}
         toolbar={['name', 'friend', 'emoji']}
-        note="入力すると、質問の前にテキストメッセージとして送られます。"
       />
       <MessageField
         label="質問文"

@@ -8,6 +8,7 @@ import { Dialog } from '@cloudflare/kumo/components/dialog'
 import { Input } from '@cloudflare/kumo/components/input'
 import Header from '@/components/layout/header'
 import { DragHandle, FolderRow, Popover, btnBase, btnGreen, btnWhite } from '@/components/lstep/ui'
+import { TaggedText } from '@/components/forms/tagged-text'
 import LinePreview from '@/components/templates/line-preview'
 import TestSendDialog from '@/components/templates/test-send-dialog'
 import { Modal } from '@/components/ui/modal'
@@ -309,7 +310,7 @@ export default function TemplatesPage() {
                   />
                   <Link href={editHref(t)} className="truncate font-bold text-[#2b7bb9] underline">{t.name}</Link>
                   <span className="truncate"><span className="rounded bg-[#e3e3e6] px-2 py-0.5 text-[10px] text-[#414143]">{t.typeLabel}</span></span>
-                  <span className="truncate text-xs text-[#757578]">{t.kind === 'pack' ? `${t.packCount ?? 0}通` : t.summary}</span>
+                  <span className="truncate text-xs text-[#757578]">{t.kind === 'pack' ? `${t.packCount ?? 0}通` : <TaggedText text={t.summary} />}</span>
                   <span className="text-xs text-[#757578]">{fmtDate(t.createdAt)}</span>
                   <span className="flex gap-1 text-xs">
                     <button type="button" onClick={() => void showPreview(t)} className="h-7 rounded border border-[#cacace] px-2 hover:bg-[#f7f7f9]">プレビュー</button>

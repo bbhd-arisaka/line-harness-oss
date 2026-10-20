@@ -126,7 +126,6 @@ export default function ImageEditor({ value, onChange, env }: TabProps<ImageData
 
           <div>
             <h3 className="mb-1 text-xs font-bold">リンク設定</h3>
-            <p className="mb-2 text-xs text-[#757578]">画像領域に対するリンクを設定することができます。</p>
             <div className="flex flex-wrap gap-3">
               {LAYOUTS.map((l) => (
                 <label key={l.id} className="flex cursor-pointer flex-col items-center gap-1 text-xs">
@@ -171,7 +170,6 @@ export default function ImageEditor({ value, onChange, env }: TabProps<ImageData
                     {a.kind === 'message' ? (
                       <div>
                         <input value={a.text ?? ''} onChange={(e) => setArea(i, { text: e.target.value })} className={fieldCls} aria-label={`領域${IMAGE_LAYOUT_LABELS[i]}のユーザーメッセージ`} />
-                        <p className="mt-1 text-[11px] text-[#757578]">ボタンを押したときに友だちの発言として送信される文章を設定します。</p>
                       </div>
                     ) : null}
                   </div>
@@ -188,7 +186,6 @@ export default function ImageEditor({ value, onChange, env }: TabProps<ImageData
             rows={3}
             toolbar={['name', 'friend', 'emoji']}
             placeholder="[LINEアプリよりご覧下さい]"
-            note="環境によって「スマートフォンでのみ確認可能なメッセージです。」などの文章が追加される場合があります。"
           />
         </div>
 

@@ -35,11 +35,6 @@ const ACCEPT: Record<MediaKind, string> = {
   video: 'video/mp4,.mp4',
 }
 const TITLE: Record<MediaKind, string> = { image: '画像を追加', audio: '音声を追加', video: '動画を追加' }
-const NOTE: Record<MediaKind, string> = {
-  image: '10MBまでのpng、jpg、jpeg、gifファイルをアップロードできます。',
-  audio: 'm4a形式・95MBまでのファイルをアップロードできます。',
-  video: 'mp4形式・95MBまでのファイルをアップロードできます。',
-}
 const PAGE = 8
 
 const kindOf = (mime: string): MediaKind | null => (mime.startsWith('image/') ? 'image' : mime.startsWith('audio/') ? 'audio' : mime.startsWith('video/') ? 'video' : null)
@@ -198,8 +193,6 @@ export default function MediaDialog({
             <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="h-9 rounded border border-[#069e04] px-4 text-xs font-bold text-[#069e04] hover:bg-[#f3fbf3] disabled:opacity-60">
               {uploading ? 'アップロード中...' : 'ファイルを選択する'}
             </button>
-            <p className="mt-2 text-[11px] text-[#757578]">{NOTE[kind]}</p>
-            {kind === 'image' ? <p className="text-[11px] text-[#e5451f]">※ 公開リンクが作成されるため個人情報の取り扱いに注意してください</p> : null}
             {selected ? <p className="mt-2 text-xs text-[#069e04]">「{selected.name}」を選択しています</p> : null}
           </div>
         ) : (
