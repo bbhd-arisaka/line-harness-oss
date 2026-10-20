@@ -257,6 +257,13 @@ export interface FriendFieldDefinition {
   displayOrder: number;
 }
 
+/** GET /api/friend-fields/folders の1件(友だち情報欄のフォルダ) */
+export interface FriendFieldFolder {
+  id: string;
+  name: string;
+  displayOrder: number;
+}
+
 /** GET /api/friends/:id/rich-menu */
 export interface FriendRichMenu {
   id: string | null;

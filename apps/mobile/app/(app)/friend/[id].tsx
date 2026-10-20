@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../../src/state/services';
 import { useLoader } from '../../../src/state/hooks';
 import { Avatar, Button, Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
 import { MessageText } from '../../../src/components/message-text';
 import { PickModal } from '../../../src/components/pick-modal';
 import type { InflowRoute } from '../../../src/lib/inflow';
-import { buildInfoRows, describeRichMenu, formatDateTime, resolveFriendName } from '../../../src/lib/format';
+import { describeRichMenu, formatDateTime, resolveFriendName } from '../../../src/lib/format';
+import { buildInfoGroups } from '../../../src/lib/friend-fields';
 import { describeError } from '../../../src/lib/errors';
 import { charLength, draftFromFriend, NAME_MAX_LENGTH, planProfileUpdate, type ProfileDraft } from '../../../src/lib/profile';
 import type { Tag } from '../../../src/lib/types';
@@ -99,10 +101,20 @@ function FriendDetailScreen() {
   const friend = useLoader(() => api.getFriend(id), [id]);
   // 友だち情報欄の定義・リッチメニューは、取れなくても詳細そのものは見せる(個別に状態を持つ)
   const defs = useLoader(() => api.listFriendFieldDefinitions(), []);
+  const folders = useLoader(() => api.listFriendFieldFolders(), []);
   const menu = useLoader(() => api.getFriendRichMenu(id), [id]);
 
   const f = friend.data;
-  const infoRows = useMemo(() => (f ? buildInfoRows(f.metadata, defs.data ?? []) : []), [f, defs.data]);
+  const infoGroups = useMemo(() => (f ? buildInfoGroups(f.metadata, defs.data ?? [], folders.data ?? []) : []), [f, defs.data, folders.data]);
+  // 友だち情報の編集画面から戻ったとき、値を取り直す(最初の表示では取り直さない)
+  const focused = useRef(false);
+  const refreshFriend = friend.refresh;
+  useFocusEffect(
+    useCallback(() => {
+      if (focused.current) void refreshFriend();
+      focused.current = true;
+    }, [refreshFriend]),
+  );
   const menuView = menu.data ? describeRichMenu(menu.data) : null;
   const menuImage = menu.data?.id && menu.data.accountId && !menuImageFailed ? api.richMenuImageUrl(menu.data.id, menu.data.accountId) : null;
 
@@ -296,20 +308,48 @@ function FriendDetailScreen() {
       </Card>
 
       <SectionTitle>友だち情報</SectionTitle>
-      <Card>
-        {defs.loading ? (
+      {defs.loading || folders.loading ? (
+        <Card>
           <ActivityIndicator color={c.primary} />
-        ) : defs.error ? (
-          <View>
-            <Text style={{ color: c.danger, fontSize: fs(13) }}>{defs.error}</Text>
-            <Button title="再取得" variant="secondary" onPress={() => void defs.reload()} style={{ marginTop: 10 }} />
+        </Card>
+      ) : defs.error ? (
+        <Card>
+          <Text style={{ color: c.danger, fontSize: fs(13) }}>{defs.error}</Text>
+          <Button title="再取得" variant="secondary" onPress={() => { void defs.reload(); void folders.reload(); }} style={{ marginTop: 10 }} />
+        </Card>
+      ) : infoGroups.length > 0 ? (
+        infoGroups.map((g) => (
+          <View key={g.id}>
+            <Text style={{ color: c.textMuted, fontSize: fs(13), fontWeight: '700', marginTop: 12, marginBottom: 6, marginLeft: 4 }}>{g.name}</Text>
+            <Card style={{ paddingVertical: 4 }}>
+              {g.items.map((it, i) => (
+                <Pressable
+                  key={it.key}
+                  disabled={!it.editable}
+                  onPress={() => router.push({ pathname: '/friend-field', params: { friendId: f.id, key: it.key } })}
+                  accessibilityRole={it.editable ? 'button' : 'text'}
+                  accessibilityLabel={`${it.label}${it.editable ? 'を編集' : ''}`}
+                  style={({ pressed }) => [
+                    styles.infoRow,
+                    i > 0 ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border } : null,
+                    { opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: c.textMuted, fontSize: fs(12) }}>{it.label}</Text>
+                    <MessageText text={it.value || '未入力'} style={{ color: it.value ? c.text : c.textMuted, fontSize: fs(15), marginTop: 2 }} />
+                  </View>
+                  {it.editable ? <Ionicons name="chevron-forward" size={fs(18)} color={c.textMuted} /> : null}
+                </Pressable>
+              ))}
+            </Card>
           </View>
-        ) : infoRows.length > 0 ? (
-          infoRows.map((r) => <Field key={r.key} label={r.label} value={r.value} />)
-        ) : (
-          <Text style={{ color: c.textMuted, fontSize: fs(15) }}>入力されている項目はありません</Text>
-        )}
-      </Card>
+        ))
+      ) : (
+        <Card>
+          <Text style={{ color: c.textMuted, fontSize: fs(15) }}>友だち情報の項目がありません</Text>
+        </Card>
+      )}
 
       <SectionTitle>いま設定されているリッチメニュー</SectionTitle>
       <Card>
@@ -363,6 +403,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', paddingTop: 8 },
   title: { fontSize: fs(22), fontWeight: '800', marginTop: 12, textAlign: 'center' },
   field: { paddingVertical: 6 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
   headerButton: { minWidth: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
   notice: { marginTop: 16, padding: 12, borderRadius: 10 },
   editLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },

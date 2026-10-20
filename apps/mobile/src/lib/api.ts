@@ -10,6 +10,7 @@ import type {
   FriendAddInfo,
   FriendDetail,
   FriendFieldDefinition,
+  FriendFieldFolder,
   FriendPage,
   FriendProfileInput,
   FriendRichMenu,
@@ -294,6 +295,10 @@ export function createApiClient(options: ApiClientOptions) {
       request<FriendRichMenu>('GET', `/api/friends/${encodeURIComponent(id)}/rich-menu`),
     listFriendFieldDefinitions: () =>
       request<FriendFieldDefinition[]>('GET', '/api/friend-fields/definitions'),
+    listFriendFieldFolders: () => request<FriendFieldFolder[]>('GET', '/api/friend-fields/folders'),
+    /** 友だち情報欄の値を更新(送った項目だけ。null で消す)。更新後の友だちが返る */
+    updateFriendMetadata: (id: string, patch: Record<string, string | null>) =>
+      request<FriendDetail>('PUT', `/api/friends/${encodeURIComponent(id)}/metadata`, { body: patch }),
 
     /** リッチメニュー画像(認証なしで取得できる proxy)。<Image source={{uri}}> で使う */
     richMenuImageUrl: (richMenuId: string, accountId: string) =>
