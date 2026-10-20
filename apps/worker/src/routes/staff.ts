@@ -56,6 +56,8 @@ function serializeStaff(row: StaffMember, masked = true, accountIds: string[] | 
 staff.get('/api/staff/me', async (c) => {
   try {
     const currentStaff = c.get('staff');
+    // beyond admin の入口(ユーザー管理などへの案内に使う)。連携していなければ null
+    const adminUrl = (c.env.BEYOND_ADMIN_URL ?? '').trim().replace(/\/+$/, '') || null;
 
     // env-owner: return minimal info
     if (currentStaff.id === 'env-owner') {
@@ -67,6 +69,7 @@ staff.get('/api/staff/me', async (c) => {
           role: 'owner',
           email: null,
           accountIds: null,
+          adminUrl,
         },
       });
     }
@@ -84,6 +87,7 @@ staff.get('/api/staff/me', async (c) => {
         role: member.role,
         email: member.email,
         accountIds: member.role === 'owner' ? null : await getStaffAllowedAccountIds(c.env.DB, member.id),
+        adminUrl,
       },
     });
   } catch (err) {

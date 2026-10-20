@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { KeyIcon, PlusIcon, TrashIcon, UserPlusIcon } from '@phosphor-icons/react'
+import { ArrowSquareOutIcon, KeyIcon, PlusIcon, TrashIcon, UserPlusIcon } from '@phosphor-icons/react'
 import { Badge } from '@cloudflare/kumo/components/badge'
 import { Banner } from '@cloudflare/kumo/components/banner'
-import { Button } from '@cloudflare/kumo/components/button'
+import { Button, LinkButton } from '@cloudflare/kumo/components/button'
 import { Checkbox } from '@cloudflare/kumo/components/checkbox'
 import { ClipboardText } from '@cloudflare/kumo/components/clipboard-text'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
@@ -53,6 +53,10 @@ export default function StaffPage() {
   const [accessIds, setAccessIds] = useState<string[]>([])
   const [accessSaving, setAccessSaving] = useState(false)
   const [accessError, setAccessError] = useState('')
+  // beyond admin の入口。連携していなければ null(リンクを出さない)
+  const [adminUrl, setAdminUrl] = useState<string | null>(null)
+  // 無効にした API キーは ふだん隠す(beyond admin 側で止めたユーザーは、ここでは出さない)
+  const [showInactiveKeys, setShowInactiveKeys] = useState(false)
 
   const loadMembers = async () => {
     setLoading(true)
@@ -69,6 +73,12 @@ export default function StaffPage() {
   }
 
   useEffect(() => { void loadMembers() }, [])
+
+  useEffect(() => {
+    fetchApi<ApiResponse<{ adminUrl?: string | null }>>('/api/staff/me')
+      .then((res) => { if (res.success) setAdminUrl(res.data.adminUrl ?? null) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     api.lineAccounts.list()
@@ -188,16 +198,26 @@ export default function StaffPage() {
     }
   }
 
-  const externalMembers = members.filter((m) => m.external)
-  const apiMembers = members.filter((m) => !m.external)
-  const hasExternal = externalMembers.length > 0
+  // 無効なアカウントは出さない。beyond admin で止めた人は、ここでは操作できない(再開も beyond admin)ので隠す
+  const externalMembers = members.filter((m) => m.external && m.isActive)
+  const allApiMembers = members.filter((m) => !m.external)
+  const inactiveKeyCount = allApiMembers.filter((m) => !m.isActive).length
+  const apiMembers = showInactiveKeys ? allApiMembers : allApiMembers.filter((m) => m.isActive)
+  const hasExternal = members.some((m) => m.external)
+  const adminUsersUrl = adminUrl ? `${adminUrl}/settings/users` : null
 
   return (
     <div>
       <Header
         title="ユーザー管理"
         description="ログインできるユーザーと、見られるアカウントの権限を管理します。"
-        action={hasExternal ? undefined : (
+        action={hasExternal ? (
+          adminUsersUrl ? (
+            <LinkButton href={adminUsersUrl} target="_blank" rel="noreferrer" variant="primary" icon={ArrowSquareOutIcon}>
+              beyond admin でユーザーを追加・編集
+            </LinkButton>
+          ) : undefined
+        ) : (
           <Button type="button" variant="primary" icon={PlusIcon} onClick={() => setShowForm((current) => !current)}>
             スタッフを追加
           </Button>
@@ -301,12 +321,15 @@ export default function StaffPage() {
                         : member.accountIds.map((id) => accounts.find((a) => a.id === id)?.name ?? '(削除済み)').join('、')}
                   </Table.Cell>
                   <Table.Cell>
-                    <Badge variant={member.isActive ? 'success' : 'neutral'} appearance="dot">
-                      {member.isActive ? '有効' : '無効(beyond admin で停止)'}
-                    </Badge>
+                    <Badge variant="success" appearance="dot">有効</Badge>
                     {member.deletionRequestedAt ? (
                       <p className="mt-1 text-xs text-amber-700">
                         削除を申請中({member.deletionRequestedAt.slice(0, 10)})。beyond admin でユーザーを削除してください
+                        {adminUsersUrl ? (
+                          <a href={adminUsersUrl} target="_blank" rel="noreferrer" className="ml-2 text-kumo-link hover:underline">
+                            beyond admin を開く
+                          </a>
+                        ) : null}
                       </p>
                     ) : null}
                   </Table.Cell>
@@ -321,6 +344,11 @@ export default function StaffPage() {
                         <Button type="button" size="xs" variant="secondary" onClick={() => openAccess(member)}>
                           アカウント権限
                         </Button>
+                      ) : null}
+                      {adminUsersUrl ? (
+                        <LinkButton href={adminUsersUrl} target="_blank" rel="noreferrer" size="xs" variant="secondary" icon={ArrowSquareOutIcon}>
+                          beyond admin
+                        </LinkButton>
                       ) : null}
                     </div>
                   </Table.Cell>
@@ -442,6 +470,14 @@ export default function StaffPage() {
           </Table>
         </div>
       </LayerCard>
+
+      {inactiveKeyCount > 0 ? (
+        <div className="mt-2">
+          <Button type="button" size="xs" variant="ghost" onClick={() => setShowInactiveKeys((v) => !v)}>
+            {showInactiveKeys ? '無効を隠す' : `無効を表示(${inactiveKeyCount})`}
+          </Button>
+        </div>
+      ) : null}
 
       <Modal open={accessTarget !== null} onClose={() => { if (!accessSaving) setAccessTarget(null) }} maxWidthClass="max-w-lg" align="center">
         <div className="p-6">
