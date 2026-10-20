@@ -372,7 +372,7 @@ export default function FriendDetailPage() {
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">流入経路</dt>
-                      <dd className="text-kumo-strong">{friend.inflowRoute?.name || (friend.refCode ? friend.refCode : '未登録')}</dd>
+                      <dd className="text-kumo-strong">{friend.inflowRoute?.name || '未登録'}</dd>
                     </div>
                     <div className="flex justify-between gap-4">
                       <dt className="text-kumo-subtle">個別メモ</dt>

@@ -222,7 +222,7 @@ describe('友だち情報・リッチメニュー', () => {
       state: 'set',
       title: 'メイン',
       badge: '個別に設定',
-      details: ['グループ: G', 'ページ: P1', 'メニューバー: メニュー'],
+      details: [],
     });
     expect(describeRichMenu({ id: 'r1', name: null, isDefault: true, chatBarText: null, groupName: null, pageName: null, accountId: null })).toMatchObject({ title: '(名前なし)', badge: 'デフォルト', details: [] });
   });

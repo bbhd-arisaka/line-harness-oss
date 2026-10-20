@@ -408,10 +408,8 @@ export function describeRichMenu(menu: FriendRichMenu): RichMenuView {
   if (menu.id === null) {
     return { state: 'none', title: 'リッチメニューは設定されていません', badge: '', details: [] };
   }
+  // 表示するメニュー名は1つ(サーバーが、画面で付けたメニュー名を name に入れて返す)
   const details: string[] = [];
-  if (menu.groupName) details.push(`グループ: ${menu.groupName}`);
-  if (menu.pageName) details.push(`ページ: ${menu.pageName}`);
-  if (menu.chatBarText) details.push(`メニューバー: ${menu.chatBarText}`);
   return {
     state: 'set',
     title: menu.name ?? '(名前なし)',

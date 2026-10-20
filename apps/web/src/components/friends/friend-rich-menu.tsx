@@ -91,7 +91,6 @@ export function FriendRichMenuView({ state, onReload, compact = false }: { state
   }
 
   const imageUrl = menu.accountId && !imageFailed ? api.richMenuGroups.externalImageUrl(menu.id, menu.accountId) : null
-  const sub = [menu.groupName ? `グループ: ${menu.groupName}` : null, menu.pageName ? `ページ: ${menu.pageName}` : null].filter(Boolean).join(' / ')
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -100,8 +99,6 @@ export function FriendRichMenuView({ state, onReload, compact = false }: { state
           {menu.isDefault ? 'デフォルト' : '個別に設定'}
         </span>
       </div>
-      {sub ? <p className={compact ? 'text-[11px] text-gray-500' : 'text-xs text-kumo-subtle'}>{sub}</p> : null}
-      {menu.chatBarText ? <p className={compact ? 'text-[11px] text-gray-500' : 'text-xs text-kumo-subtle'}>メニューバー: {menu.chatBarText}</p> : null}
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img

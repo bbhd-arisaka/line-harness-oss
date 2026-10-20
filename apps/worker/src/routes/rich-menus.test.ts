@@ -102,14 +102,14 @@ describe('GET /api/friends/:friendId/rich-menu(いま設定されているリッ
     getRichMenuList.mockResolvedValue({ richmenus: [{ richMenuId: 'rm-1', name: 'メイン', chatBarText: 'メニュー' }, { richMenuId: 'rm-def', name: 'デフォルト用' }] });
   });
 
-  test('個別に設定されているメニューの名前を返す(beyond line で作ったメニューならグループ・ページ名も)', async () => {
+  test('個別に設定されているメニューの名前を返す(beyond line で作ったメニューなら、画面で付けたメニュー名1つ)', async () => {
     const { sqlite, get } = setup();
     getRichMenuIdOfUser.mockResolvedValue({ richMenuId: 'rm-1' });
     sqlite.exec("INSERT INTO rich_menu_groups(id,account_id,name,chat_bar_text,size) VALUES('g1','acc-a','予約メニュー','メニュー','large')");
     sqlite.exec("INSERT INTO rich_menu_pages(id,group_id,order_index,name,alias_id,line_richmenu_id) VALUES('p1','g1',0,'1ページ目','al','rm-1')");
     const { status, body } = await get();
     expect(status).toBe(200);
-    expect(body.data).toEqual({ id: 'rm-1', name: 'メイン', isDefault: false, chatBarText: 'メニュー', groupName: '予約メニュー', pageName: '1ページ目', accountId: 'acc-a' });
+    expect(body.data).toEqual({ id: 'rm-1', name: '予約メニュー', isDefault: false, chatBarText: 'メニュー', groupName: '予約メニュー', pageName: '1ページ目', accountId: 'acc-a' });
   });
 
   test('個別に設定が無いときは、デフォルトのメニューを「デフォルト」として返す', async () => {

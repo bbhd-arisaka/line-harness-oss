@@ -233,9 +233,10 @@ richMenus.get('/api/friends/:friendId/rich-menu', async (c) => {
       pageName = row?.page_name ?? null;
     }
 
+    // 表示するメニュー名は1つ: beyond line で作ったメニューならその名前(画面で付けた名前)、外で作られたものは LINE に登録された名前
     return c.json({
       success: true,
-      data: { id: effectiveId, name, isDefault, chatBarText, groupName, pageName, accountId: friendAccId ?? null },
+      data: { id: effectiveId, name: groupName?.trim() || name, isDefault, chatBarText, groupName, pageName, accountId: friendAccId ?? null },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
