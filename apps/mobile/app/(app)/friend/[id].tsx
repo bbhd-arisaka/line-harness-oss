@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -107,13 +107,17 @@ function FriendDetailScreen() {
   const f = friend.data;
   const infoGroups = useMemo(() => (f ? buildInfoGroups(f.metadata, defs.data ?? [], folders.data ?? []) : []), [f, defs.data, folders.data]);
   // 友だち情報の編集画面から戻ったとき、値を取り直す(最初の表示では取り直さない)
+  // (refresh は描画のたびに新しい関数になるので、そのまま依存にすると、取り直すたびにまた取り直す無限ループになる。最新のものを ref で持つ)
   const focused = useRef(false);
-  const refreshFriend = friend.refresh;
+  const refreshRef = useRef(friend.refresh);
+  useEffect(() => {
+    refreshRef.current = friend.refresh;
+  });
   useFocusEffect(
     useCallback(() => {
-      if (focused.current) void refreshFriend();
+      if (focused.current) void refreshRef.current();
       focused.current = true;
-    }, [refreshFriend]),
+    }, []),
   );
   const menuView = menu.data ? describeRichMenu(menu.data) : null;
   const menuImage = menu.data?.id && menu.data.accountId && !menuImageFailed ? api.richMenuImageUrl(menu.data.id, menu.data.accountId) : null;
