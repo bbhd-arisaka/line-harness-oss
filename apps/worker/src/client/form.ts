@@ -238,15 +238,15 @@ function getApp(): HTMLElement {
 function renderField(field: FormField, previousValue?: unknown): string {
   // 見出し類は入力を持たない。Lステップの「中見出し」「小見出し」に相当。
   if (field.type === 'heading') {
-    return `<h2 class="form-section-heading">${escapeHtml(field.label)}</h2>`;
+    return `<h2 class="form-section-heading" data-field-name="${escapeHtml(field.name)}">${escapeHtml(field.label)}</h2>`;
   }
   if (field.type === 'subheading') {
-    return `<h3 class="form-section-subheading">${escapeHtml(field.label)}</h3>`;
+    return `<h3 class="form-section-subheading" data-field-name="${escapeHtml(field.name)}">${escapeHtml(field.label)}</h3>`;
   }
   // 同意書・プライバシーポリシー等の長文表示用(Lステップは項目間に自由文を挟める)。
   if (field.type === 'paragraph') {
     const html = escapeHtml(field.label).replace(/\n/g, '<br>');
-    return `<p class="form-paragraph">${html}</p>`;
+    return `<p class="form-paragraph" data-field-name="${escapeHtml(field.name)}">${html}</p>`;
   }
   // Lステップ新形式の「画像」「ボタン」ブロック。どちらも回答データを持たない。
   if (field.type === 'image') {
@@ -255,7 +255,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
     const width = field.imageSize === 'small' ? '50%' : field.imageSize === 'large' ? '100%' : '80%';
     const img = `<img class="form-block-image" style="width:${width};margin-left:auto;margin-right:auto" src="${escapeHtml(src)}" alt="${escapeHtml(field.label)}" />`;
     const link = safeHttpsUrl(field.imageLinkUrl);
-    return link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${img}</a>` : img;
+    return `<div data-field-name="${escapeHtml(field.name)}">${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${img}</a>` : img}</div>`;
   }
   if (field.type === 'button') {
     const href = safeHttpsUrl(field.buttonUrl);
@@ -268,7 +268,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
     }
     if (field.buttonStyle === 'rounded') styleParts.push('border-radius:999px');
     const style = styleParts.length > 0 ? ` style="${styleParts.join(';')}"` : '';
-    return `<a class="form-block-button"${style} href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${escapeHtml(field.buttonLabel || field.label)}</a>`;
+    return `<a class="form-block-button"${style} href="${escapeHtml(href)}" target="_blank" rel="noreferrer" data-field-name="${escapeHtml(field.name)}">${escapeHtml(field.buttonLabel || field.label)}</a>`;
   }
 
   // 「非表示」ブロック: 画面には出さず、初期値だけを回答データとして送る。
@@ -448,7 +448,7 @@ function renderField(field: FormField, previousValue?: unknown): string {
   }
 
   return `
-    <div class="form-field"${field.hidden ? ' hidden' : ''}>
+    <div class="form-field" data-field-name="${escapeHtml(field.name)}"${field.hidden ? ' hidden' : ''}>
       <label class="form-label" for="field-${escapeHtml(field.name)}">
         ${escapeHtml(field.label)}${requiredMark}
       </label>
@@ -765,6 +765,9 @@ function injectStyles(): void {
     .section-indicator { font-size: 14px; }
     .section-progress { height: 8px; border-radius: 4px; }
     @media (max-width: 380px) { .form-body { padding: 20px 14px; } .form-header h1 { font-size: 20px; } }
+    /* 管理画面のプレビュー(埋め込み): 編集中の項目の枠 */
+    .pv-selected { outline: 3px solid #0e9aa7; outline-offset: 6px; border-radius: 8px; }
+    .pv-embed [data-field-name] { cursor: pointer; }
   `;
   document.head.appendChild(style);
 }
@@ -2128,7 +2131,9 @@ export async function initForm(formId: string | null): Promise<void> {
  */
 export function initFormPreview(): void {
   previewMode = true;
-  const opener = window.opener as Window | null;
+  // 管理画面のフォーム編集の右側(iframe で埋め込み)のときは、親の画面が相手。別タブのときは、開いた画面(opener)が相手
+  const embed = new URLSearchParams(window.location.search).get('embed') === '1';
+  const opener = (embed && window.parent !== window ? window.parent : window.opener) as Window | null;
   if (!opener) {
     renderFormError('管理画面のフォーム編集画面にある「プレビュー」から開いてください');
     return;
@@ -2136,27 +2141,59 @@ export function initFormPreview(): void {
   renderLoading();
   document.title = 'プレビュー';
 
-  const banner = document.createElement('div');
-  banner.textContent = 'プレビュー表示(編集内容がそのまま反映されます・回答は送信されません)';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#414143;color:#fff;font-size:12px;text-align:center;padding:6px 8px;';
-  document.body.appendChild(banner);
-  document.body.style.paddingTop = '30px';
+  if (embed) {
+    document.documentElement.classList.add('pv-embed');
+  } else {
+    const banner = document.createElement('div');
+    banner.textContent = 'プレビュー表示(編集内容がそのまま反映されます・回答は送信されません)';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#414143;color:#fff;font-size:12px;text-align:center;padding:6px 8px;';
+    document.body.appendChild(banner);
+    document.body.style.paddingTop = '30px';
+  }
+
+  // 埋め込みのとき: 項目をクリックすると、編集画面でその項目を選ぶ(リンク・送信は動かさない)
+  if (embed) {
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest('a');
+      if (anchor) e.preventDefault();
+      const field = target?.closest<HTMLElement>('[data-field-name]');
+      if (field?.dataset.fieldName) opener.postMessage({ type: 'form-preview-select', name: field.dataset.fieldName }, '*');
+    }, true);
+    document.addEventListener('submit', (e) => e.preventDefault(), true);
+  }
 
   window.addEventListener('message', (e: MessageEvent) => {
     if (e.source !== opener) return;
-    const data = e.data as { type?: string; formDef?: FormDef } | null;
+    const data = e.data as { type?: string; formDef?: FormDef; sectionIndex?: number; selectedName?: string | null } | null;
     if (!data || data.type !== 'form-preview' || !data.formDef) return;
 
-    // 編集のたびに再描画されるので、表示中のセクションだけは保つ
+    // 編集のたびに再描画されるので、表示中のセクションだけは保つ(埋め込みのときは、編集画面で選んでいるセクションに合わせる)
     const pages = Array.from(document.querySelectorAll<HTMLElement>('.form-section-page'));
-    const currentIdx = Math.max(0, pages.findIndex((p) => !p.hidden));
+    const keepIdx = Math.max(0, pages.findIndex((p) => !p.hidden));
+    const currentIdx = embed && typeof data.sectionIndex === 'number' ? data.sectionIndex : keepIdx;
 
+    const scrollY = window.scrollY;
     state.formDef = data.formDef;
     state.profile = { userId: 'preview', displayName: 'プレビュー' };
     render();
 
     const next = Array.from(document.querySelectorAll<HTMLElement>('.form-section-page'));
-    if (next.length > 1 && currentIdx < next.length) next.forEach((p, i) => { p.hidden = i !== currentIdx; });
+    if (next.length > 1 && currentIdx < next.length) next.forEach((p, i) => { p.hidden = i !== Math.max(0, currentIdx); });
+
+    // 選択中の項目に枠をつける。見えない位置なら、そこまでスクロール
+    document.querySelectorAll('.pv-selected').forEach((el) => el.classList.remove('pv-selected'));
+    if (embed && data.selectedName) {
+      const el = Array.from(document.querySelectorAll<HTMLElement>('[data-field-name]')).find((x) => x.dataset.fieldName === data.selectedName && x.offsetParent !== null);
+      if (el) {
+        el.classList.add('pv-selected');
+        const r = el.getBoundingClientRect();
+        if (r.top < 0 || r.bottom > window.innerHeight) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        else window.scrollTo(0, scrollY);
+      }
+    } else if (embed) {
+      window.scrollTo(0, scrollY);
+    }
   });
   opener.postMessage({ type: 'form-preview-ready' }, '*');
 }

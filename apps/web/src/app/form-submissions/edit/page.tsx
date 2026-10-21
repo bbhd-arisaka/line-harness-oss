@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { api, fetchApi } from '@/lib/api'
 import { BlockCard } from '@/components/forms/block-card'
 import { DesignModal, OptionModal } from '@/components/forms/modals'
-import { PreviewPane } from '@/components/forms/preview-pane'
+import { PreviewFrame } from '@/components/forms/preview-frame'
 import { getApiBase } from '@/lib/api-base'
 import type { PickerField, PickerFolder } from '@/components/forms/friend-field-picker'
 import { Popover } from '@/components/lstep/ui'
@@ -170,12 +170,6 @@ export default function FormEditPage() {
     if (b.section !== section) setSection(b.section)
     setPendingScroll(rowId)
   }
-  // 編集カードを選んだら、プレビュー側の該当項目も見える位置へ(こちらもスムーズスクロール)
-  useEffect(() => {
-    if (selectedRowId === null) return
-    scrollWithin('preview-scroll', `preview-block-${selectedRowId}`, 'nearest')
-  }, [selectedRowId])
-
   useEffect(() => {
     if (pendingScroll === null) return
     const id = requestAnimationFrame(() => {
@@ -489,8 +483,8 @@ export default function FormEditPage() {
             </div>
           </div>
           {/* 右: プレビュー */}
-          <div className="w-[21rem] flex-shrink-0 border-l border-[#e3e3e6]">
-            <PreviewPane draft={draft} section={section} selectedRowId={selectedRowId} onSelect={selectFromPreview} />
+          <div className="w-[24rem] flex-shrink-0 border-l border-[#e3e3e6]">
+            <PreviewFrame draft={draft} section={section} selectedRowId={selectedRowId} onSelect={selectFromPreview} />
           </div>
 
         </div>
