@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alertRoute, barRatios, minutesLabel, monthDay, num, parseChatFilter, signed, type HomeAlert } from './home';
+import { alertRoute, barRatios, minutesLabel, monthDay, num, parseChatFilter, signed, splitAlerts, waitLabel, type HomeAlert } from './home';
 
 describe('ホームの表示用の計算', () => {
   it('分を、読みやすい時間に', () => {
@@ -37,5 +37,23 @@ describe('ホームの表示用の計算', () => {
     ];
     expect(barRatios(rows)).toEqual([{ up: 0.5, down: 0 }, { up: 1, down: 0.25 }]);
     expect(barRatios([{ date: 'd', added: 0, blocked: 0, delta: 0, active: 0 }])).toEqual([{ up: 0, down: 0 }]);
+  });
+});
+
+describe('現場向けの表示', () => {
+  const now = Date.parse('2026-10-20T12:00:00+09:00');
+  it('返信待ちの経過時間と、急ぎの度合い', () => {
+    expect(waitLabel('2026-10-20T11:59:40.000', now)).toEqual({ text: 'いま届いた', level: 'ok' });
+    expect(waitLabel('2026-10-20T11:30:00.000', now)).toEqual({ text: '30分待ち', level: 'ok' });
+    expect(waitLabel('2026-10-20T10:00:00.000', now)).toEqual({ text: '2時間待ち', level: 'ok' });
+    expect(waitLabel('2026-10-20T08:00:00.000', now)).toEqual({ text: '4時間待ち', level: 'warn' });
+    expect(waitLabel('2026-10-18T12:00:00.000', now)).toEqual({ text: '2日待ち', level: 'late' });
+  });
+  it('お知らせを、現場向けとそれ以外に分ける', () => {
+    const a = (id: string): HomeAlert => ({ id, severity: 'info', title: id });
+    const r = splitAlerts([a('unread-over-24h'), a('no-new-friends'), a('token-expiring'), a('block-spike')]);
+    // 24時間以上の未対応は、返信待ちのカードが見せるので、お知らせには出さない
+    expect(r.field.map((x) => x.id)).toEqual(['token-expiring']);
+    expect(r.other.map((x) => x.id)).toEqual(['no-new-friends', 'block-spike']);
   });
 });

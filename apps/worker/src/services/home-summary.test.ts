@@ -150,6 +150,18 @@ describe('ホームの集計(DB)', () => {
     expect(s.trend[12]).toMatchObject({ date: '2026-10-17', added: 1, blocked: 0 });
     expect(s.trend.find((r) => r.date === '2026-10-10')).toMatchObject({ blocked: 1 });
   });
+  it('現場向け: 返信待ちは、待たせている時間が長い順に(別のアカウントは含めない)・お客様の最後の文章つき', async () => {
+    const s = await load();
+    expect(s.waiting.map((w) => w.friendId)).toEqual(['f2', 'f1']);
+    expect(s.waiting[0]).toMatchObject({ name: 'f2', since: '2026-10-16T10:00:00.000', preview: 'x' });
+  });
+  it('現場向け: 今日の受信・手動の返信・新しい友だち・フォーム回答', async () => {
+    expect((await load()).today).toEqual({ received: 1, replied: 1, added: 1, formAnswers: 1 });
+  });
+  it('現場向け: 新しいフォームの回答(回答者名・フォーム名つき)', async () => {
+    const s = await load();
+    expect(s.recentForms).toEqual([{ submissionId: 's1', friendId: 'f1', friendName: 'f1', formName: '質問', answeredAt: '2026-10-18T10:00:00.000' }]);
+  });
   it('運用の指標: 返信までの平均(手動の返信だけ・続けての受信は1回)・今月の受信・フォーム・ブロック率', async () => {
     const s = await load();
     expect(s.ops.avgFirstReplyMinutes).toBe(75);

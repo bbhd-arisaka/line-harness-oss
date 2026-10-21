@@ -31,7 +31,39 @@ export type HomeSummary = {
   };
   routes: Array<{ key: string; label: string; count: number }>;
   alerts: HomeAlert[];
+  /** 現場向け(古いサーバーでは無い) */
+  waiting?: WaitingChat[];
+  today?: { received: number; replied: number; added: number; formAnswers: number };
+  recentForms?: RecentFormAnswer[];
 };
+
+/** 返信待ち(未対応)のお客様 */
+export type WaitingChat = { friendId: string; name: string; pictureUrl: string | null; since: string; preview: string | null };
+
+/** 新しいフォームの回答 */
+export type RecentFormAnswer = { submissionId: string; friendId: string; friendName: string; formName: string; answeredAt: string };
+
+import { parseApiDate } from './format';
+
+/** 返信待ちの経過時間: 「5分待ち」「3時間待ち」「2日待ち」。24時間以上=late(赤)・3時間以上=warn(橙) */
+export function waitLabel(since: string, nowMs: number): { text: string; level: 'ok' | 'warn' | 'late' } {
+  const d = parseApiDate(since);
+  const min = d ? Math.max(0, Math.floor((nowMs - d.getTime()) / 60_000)) : 0;
+  if (min < 1) return { text: 'いま届いた', level: 'ok' };
+  if (min < 60) return { text: `${min}分待ち`, level: 'ok' };
+  const h = Math.floor(min / 60);
+  if (h < 24) return { text: `${h}時間待ち`, level: h >= 3 ? 'warn' : 'ok' };
+  return { text: `${Math.floor(h / 24)}日待ち`, level: 'late' };
+}
+
+/** 現場で、すぐ見たいお知らせ(それ以外のお知らせは「数字」の中に) */
+const FIELD_ALERT_IDS = new Set(['broadcast-problem', 'quota-empty', 'quota-short', 'token-expiring']);
+/** 「24時間以上の未対応」は、返信待ちのカード(待ち時間つき)が見せているので、お知らせには出さない */
+const COVERED_BY_WAITING = new Set(['unread-over-24h']);
+export function splitAlerts(alerts: HomeAlert[]): { field: HomeAlert[]; other: HomeAlert[] } {
+  const rest = alerts.filter((a) => !COVERED_BY_WAITING.has(a.id));
+  return { field: rest.filter((a) => FIELD_ALERT_IDS.has(a.id)), other: rest.filter((a) => !FIELD_ALERT_IDS.has(a.id)) };
+}
 
 export const num = (v: number): string => v.toLocaleString('ja-JP');
 

@@ -3,18 +3,20 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AccountBar } from '../../../src/components/account-bar';
-import { Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
+import { Avatar, Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
 import { FadeIn } from '../../../src/components/fade-in';
 import { withReadableWidth } from '../../../src/components/readable-width';
 import { api } from '../../../src/state/services';
-import { useAccounts } from '../../../src/state/session';
-import { alertRoute, barRatios, minutesLabel, monthDay, num, signed, type ChatFilterParam, type HomeAlert, type HomeSummary } from '../../../src/lib/home';
+import { useAccounts, useAuth } from '../../../src/state/session';
+import { alertRoute, barRatios, minutesLabel, monthDay, num, signed, splitAlerts, waitLabel, type ChatFilterParam, type HomeAlert, type HomeSummary, type WaitingChat } from '../../../src/lib/home';
+import { formatListTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 
 /**
- * ホーム。Lステップのトップと同じ項目(友だち数・送信可能数・友だち数の推移)に、現在の対応状況・重要なお知らせ・運用の指標を足したもの。
- * 「現在の対応状況」の人数を押すと、その状態に絞ったトーク一覧へ移る。
+ * ホーム(現場向け)。上から、急ぎのお知らせ → 返信待ちのお客様(待たせている時間が長い順・押すとトークへ) → 対応中・対応済み →
+ * 今日の動き → 新しいフォームの回答 → ショートカット。友だち数・送信可能数・推移・流入経路などの「数字」は、いちばん下に畳んである。
+ * 業種は問わない(サロンに限らない)ので、言葉は「お客様」「返信」「回答」を使う。
  * 取りに行くのは、開いたとき・アカウントを変えたとき・引っぱって更新したとき・1分以上たって戻ってきたときだけ(定期的には取らない)。
  */
 function HomeScreen() {
@@ -22,6 +24,9 @@ function HomeScreen() {
   const router = useRouter();
   const { selected } = useAccounts();
   const accountId = selected?.id ?? null;
+  const staff = useAuth().staff;
+  const canBroadcast = staff?.role === 'owner' || staff?.role === 'admin';
+  const [showNumbers, setShowNumbers] = useState(false);
   const [data, setData] = useState<HomeSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,71 +96,136 @@ function HomeScreen() {
           contentContainerStyle={styles.content}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load('refresh'); }} tintColor={c.primary} />}
         >
-          <AlertsCard alerts={data.alerts} onOpen={openAlert} />
+          {splitAlerts(data.alerts).field.length > 0 ? <AlertsCard alerts={splitAlerts(data.alerts).field} onOpen={openAlert} /> : null}
 
-          <SectionTitle>現在の対応状況</SectionTitle>
+          <WaitingCard
+            count={data.chatStatus.unread}
+            waiting={data.waiting ?? []}
+            nowMs={Date.now()}
+            onOpen={(id) => router.push({ pathname: '/chat/[id]', params: { id } })}
+            onAll={() => openChats('unread')}
+          />
+
           <View style={styles.tiles}>
-            <StatusTile label="未対応" value={data.chatStatus.unread} dot={c.danger} onPress={() => openChats('unread')} />
             <StatusTile label="対応中" value={data.chatStatus.in_progress} dot={c.warning} onPress={() => openChats('in_progress')} />
             <StatusTile label="対応済み" value={data.chatStatus.resolved} dot={c.primary} onPress={() => openChats('resolved')} />
           </View>
 
-          <SectionTitle>友だち数</SectionTitle>
-          <Card>
-            <View style={styles.twoCols}>
-              <View style={styles.bigCol}>
-                <Text style={[styles.label, { color: c.textMuted }]}>有効友だち数</Text>
-                <Text style={[styles.big, { color: c.text }]}>{num(data.friends.active)}<Text style={styles.unit}>人</Text></Text>
+          {data.today ? (
+            <>
+              <SectionTitle>今日</SectionTitle>
+              <View style={styles.grid}>
+                <Stat title="お客様からの受信" value={`${num(data.today.received)}件`} />
+                <Stat title="こちらからの返信" value={`${num(data.today.replied)}件`} />
+                <Stat title="新しいお客様(友だち追加)" value={`${num(data.today.added)}人`} />
+                <Stat title="フォームの回答" value={`${num(data.today.formAnswers)}件`} />
               </View>
-              <View style={[styles.divider, { backgroundColor: c.border }]} />
-              <View style={styles.bigCol}>
-                <Text style={[styles.label, { color: c.textMuted }]}>ブロック数</Text>
-                <Text style={[styles.big, { color: c.text }]}>{num(data.friends.blocked)}<Text style={styles.unit}>人</Text></Text>
-              </View>
-            </View>
-            <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'center', marginTop: 8 }}>
-              友だち総数 {num(data.friends.total)}{data.ops.blockRatePct !== null ? `　ブロック率 ${data.ops.blockRatePct}%` : ''}
-            </Text>
-          </Card>
+            </>
+          ) : null}
 
-          <SectionTitle>{`${Number(data.generatedAt.slice(5, 7))}月の送信可能数`}</SectionTitle>
-          <QuotaCard quota={data.quota} />
+          {data.recentForms && data.recentForms.length > 0 ? (
+            <>
+              <SectionTitle>新しいフォームの回答</SectionTitle>
+              <Card style={{ paddingVertical: 4 }}>
+                {data.recentForms.map((f, i) => (
+                  <Pressable
+                    key={f.submissionId}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${f.friendName}さんの${f.formName}の回答を開く`}
+                    onPress={() => router.push({ pathname: '/form-answer/[submissionId]', params: { submissionId: f.submissionId, chat: f.friendId } })}
+                    style={({ pressed }) => [styles.listRow, i > 0 ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border } : null, { opacity: pressed ? 0.6 : 1 }]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>{f.friendName}</Text>
+                      <Text style={{ color: c.textSub, fontSize: 12, marginTop: 1 }} numberOfLines={1}>{f.formName}</Text>
+                    </View>
+                    <Text style={{ color: c.textMuted, fontSize: 12 }}>{formatListTime(f.answeredAt)}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={c.textMuted} />
+                  </Pressable>
+                ))}
+              </Card>
+            </>
+          ) : null}
 
-          <SectionTitle>友だち数の推移(14日)</SectionTitle>
-          <Card>
-            <TrendBars rows={data.trend} />
-            <TrendTable rows={[...data.trend].reverse().slice(0, 7)} />
-          </Card>
-
-          <SectionTitle>運用の指標</SectionTitle>
-          <View style={styles.grid}>
-            <Stat title="返信までの平均時間(7日)" value={data.ops.avgFirstReplyMinutes !== null ? minutesLabel(data.ops.avgFirstReplyMinutes) : '—'} />
-            <Stat title="今月の受信メッセージ" value={`${num(data.ops.receivedThisMonth)}件`} />
-            <Stat title="今月のフォーム回答" value={`${num(data.ops.formAnswersThisMonth)}件`} />
-            <Stat title="今月の新しい友だち" value={`${num(data.ops.addedThisMonth)}人`} />
-            <Stat title="今月のブロック" value={`${num(data.ops.blockedThisMonth)}人`} />
-            <Stat title="今月の送信数" value={`${num(data.sentThisMonth)}通`} />
+          <View style={styles.shortcuts}>
+            <Shortcut icon="qr-code-outline" label="友だち追加QR" onPress={() => router.push('/friend-add')} />
+            <Shortcut icon="search-outline" label="お客様を探す" onPress={() => router.navigate('/friends' as never)} />
+            {canBroadcast ? <Shortcut icon="megaphone-outline" label="新しい配信" onPress={() => router.push('/broadcast-new')} /> : null}
           </View>
 
-          {data.routes.length > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showNumbers }}
+            onPress={() => setShowNumbers((v) => !v)}
+            style={({ pressed }) => [styles.numbersToggle, { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border }]}
+          >
+            <Text style={{ color: c.text, fontSize: 15, fontWeight: '600', flex: 1 }}>数字を見る</Text>
+            <Text style={{ color: c.textMuted, fontSize: 12 }}>友だち数・送信可能数・推移</Text>
+            <Ionicons name={showNumbers ? 'chevron-up' : 'chevron-down'} size={18} color={c.textMuted} />
+          </Pressable>
+
+          {showNumbers ? (
             <>
-              <SectionTitle>流入経路(今月の新しい友だち)</SectionTitle>
+              {splitAlerts(data.alerts).other.length > 0 ? <AlertsCard alerts={splitAlerts(data.alerts).other} onOpen={openAlert} /> : null}
+
+              <SectionTitle>友だち数</SectionTitle>
               <Card>
-                {data.routes.map((r, i) => {
-                  const max = Math.max(1, ...data.routes.map((x) => x.count));
-                  return (
-                    <View key={r.key} style={{ marginTop: i === 0 ? 0 : 10 }}>
-                      <View style={styles.routeTop}>
-                        <Text style={{ color: c.text, fontSize: 14, flex: 1 }} numberOfLines={1}>{r.label}</Text>
-                        <Text style={{ color: c.text, fontSize: 14, fontWeight: '700' }}>{num(r.count)}</Text>
-                      </View>
-                      <View style={[styles.track, { backgroundColor: c.border }]}>
-                        <View style={[styles.fill, { width: `${(r.count / max) * 100}%`, backgroundColor: c.primary }]} />
-                      </View>
-                    </View>
-                  );
-                })}
+                <View style={styles.twoCols}>
+                  <View style={styles.bigCol}>
+                    <Text style={[styles.label, { color: c.textMuted }]}>有効友だち数</Text>
+                    <Text style={[styles.big, { color: c.text }]}>{num(data.friends.active)}<Text style={styles.unit}>人</Text></Text>
+                  </View>
+                  <View style={[styles.divider, { backgroundColor: c.border }]} />
+                  <View style={styles.bigCol}>
+                    <Text style={[styles.label, { color: c.textMuted }]}>ブロック数</Text>
+                    <Text style={[styles.big, { color: c.text }]}>{num(data.friends.blocked)}<Text style={styles.unit}>人</Text></Text>
+                  </View>
+                </View>
+                <Text style={{ color: c.textMuted, fontSize: 12, textAlign: 'center', marginTop: 8 }}>
+                  友だち総数 {num(data.friends.total)}{data.ops.blockRatePct !== null ? `　ブロック率 ${data.ops.blockRatePct}%` : ''}
+                </Text>
               </Card>
+
+              <SectionTitle>{`${Number(data.generatedAt.slice(5, 7))}月の送信可能数`}</SectionTitle>
+              <QuotaCard quota={data.quota} />
+
+              <SectionTitle>友だち数の推移(14日)</SectionTitle>
+              <Card>
+                <TrendBars rows={data.trend} />
+                <TrendTable rows={[...data.trend].reverse().slice(0, 7)} />
+              </Card>
+
+              <SectionTitle>今月の指標</SectionTitle>
+              <View style={styles.grid}>
+                <Stat title="返信までの平均時間(7日)" value={data.ops.avgFirstReplyMinutes !== null ? minutesLabel(data.ops.avgFirstReplyMinutes) : '—'} />
+                <Stat title="受信メッセージ" value={`${num(data.ops.receivedThisMonth)}件`} />
+                <Stat title="フォーム回答" value={`${num(data.ops.formAnswersThisMonth)}件`} />
+                <Stat title="新しい友だち" value={`${num(data.ops.addedThisMonth)}人`} />
+                <Stat title="ブロック" value={`${num(data.ops.blockedThisMonth)}人`} />
+                <Stat title="送信数" value={`${num(data.sentThisMonth)}通`} />
+              </View>
+
+              {data.routes.length > 0 ? (
+                <>
+                  <SectionTitle>流入経路(今月の新しい友だち)</SectionTitle>
+                  <Card>
+                    {data.routes.map((r, i) => {
+                      const max = Math.max(1, ...data.routes.map((x) => x.count));
+                      return (
+                        <View key={r.key} style={{ marginTop: i === 0 ? 0 : 10 }}>
+                          <View style={styles.routeTop}>
+                            <Text style={{ color: c.text, fontSize: 14, flex: 1 }} numberOfLines={1}>{r.label}</Text>
+                            <Text style={{ color: c.text, fontSize: 14, fontWeight: '700' }}>{num(r.count)}</Text>
+                          </View>
+                          <View style={[styles.track, { backgroundColor: c.border }]}>
+                            <View style={[styles.fill, { width: `${(r.count / max) * 100}%`, backgroundColor: c.primary }]} />
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </Card>
+                </>
+              ) : null}
             </>
           ) : null}
         </ScrollView>
@@ -166,6 +236,69 @@ function HomeScreen() {
 }
 
 export default withReadableWidth(HomeScreen);
+
+/** 返信待ち: 件数と、待たせている時間が長い順のお客様(押すとそのトークへ) */
+function WaitingCard({ count, waiting, nowMs, onOpen, onAll }: { count: number; waiting: WaitingChat[]; nowMs: number; onOpen: (friendId: string) => void; onAll: () => void }) {
+  const c = useColors();
+  if (count === 0) {
+    return (
+      <View style={[styles.okRow, { backgroundColor: c.inputBackground }]}>
+        <Ionicons name="checkmark-circle" size={22} color={c.primary} />
+        <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }}>返信待ちのお客様はいません</Text>
+      </View>
+    );
+  }
+  const levelColor = { ok: c.textSub, warn: c.warning, late: c.danger } as const;
+  const rest = Math.max(0, count - waiting.length);
+  return (
+    <Card style={{ paddingVertical: 4 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`返信待ち ${count}人。トーク一覧を開く`} onPress={onAll} style={styles.waitHead}>
+        <View style={[styles.dot, { backgroundColor: c.danger }]} />
+        <Text style={{ color: c.text, fontSize: 15, fontWeight: '700', flex: 1 }}>返信待ち</Text>
+        <Text style={{ color: c.text, fontSize: 22, fontWeight: '700' }}>{num(count)}<Text style={{ fontSize: 13, fontWeight: '400' }}>人</Text></Text>
+      </Pressable>
+      {waiting.map((w) => {
+        const wait = waitLabel(w.since, nowMs);
+        return (
+          <Pressable
+            key={w.friendId}
+            accessibilityRole="button"
+            accessibilityLabel={`${w.name}さん ${wait.text}。トークを開く`}
+            onPress={() => onOpen(w.friendId)}
+            style={({ pressed }) => [styles.listRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Avatar uri={w.pictureUrl} name={w.name} size={40} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>{w.name}</Text>
+              {w.preview ? <Text style={{ color: c.textSub, fontSize: 13, marginTop: 1 }} numberOfLines={1}>{w.preview}</Text> : null}
+            </View>
+            <Text style={{ color: levelColor[wait.level], fontSize: 13, fontWeight: wait.level === 'ok' ? '400' : '700' }}>{wait.text}</Text>
+          </Pressable>
+        );
+      })}
+      {rest > 0 ? (
+        <Pressable onPress={onAll} accessibilityRole="button" style={[styles.listRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, justifyContent: 'center' }]}>
+          <Text style={{ color: c.primaryText, fontSize: 14, fontWeight: '600' }}>ほか{num(rest)}人を見る</Text>
+        </Pressable>
+      ) : null}
+    </Card>
+  );
+}
+
+function Shortcut({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+  const c = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [styles.shortcut, { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border }]}
+    >
+      <Ionicons name={icon} size={24} color={c.primaryText} />
+      <Text style={{ color: c.text, fontSize: 12, fontWeight: '600', marginTop: 4, textAlign: 'center' }} numberOfLines={2}>{label}</Text>
+    </Pressable>
+  );
+}
 
 /** 押せる部品は、ボタンの見た目(白地・細い枠・右の「›」)。色は小さな点だけで、控えめにする */
 function StatusTile({ label, value, dot, onPress }: { label: string; value: number; dot: string; onPress: () => void }) {
@@ -369,4 +502,9 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   stat: { width: '48.5%', borderWidth: 1, borderRadius: 12, padding: 12 },
   routeTop: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 4 },
+  waitHead: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: MIN_TAP, paddingHorizontal: 12 },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: MIN_TAP + 8, paddingHorizontal: 12, paddingVertical: 8 },
+  shortcuts: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  shortcut: { flex: 1, minHeight: 72, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, paddingVertical: 10 },
+  numbersToggle: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: MIN_TAP, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, marginTop: 12 },
 });

@@ -78,6 +78,31 @@ export interface HomeSummary {
   /** 今月の新しい友だちの、流入経路ごとの人数(多い順・上位5) */
   routes: Array<{ key: string; label: string; count: number }>;
   alerts: HomeAlert[];
+  /** 現場向け: 返信待ち(未対応)のお客様。待たせている時間が長い順に最大5人 */
+  waiting: WaitingChat[];
+  /** 現場向け: 今日(日本時間)の動き */
+  today: { received: number; replied: number; added: number; formAnswers: number };
+  /** 現場向け: 新しいフォームの回答(新しい順に最大5件) */
+  recentForms: RecentFormAnswer[];
+}
+
+export interface WaitingChat {
+  friendId: string;
+  /** 本名 > システム表示名 > LINE名 */
+  name: string;
+  pictureUrl: string | null;
+  /** お客様が最後に送ってきた時刻(待ち時間の始まり) */
+  since: string;
+  /** お客様の最後の文章(先頭60文字)。文章でなければ null */
+  preview: string | null;
+}
+
+export interface RecentFormAnswer {
+  submissionId: string;
+  friendId: string;
+  friendName: string;
+  formName: string;
+  answeredAt: string;
 }
 
 // ── 日付(日本時間) ──
@@ -291,7 +316,8 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
   const ago7 = jstDateKeys(nowMs, 8)[0];
   const over24 = jstHoursAgo(nowMs, UNREAD_WARN_HOURS);
 
-  const [friendsRow, addedRows, blockedRows, chatRows, unreadAge, replyRow, receivedRow, formRow, routeRows, brokenRow, lastAddedRow, quota, sent, lineBlocks] = await Promise.all([
+  const today = keys[keys.length - 1];
+  const [friendsRow, addedRows, blockedRows, chatRows, unreadAge, replyRow, receivedRow, formRow, routeRows, brokenRow, lastAddedRow, quota, sent, lineBlocks, waitingRows, todayRow, recentFormRows] = await Promise.all([
     db
       .prepare(`SELECT COALESCE(SUM(CASE WHEN is_following = 1 THEN 1 ELSE 0 END), 0) AS active, COALESCE(SUM(CASE WHEN is_following = 0 THEN 1 ELSE 0 END), 0) AS blocked, COUNT(*) AS total FROM friends WHERE line_account_id = ?`)
       .bind(id)
@@ -372,6 +398,44 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
     quotaLoader(id, account.channel_access_token, nowMs),
     countAccountMonthlyMessages(db, id, new Date(nowMs)).catch(() => 0),
     blocksLoader(id, account.channel_access_token, nowMs).catch(() => null),
+    // 返信待ち(未対応)のお客様: 友だちごとのいちばん新しいトークが未対応のもの。待たせている時間が長い順に5人
+    db
+      .prepare(
+        `SELECT x.friend_id AS friend_id, x.last_at AS last_at,
+                COALESCE(NULLIF(trim(f.real_name), ''), NULLIF(trim(f.system_display_name), ''), f.display_name) AS name, f.picture_url AS picture_url,
+                (SELECT m.content FROM messages_log m WHERE m.friend_id = x.friend_id AND m.direction = 'incoming' AND m.message_type = 'text' ORDER BY m.created_at DESC LIMIT 1) AS preview
+           FROM (
+             SELECT c.friend_id AS friend_id, c.status AS status, COALESCE(c.last_message_at, c.created_at) AS last_at, MAX(c.created_at) AS created_at
+             FROM chats c JOIN friends f2 ON f2.id = c.friend_id
+             WHERE f2.line_account_id = ?
+             GROUP BY c.friend_id
+           ) x JOIN friends f ON f.id = x.friend_id
+          WHERE x.status = 'unread'
+          ORDER BY x.last_at ASC LIMIT 5`,
+      )
+      .bind(id)
+      .all<{ friend_id: string; last_at: string; name: string | null; picture_url: string | null; preview: string | null }>(),
+    // 今日の動き(受信・手動の返信・フォーム回答)
+    db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM messages_log m JOIN friends f ON f.id = m.friend_id WHERE m.direction = 'incoming' AND f.line_account_id = ? AND m.created_at >= ?) AS received,
+           (SELECT COUNT(*) FROM messages_log m JOIN friends f ON f.id = m.friend_id WHERE m.direction = 'outgoing' AND m.source = 'manual' AND f.line_account_id = ? AND m.created_at >= ?) AS replied,
+           (SELECT COUNT(*) FROM form_submissions s JOIN friends f ON f.id = s.friend_id WHERE f.line_account_id = ? AND s.created_at >= ?) AS forms`,
+      )
+      .bind(id, today, id, today, id, today)
+      .first<{ received: number; replied: number; forms: number }>(),
+    // 新しいフォームの回答(新しい順に5件)
+    db
+      .prepare(
+        `SELECT s.id AS id, s.friend_id AS friend_id, s.created_at AS at, fm.name AS form_name,
+                COALESCE(NULLIF(trim(f.real_name), ''), NULLIF(trim(f.system_display_name), ''), f.display_name) AS name
+           FROM form_submissions s JOIN friends f ON f.id = s.friend_id JOIN forms fm ON fm.id = s.form_id
+          WHERE f.line_account_id = ?
+          ORDER BY s.created_at DESC LIMIT 5`,
+      )
+      .bind(id)
+      .all<{ id: string; friend_id: string; at: string; form_name: string; name: string | null }>(),
   ]);
 
   const active = friendsRow?.active ?? 0;
@@ -438,6 +502,26 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
     },
     routes,
     alerts,
+    waiting: (waitingRows.results ?? []).map((r) => ({
+      friendId: r.friend_id,
+      name: r.name?.trim() || '名前なし',
+      pictureUrl: r.picture_url ?? null,
+      since: r.last_at,
+      preview: r.preview ? Array.from(r.preview.replace(/\s+/g, ' ').trim()).slice(0, 60).join('') || null : null,
+    })),
+    today: {
+      received: todayRow?.received ?? 0,
+      replied: todayRow?.replied ?? 0,
+      added: trend[trend.length - 1]?.added ?? 0,
+      formAnswers: todayRow?.forms ?? 0,
+    },
+    recentForms: (recentFormRows.results ?? []).map((r) => ({
+      submissionId: r.id,
+      friendId: r.friend_id,
+      friendName: r.name?.trim() || '名前なし',
+      formName: r.form_name,
+      answeredAt: r.at,
+    })),
   };
 }
 
