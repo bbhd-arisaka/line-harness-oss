@@ -10,10 +10,16 @@ import { accountAccessGuard } from './account-access.js';
 /** friends / chats を引くだけの D1 疑似。 */
 const FRIENDS: Record<string, string> = { 'friend-a': 'acc-a', 'friend-b': 'acc-b' };
 const CHATS: Record<string, string> = { 'chat-a': 'friend-a', 'chat-b': 'friend-b' };
+/** 一斉配信 → 公式アカウント(null=アカウント未指定) */
+const BROADCASTS: Record<string, string | null> = { 'bc-a': 'acc-a', 'bc-b': 'acc-b', 'bc-none': null };
 const db = {
   prepare: (sql: string) => ({
     bind: (id: string) => ({
       first: async () => {
+        if (sql.includes('FROM broadcasts')) {
+          const acc = BROADCASTS[id];
+          return acc === undefined ? null : { line_account_id: acc };
+        }
         if (sql.includes('FROM chats')) {
           const friendId = CHATS[id];
           return friendId ? { line_account_id: FRIENDS[friendId] } : null;
@@ -24,7 +30,7 @@ const db = {
   }),
 } as unknown as D1Database;
 
-function call(staff: Env['Variables']['staff'] | null, method: string, path: string) {
+function call(staff: Env['Variables']['staff'] | null, method: string, path: string, body?: unknown) {
   const app = new Hono<Env>();
   app.use('*', async (c, next) => {
     if (staff) c.set('staff', staff);
@@ -32,7 +38,7 @@ function call(staff: Env['Variables']['staff'] | null, method: string, path: str
   });
   app.use('*', accountAccessGuard);
   app.all('*', (c) => c.json({ ok: true, allowed: c.get('allowedAccountIds') ?? null }));
-  return app.request(path, { method }, { DB: db } as Env['Bindings']);
+  return app.request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }) }, { DB: db } as Env['Bindings']);
 }
 
 const restricted = { id: 's1', name: '店舗A担当', role: 'staff' as const };
@@ -127,5 +133,51 @@ describe('スタッフのアカウント権限(accountAccessGuard)', () => {
 
   test('自分の情報は取得できる', async () => {
     expect((await asRestricted('GET', '/api/staff/me')).status).toBe(200);
+  });
+});
+
+describe('一斉配信(アカウントを限定した「管理者」は、許可されたアカウントの分だけ)', () => {
+  const admin = { id: 's2', name: '店舗A管理用', role: 'admin' as const };
+  const asAdmin = (method: string, path: string, body?: unknown) => {
+    mocks.getStaffAllowedAccountIds.mockResolvedValue(['acc-a']);
+    return call(admin, method, path, body);
+  };
+  test('配信の一覧は、許可されたアカウントを指定したときだけ', async () => {
+    expect((await asAdmin('GET', '/api/broadcasts?lineAccountId=acc-a')).status).toBe(200);
+    expect((await asAdmin('GET', '/api/broadcasts?lineAccountId=acc-b')).status).toBe(403);
+    expect((await asAdmin('GET', '/api/broadcasts')).status).toBe(403);
+  });
+  test('配信の作成は、本文の公式アカウントが許可されているときだけ', async () => {
+    expect((await asAdmin('POST', '/api/broadcasts', { lineAccountId: 'acc-a', title: 't' })).status).toBe(200);
+    expect((await asAdmin('POST', '/api/broadcasts', { lineAccountId: 'acc-b', title: 't' })).status).toBe(403);
+    expect((await asAdmin('POST', '/api/broadcasts', { title: 't' })).status).toBe(403);
+  });
+  test('個別の配信は、その配信の公式アカウントで判定する(見る・送る・消す・テスト送信・進捗)', async () => {
+    for (const [m, path] of [['GET', '/api/broadcasts/bc-a'], ['PUT', '/api/broadcasts/bc-a'], ['DELETE', '/api/broadcasts/bc-a'], ['POST', '/api/broadcasts/bc-a/send'], ['POST', '/api/broadcasts/bc-a/test-send'], ['GET', '/api/broadcasts/bc-a/progress']] as const) {
+      expect((await asAdmin(m, path)).status, `${m} ${path}`).toBe(200);
+    }
+    for (const [m, path] of [['GET', '/api/broadcasts/bc-b'], ['POST', '/api/broadcasts/bc-b/send'], ['DELETE', '/api/broadcasts/bc-b'], ['GET', '/api/broadcasts/bc-none'], ['GET', '/api/broadcasts/unknown']] as const) {
+      expect((await asAdmin(m, path)).status, `${m} ${path}`).toBe(403);
+    }
+  });
+  test('配信の作成に使う補助(人数・テスト送信先・画像・フォーム一覧)も、許可アカウントの分だけ', async () => {
+    expect((await asAdmin('POST', '/api/segments/count', { accountId: 'acc-a', conditions: {} })).status).toBe(200);
+    expect((await asAdmin('POST', '/api/segments/count', { accountId: 'acc-b', conditions: {} })).status).toBe(403);
+    expect((await asAdmin('POST', '/api/segments/count', { conditions: {} })).status).toBe(403);
+    expect((await asAdmin('GET', '/api/account-settings/test-recipients?accountId=acc-a')).status).toBe(200);
+    expect((await asAdmin('GET', '/api/account-settings/test-recipients?accountId=acc-b')).status).toBe(403);
+    expect((await asAdmin('PUT', '/api/account-settings/test-recipients', { accountId: 'acc-b', friendIds: [] })).status).toBe(403);
+    expect((await asAdmin('POST', '/api/images')).status).toBe(200);
+    expect((await asAdmin('GET', '/api/forms')).status).toBe(200);
+  });
+  test('「管理者」でも、フォームの回答・他の設定は、これまでどおり拒否', async () => {
+    for (const [m, path] of [['GET', '/api/forms/f1/submissions'], ['GET', '/api/staff'], ['GET', '/api/webhooks'], ['PUT', '/api/account-settings/link-base-url']] as const) {
+      expect((await asAdmin(m, path)).status, `${m} ${path}`).toBe(403);
+    }
+  });
+  test('「スタッフ」の役割は、一斉配信できない', async () => {
+    mocks.getStaffAllowedAccountIds.mockResolvedValue(['acc-a']);
+    expect((await call(restricted, 'GET', '/api/broadcasts?lineAccountId=acc-a')).status).toBe(403);
+    expect((await call(restricted, 'POST', '/api/broadcasts', { lineAccountId: 'acc-a' })).status).toBe(403);
   });
 });

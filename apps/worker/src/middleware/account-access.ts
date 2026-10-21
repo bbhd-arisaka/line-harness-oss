@@ -40,6 +40,15 @@ async function chatAccountId(db: D1Database, chatId: string): Promise<string | n
   return friendAccountId(db, chatId);
 }
 
+/** 一斉配信の公式アカウント(アカウント未指定の配信は null) */
+async function broadcastAccountId(db: D1Database, broadcastId: string): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT line_account_id FROM broadcasts WHERE id = ?')
+    .bind(broadcastId)
+    .first<{ line_account_id: string | null }>();
+  return row?.line_account_id ?? null;
+}
+
 /** 友だち一覧などのクエリ: アカウントの指定が必須で、許可したアカウントだけ通す。 */
 function queryAccountAllowed(c: Context<Env>, allowed: string[], param: string): boolean {
   const value = c.req.query(param);
@@ -117,6 +126,35 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
   // 全アカウント共通の一覧(タグ・友だち情報欄・担当者)は読み取りだけ許可
   if (isGet && (path === '/api/tags' || path === '/api/operators' || /^\/api\/friend-fields\/(folders|definitions)$/.test(path))) {
     return next();
+  }
+
+  // 一斉配信: 「管理者」の役割だけ、許可された公式アカウントの配信を見る・作る・送る・消すことができる(スタッフは不可)。
+  // 配信は、その配信の公式アカウント(複数アカウントをまたぐ・アカウント未指定のものは不可)で判定する。
+  if (staff.role === 'admin') {
+    if (path === '/api/broadcasts' && isGet) return queryAccountAllowed(c, allowed, 'lineAccountId') ? next() : forbidden(c);
+    if (path === '/api/broadcasts' && method === 'POST') {
+      const body = (await c.req.raw.clone().json().catch(() => null)) as { lineAccountId?: unknown } | null;
+      return typeof body?.lineAccountId === 'string' && allowed.includes(body.lineAccountId) ? next() : forbidden(c);
+    }
+    const broadcastMatch = path.match(/^\/api\/broadcasts\/([^/]+)(?:\/.*)?$/);
+    if (broadcastMatch) {
+      const accountId = await broadcastAccountId(db, broadcastMatch[1]);
+      return accountId && allowed.includes(accountId) ? next() : forbidden(c);
+    }
+    // 配信の作成に使う補助(配信先の人数・テスト送信先・画像・フォームの一覧)
+    if (method === 'POST' && path === '/api/segments/count') {
+      const body = (await c.req.raw.clone().json().catch(() => null)) as { accountId?: unknown } | null;
+      return typeof body?.accountId === 'string' && allowed.includes(body.accountId) ? next() : forbidden(c);
+    }
+    if (path === '/api/account-settings/test-recipients') {
+      if (isGet) return queryAccountAllowed(c, allowed, 'accountId') ? next() : forbidden(c);
+      if (method === 'PUT') {
+        const body = (await c.req.raw.clone().json().catch(() => null)) as { accountId?: unknown } | null;
+        return typeof body?.accountId === 'string' && allowed.includes(body.accountId) ? next() : forbidden(c);
+      }
+    }
+    if (method === 'POST' && path === '/api/images') return next();
+    if (isGet && path === '/api/forms') return next();
   }
 
   // それ以外は、アカウント別に安全と確認できるまで拒否
