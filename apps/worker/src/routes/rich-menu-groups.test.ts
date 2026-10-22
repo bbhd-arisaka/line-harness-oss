@@ -17,6 +17,13 @@ const dbMocks = {
   setPageRichMenuId: vi.fn(),
   markRichMenuGroupPublished: vi.fn(),
   getLineAccountById: vi.fn(),
+  getRichMenuTapTotals: vi.fn(async () => new Map()),
+  listRichMenuFolders: vi.fn(),
+  getRichMenuFolder: vi.fn(),
+  createRichMenuFolder: vi.fn(),
+  renameRichMenuFolder: vi.fn(),
+  deleteRichMenuFolder: vi.fn(),
+  moveRichMenuGroups: vi.fn(),
 };
 vi.mock('@line-crm/db', () => dbMocks);
 
@@ -78,6 +85,7 @@ function setupApp(opts: { r2?: R2Bucket; db?: D1Database } = {}) {
 
 beforeEach(() => {
   for (const fn of Object.values(dbMocks)) fn.mockReset();
+  dbMocks.getRichMenuTapTotals.mockResolvedValue(new Map());
 });
 
 // ----- GET /api/rich-menu-groups -----

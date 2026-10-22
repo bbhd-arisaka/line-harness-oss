@@ -118,7 +118,8 @@
     "110_inflow_landing_style.sql",
     "111_remove_system_display_name.sql",
     "112_templates_lstep.sql",
-    "113_template_taps.sql"
+    "113_template_taps.sql",
+    "114_rich_menu_lstep.sql"
   ],
-  "migrationCount": 119
+  "migrationCount": 120
 }

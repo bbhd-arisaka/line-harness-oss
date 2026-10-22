@@ -16,6 +16,13 @@ import {
   markRichMenuGroupUnpublished,
   getLineAccountById,
   getFollowingLineUserIdsByTag,
+  listRichMenuFolders,
+  getRichMenuFolder,
+  createRichMenuFolder,
+  renameRichMenuFolder,
+  deleteRichMenuFolder,
+  moveRichMenuGroups,
+  getRichMenuTapTotals,
   type RichMenuGroup,
   type RichMenuGroupWithPages,
   type RichMenuPageInput,
@@ -52,6 +59,7 @@ function serializeGroup(row: RichMenuGroup) {
     selected: row.selected === 1,
     status: row.status,
     publishingAt: row.publishing_at,
+    folderId: row.folder_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -107,6 +115,19 @@ function parseAreaInput(raw: unknown): Parsed<RichMenuAreaInput> {
     return { ok: false, error: 'area.actionData must be object' };
   }
   let actionData = r.actionData as Record<string, unknown>;
+  if (r.actionType === 'postback' && actionData.kind === 'actions') {
+    // 「アクション」: 友だち追加時設定と同じ形のアクションの並び(最大20)。ユーザーメッセージ(任意)・LINEアプリ側の動作つき
+    if (!Array.isArray(actionData.actions) || actionData.actions.length > 20) return { ok: false, error: 'アクションは20個までです' };
+    const displayText = typeof actionData.displayText === 'string' ? actionData.displayText : '';
+    if ([...displayText].length > 300) return { ok: false, error: 'ユーザーメッセージは300文字までです' };
+    const inputOption = typeof actionData.inputOption === 'string' ? actionData.inputOption : '';
+    if (inputOption && !['closeRichMenu', 'openKeyboard', 'openVoice'].includes(inputOption)) return { ok: false, error: 'LINEアプリ側の動作が正しくありません' };
+    actionData = { kind: 'actions', actions: actionData.actions, displayText, inputOption };
+  }
+  if (r.actionType === 'uri' && typeof actionData.formId === 'string' && actionData.formId) {
+    // 「回答フォーム」: 公開するときに、その公式アカウントのフォームのURLに直す
+    actionData = { formId: actionData.formId, uri: typeof actionData.uri === 'string' ? actionData.uri : '' };
+  }
   if (r.actionType === 'postback' && actionData.kind === 'reply') {
     // 「店舗からメッセージを送る」: 本文は5,000文字まで。replyId は、編集で保存し直しても変わらないように、あれば保つ(無ければ付ける)。
     if (typeof actionData.replyText !== 'string') return { ok: false, error: 'area.actionData.replyText must be string' };
@@ -126,6 +147,7 @@ function parseAreaInput(raw: unknown): Parsed<RichMenuAreaInput> {
   return {
     ok: true,
     value: {
+      id: typeof r.id === 'string' && RICH_MENU_REPLY_ID_RE.test(r.id) ? r.id : undefined,
       boundsX: r.boundsX as number,
       boundsY: r.boundsY as number,
       boundsWidth: r.boundsWidth as number,
@@ -247,6 +269,10 @@ function parsePatchBody(raw: unknown): Parsed<{ meta: UpdateRichMenuGroupMetaInp
       return { ok: false, error: 'chatBarText must be 1..14 chars' };
     }
     meta.chatBarText = r.chatBarText;
+  }
+  if (r.folderId !== undefined) {
+    if (r.folderId !== null && typeof r.folderId !== 'string') return { ok: false, error: 'folderId must be string or null' };
+    meta.folderId = r.folderId as string | null;
   }
   if (r.isDefaultForAll !== undefined) {
     if (typeof r.isDefaultForAll !== 'boolean') return { ok: false, error: 'isDefaultForAll must be boolean' };
@@ -658,13 +684,69 @@ richMenuGroups.get('/api/rich-menu-groups', async (c) => {
       }
     }
   }
+  const tapTotals = await getRichMenuTapTotals(c.env.DB, groups.map((g) => g.id));
   return c.json({
     success: true,
     data: groups.map((g) => ({
       ...serializeGroup(g),
       thumbnailR2Key: imageByGroupId.get(g.id)?.key ?? null,
+      // 計測: ボタンを押した人数と回数(「アクション」のボタンだけ数えられる)
+      taps: tapTotals.get(g.id) ?? { people: 0, taps: 0 },
     })),
   });
+});
+
+// ----- フォルダ・移動 -----
+
+richMenuGroups.get('/api/rich-menu-folders', async (c) => {
+  const accountId = c.req.query('accountId');
+  if (!accountId) return c.json({ success: false, error: 'accountId query param required' }, 400);
+  const rows = await listRichMenuFolders(c.env.DB, accountId);
+  const uncategorized = await c.env.DB
+    .prepare(`SELECT COUNT(*) AS n FROM rich_menu_groups WHERE account_id = ? AND folder_id IS NULL`)
+    .bind(accountId)
+    .first<{ n: number }>();
+  return c.json({
+    success: true,
+    data: { uncategorizedCount: uncategorized?.n ?? 0, folders: rows.map((f) => ({ id: f.id, name: f.name, order: f.display_order, menuCount: f.menu_count })) },
+  });
+});
+
+richMenuGroups.post('/api/rich-menu-folders', async (c) => {
+  const body = await c.req.json<{ accountId?: unknown; name?: unknown }>().catch(() => ({}) as { accountId?: unknown; name?: unknown });
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (typeof body.accountId !== 'string' || !body.accountId) return c.json({ success: false, error: 'accountId required' }, 400);
+  if (!name || name.length > 100) return c.json({ success: false, error: 'フォルダ名を入力してください(100文字まで)' }, 400);
+  const f = await createRichMenuFolder(c.env.DB, body.accountId, name);
+  return c.json({ success: true, data: { id: f.id, name: f.name } }, 201);
+});
+
+richMenuGroups.put('/api/rich-menu-folders/:id', async (c) => {
+  const id = c.req.param('id');
+  const f = await getRichMenuFolder(c.env.DB, id);
+  if (!f) return c.json({ success: false, error: 'not found' }, 404);
+  const body = await c.req.json<{ name?: unknown }>().catch(() => ({}) as { name?: unknown });
+  const name = typeof body.name === 'string' ? body.name.trim() : '';
+  if (!name || name.length > 100) return c.json({ success: false, error: 'フォルダ名を入力してください(100文字まで)' }, 400);
+  await renameRichMenuFolder(c.env.DB, id, name);
+  return c.json({ success: true });
+});
+
+richMenuGroups.delete('/api/rich-menu-folders/:id', async (c) => {
+  const id = c.req.param('id');
+  if (!(await getRichMenuFolder(c.env.DB, id))) return c.json({ success: false, error: 'not found' }, 404);
+  await deleteRichMenuFolder(c.env.DB, id);
+  return c.json({ success: true });
+});
+
+richMenuGroups.put('/api/rich-menu-groups-move', async (c) => {
+  const body = await c.req.json<{ ids?: unknown; folderId?: unknown }>().catch(() => ({}) as { ids?: unknown; folderId?: unknown });
+  const ids = Array.isArray(body.ids) ? body.ids.filter((v): v is string => typeof v === 'string') : [];
+  const folderId = typeof body.folderId === 'string' && body.folderId ? body.folderId : null;
+  if (ids.length === 0 || ids.length > 100) return c.json({ success: false, error: 'メニューを選んでください' }, 400);
+  if (folderId && !(await getRichMenuFolder(c.env.DB, folderId))) return c.json({ success: false, error: 'フォルダが見つかりません' }, 404);
+  await moveRichMenuGroups(c.env.DB, ids, folderId);
+  return c.json({ success: true });
 });
 
 richMenuGroups.get('/api/rich-menu-groups/:groupId', async (c) => {
@@ -918,11 +1000,19 @@ richMenuGroups.post('/api/rich-menu-groups/:groupId/publish', async (c) => {
         imageR2Key: p.image_r2_key,
         imageContentType: p.image_content_type,
         lineRichMenuId: p.line_richmenu_id,
-        areas: p.areas.map((a) => ({
-          bounds: { x: a.bounds_x, y: a.bounds_y, width: a.bounds_width, height: a.bounds_height },
-          actionType: a.action_type,
-          actionData: a.actionData,
-        })),
+        areas: p.areas.map((a) => {
+          const formId = typeof a.actionData.formId === 'string' ? a.actionData.formId : '';
+          // 「回答フォーム」のボタンは、その公式アカウントのフォームのURLにして公開する
+          const actionData = a.action_type === 'uri' && formId && account.liff_id
+            ? { uri: `https://liff.line.me/${account.liff_id}?page=form&id=${formId}` }
+            : a.actionData;
+          return {
+            id: a.id,
+            bounds: { x: a.bounds_x, y: a.bounds_y, width: a.bounds_width, height: a.bounds_height },
+            actionType: a.action_type,
+            actionData,
+          };
+        }),
       })),
     };
     const result = await publishRichMenuGroup(groupInput, line, r2Adapter);

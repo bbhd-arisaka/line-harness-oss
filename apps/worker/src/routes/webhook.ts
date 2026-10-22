@@ -31,7 +31,7 @@ import { publishChatEvent } from '../services/chat-events.js';
 import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { TEMPLATE_POSTBACK_PREFIX, handleTemplatePostback } from '../services/template-postback.js';
-import { RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, sendRichMenuReply, sendRichMenuTemplate } from '../services/rich-menu-reply.js';
+import { RICH_MENU_ACTIONS_PREFIX, RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, runRichMenuActions, sendRichMenuReply, sendRichMenuTemplate } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import { ignoresFriendAddSettings } from '../services/inflow-route-runtime.js';
 import type { FriendAddedNotice, FriendBlockedNotice, IncomingMessageNotice } from '../services/push-notify.js';
@@ -568,6 +568,19 @@ async function handleEvent(
           ? (token, messages) => replyViaHarnessProxy(workerUrl, lineAccessToken, token, messages, proxyDispatch)
           : undefined,
       });
+    }
+
+    // リッチメニューの「アクション」ボタン(Lステップのアクション設定): 設定したアクションを実行する(並行運用中のアカウントは、Lステップが応答するので何もしない)
+    if (!parallelMode && postbackData.startsWith(RICH_MENU_ACTIONS_PREFIX)) {
+      const done = await runRichMenuActions(db, lineClient, friend, postbackData, event.replyToken, {
+        lineAccountId,
+        lineAccessToken,
+        workerUrl,
+        replyMessage: workerUrl
+          ? (token, messages) => replyViaHarnessProxy(workerUrl, lineAccessToken, token, messages, proxyDispatch)
+          : undefined,
+      });
+      if (done) return;
     }
 
     // リッチメニューの「テンプレートを送る」ボタン: テンプレートを店舗から返信する(並行運用中のアカウントは、Lステップが応答するので何もしない)

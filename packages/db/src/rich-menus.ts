@@ -23,6 +23,8 @@ export interface RichMenuGroup {
   selected: number;
   status: 'draft' | 'published';
   publishing_at: string | null;
+  /** フォルダ(メニュー一覧で分ける)。null=未分類 */
+  folder_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,11 +51,15 @@ export interface RichMenuArea {
   bounds_height: number;
   action_type: 'uri' | 'message' | 'postback' | 'richmenuswitch';
   action_data: string; // JSON serialized
+  /** ボタン番号(1つ目=0)。保存し直しても並びが変わらないように持つ */
+  order_index: number;
   created_at: string;
   updated_at: string;
 }
 
 export interface RichMenuAreaInput {
+  /** 保存し直してもボタンのIDを変えないために、既存のボタンのIDを渡す(押された記録・LINE上のメニューとの対応に使う) */
+  id?: string;
   boundsX: number;
   boundsY: number;
   boundsWidth: number;
@@ -84,6 +90,8 @@ export interface CreateRichMenuGroupInput {
 
 export interface UpdateRichMenuGroupMetaInput {
   name?: string;
+  /** フォルダ。null=未分類 */
+  folderId?: string | null;
   chatBarText?: string;
   isDefaultForAll?: boolean;
   selected?: boolean;
@@ -144,7 +152,7 @@ export async function getRichMenuGroupWithPages(
   const placeholders = pages.map(() => '?').join(',');
   const areasResult = await db
     .prepare(
-      `SELECT * FROM rich_menu_areas WHERE page_id IN (${placeholders}) ORDER BY id`,
+      `SELECT * FROM rich_menu_areas WHERE page_id IN (${placeholders}) ORDER BY order_index, id`,
     )
     .bind(...pages.map((p) => p.id))
     .all<RichMenuArea>();
@@ -213,14 +221,14 @@ export async function createRichMenuGroup(
         )
         .bind(p.id, groupId, p.orderIndex, p.name, p.aliasId, now, now),
     );
-    for (const a of p.areas) {
+    p.areas.forEach((a, index) => {
       stmts.push(
         db
           .prepare(
             `INSERT INTO rich_menu_areas
                (id, page_id, bounds_x, bounds_y, bounds_width, bounds_height,
-                action_type, action_data, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                action_type, action_data, order_index, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             crypto.randomUUID(),
@@ -231,11 +239,12 @@ export async function createRichMenuGroup(
             a.boundsHeight,
             a.actionType,
             JSON.stringify(a.actionData),
+            index,
             now,
             now,
           ),
       );
-    }
+    });
   }
   await db.batch(stmts);
 
@@ -258,6 +267,10 @@ export async function updateRichMenuGroupMeta(
   if (patch.chatBarText !== undefined) {
     sets.push('chat_bar_text = ?');
     vals.push(patch.chatBarText);
+  }
+  if (patch.folderId !== undefined) {
+    sets.push('folder_id = ?');
+    vals.push(patch.folderId);
   }
   if (patch.isDefaultForAll !== undefined) {
     sets.push('is_default_for_all = ?');
@@ -312,6 +325,19 @@ export async function replaceRichMenuPages(
     ).results ?? []
   );
   const existingMap = new Map(existing.map((p) => [p.id, p]));
+  const existingAreaIds = new Set(
+    (
+      (
+        await db
+          .prepare(
+            `SELECT a.id FROM rich_menu_areas a JOIN rich_menu_pages p ON p.id = a.page_id WHERE p.group_id = ?`,
+          )
+          .bind(groupId)
+          .all<{ id: string }>()
+      ).results ?? []
+    ).map((r) => r.id),
+  );
+  const usedAreaIds = new Set<string>();
 
   // 入力を「保持 vs 新規」に振り分けつつメタを復元。
   // 重要: p.id を流用するのは「current group の existingMap に一致した時だけ」。
@@ -367,17 +393,20 @@ export async function replaceRichMenuPages(
           now,
         ),
     );
-    for (const a of p.areas) {
+    p.areas.forEach((a, index) => {
+      // ボタンのIDは、このメニューにすでにあるものだけ引き継ぐ(ほかのメニューのIDは衝突するので使わない。同じIDが2回出たら、2つ目は新しく付ける)
+      const areaId = a.id && existingAreaIds.has(a.id) && !usedAreaIds.has(a.id) ? a.id : crypto.randomUUID();
+      usedAreaIds.add(areaId);
       stmts.push(
         db
           .prepare(
             `INSERT INTO rich_menu_areas
                (id, page_id, bounds_x, bounds_y, bounds_width, bounds_height,
-                action_type, action_data, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                action_type, action_data, order_index, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
-            crypto.randomUUID(),
+            areaId,
             p.id,
             a.boundsX,
             a.boundsY,
@@ -385,11 +414,12 @@ export async function replaceRichMenuPages(
             a.boundsHeight,
             a.actionType,
             JSON.stringify(a.actionData),
+            index,
             now,
             now,
           ),
       );
-    }
+    });
   }
 
   if (newPageRecords.length > 0) {
@@ -550,4 +580,90 @@ export async function getRichMenuReplyText(db: D1Database, replyId: string): Pro
     }
   }
   return null;
+}
+
+
+// ── フォルダ(メニュー一覧で分ける) ──
+
+export interface RichMenuFolder {
+  id: string;
+  account_id: string;
+  name: string;
+  display_order: number;
+  created_at: string;
+}
+
+export async function listRichMenuFolders(db: D1Database, accountId: string): Promise<Array<RichMenuFolder & { menu_count: number }>> {
+  const res = await db
+    .prepare(
+      `SELECT f.*, (SELECT COUNT(*) FROM rich_menu_groups g WHERE g.folder_id = f.id) AS menu_count
+         FROM rich_menu_folders f WHERE f.account_id = ? ORDER BY f.display_order, f.created_at`,
+    )
+    .bind(accountId)
+    .all<RichMenuFolder & { menu_count: number }>();
+  return res.results ?? [];
+}
+
+export async function getRichMenuFolder(db: D1Database, id: string): Promise<RichMenuFolder | null> {
+  return (await db.prepare(`SELECT * FROM rich_menu_folders WHERE id = ?`).bind(id).first<RichMenuFolder>()) ?? null;
+}
+
+export async function createRichMenuFolder(db: D1Database, accountId: string, name: string): Promise<RichMenuFolder> {
+  const id = crypto.randomUUID();
+  const max = await db.prepare(`SELECT COALESCE(MAX(display_order), 0) AS m FROM rich_menu_folders WHERE account_id = ?`).bind(accountId).first<{ m: number }>();
+  await db
+    .prepare(`INSERT INTO rich_menu_folders (id, account_id, name, display_order, created_at) VALUES (?, ?, ?, ?, ?)`)
+    .bind(id, accountId, name, (max?.m ?? 0) + 1, jstNow())
+    .run();
+  return (await getRichMenuFolder(db, id))!;
+}
+
+export async function renameRichMenuFolder(db: D1Database, id: string, name: string): Promise<void> {
+  await db.prepare(`UPDATE rich_menu_folders SET name = ? WHERE id = ?`).bind(name, id).run();
+}
+
+/** フォルダを消す。中のメニューは「未分類」に戻る */
+export async function deleteRichMenuFolder(db: D1Database, id: string): Promise<void> {
+  await db.batch([
+    db.prepare(`UPDATE rich_menu_groups SET folder_id = NULL WHERE folder_id = ?`).bind(id),
+    db.prepare(`DELETE FROM rich_menu_folders WHERE id = ?`).bind(id),
+  ]);
+}
+
+export async function moveRichMenuGroups(db: D1Database, groupIds: string[], folderId: string | null): Promise<void> {
+  if (groupIds.length === 0) return;
+  await db.batch(groupIds.map((gid) => db.prepare(`UPDATE rich_menu_groups SET folder_id = ? WHERE id = ?`).bind(folderId, gid)));
+}
+
+// ── ボタンが押された記録(計測) ──
+
+export async function recordRichMenuTap(db: D1Database, areaId: string, friendId: string): Promise<void> {
+  const now = jstNow();
+  await db
+    .prepare(
+      `INSERT INTO rich_menu_taps (area_id, friend_id, count, first_at, last_at) VALUES (?, ?, 1, ?, ?)
+       ON CONFLICT (area_id, friend_id) DO UPDATE SET count = count + 1, last_at = excluded.last_at`,
+    )
+    .bind(areaId, friendId, now, now)
+    .run();
+}
+
+/** メニューごとの、押した人数・押された回数(メニュー一覧の「計測」) */
+export async function getRichMenuTapTotals(db: D1Database, groupIds: string[]): Promise<Map<string, { people: number; taps: number }>> {
+  const out = new Map<string, { people: number; taps: number }>();
+  if (groupIds.length === 0) return out;
+  const ph = groupIds.map(() => '?').join(',');
+  const res = await db
+    .prepare(
+      `SELECT p.group_id AS gid, COUNT(DISTINCT t.friend_id) AS people, COALESCE(SUM(t.count), 0) AS taps
+         FROM rich_menu_taps t
+         JOIN rich_menu_areas a ON a.id = t.area_id
+         JOIN rich_menu_pages p ON p.id = a.page_id
+        WHERE p.group_id IN (${ph})
+        GROUP BY p.group_id`,
+    )
+    .bind(...groupIds)
+    .all<{ gid: string; people: number; taps: number }>();
+  for (const r of res.results ?? []) out.set(r.gid, { people: r.people, taps: r.taps });
+  return out;
 }

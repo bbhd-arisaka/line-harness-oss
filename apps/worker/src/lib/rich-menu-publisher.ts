@@ -15,6 +15,8 @@ export type Bounds = { x: number; y: number; width: number; height: number };
 export type ActionType = 'uri' | 'message' | 'postback' | 'richmenuswitch';
 
 export type AreaInput = {
+  /** ボタンのID(「アクション」のボタンは、押されたとき rmact:<ID> が届き、動きはこのIDで引く) */
+  id?: string;
   bounds: Bounds;
   actionType: ActionType;
   actionData: Record<string, unknown>;
@@ -33,6 +35,17 @@ export function toLineAction(a: Pick<AreaInput, 'actionType' | 'actionData'>): R
     if (typeof replyId !== 'string' || !replyId) throw new Error('reply action missing replyId');
     if (typeof text !== 'string' || text.trim() === '') throw new Error('店舗から送るメッセージが空のエリアがあります');
     return { type: 'postback', data: `rmreply:${replyId}` };
+  }
+  if (a.actionType === 'postback' && a.actionData.kind === 'actions') {
+    // 「アクション」(Lステップのアクション設定): 動きの中身はこちらで持ち、押されたら rmact:<ボタンID> を受け取って実行する
+    const id = (a as { id?: string }).id;
+    if (!id) throw new Error('action button missing id');
+    const action: Record<string, unknown> = { type: 'postback', data: `rmact:${id}` };
+    const inputOption = a.actionData.inputOption;
+    const displayText = a.actionData.displayText;
+    if (typeof inputOption === 'string' && inputOption) action.inputOption = inputOption;
+    else if (typeof displayText === 'string' && displayText.trim()) action.displayText = displayText.trim();
+    return action;
   }
   if (a.actionType === 'postback' && a.actionData.kind === 'template') {
     // 「テンプレートを送る」: 押されたら `rmtpl:<templateId>` を受け取り、テンプレートを店舗から返信する

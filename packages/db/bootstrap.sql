@@ -1096,6 +1096,14 @@ CREATE TABLE IF NOT EXISTS rich_menu_areas (
   action_data     TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+, order_index INTEGER NOT NULL DEFAULT 0);
+
+CREATE TABLE IF NOT EXISTS rich_menu_folders (
+  id            TEXT PRIMARY KEY,
+  account_id    TEXT NOT NULL REFERENCES line_accounts(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
 CREATE TABLE IF NOT EXISTS rich_menu_groups (
@@ -1111,7 +1119,7 @@ CREATE TABLE IF NOT EXISTS rich_menu_groups (
   publishing_at      TEXT,
   created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
-);
+, folder_id TEXT);
 
 CREATE TABLE IF NOT EXISTS rich_menu_pages (
   id                 TEXT PRIMARY KEY,
@@ -1125,6 +1133,15 @@ CREATE TABLE IF NOT EXISTS rich_menu_pages (
   created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   UNIQUE (group_id, order_index)
+);
+
+CREATE TABLE IF NOT EXISTS rich_menu_taps (
+  area_id   TEXT NOT NULL,
+  friend_id TEXT NOT NULL,
+  count     INTEGER NOT NULL DEFAULT 1,
+  first_at  TEXT NOT NULL,
+  last_at   TEXT NOT NULL,
+  PRIMARY KEY (area_id, friend_id)
 );
 
 CREATE TABLE IF NOT EXISTS saved_friend_searches (
@@ -1777,9 +1794,13 @@ CREATE INDEX IF NOT EXISTS idx_reserve_slots_calendar ON reserve_slots (calendar
 
 CREATE INDEX IF NOT EXISTS idx_rich_menu_areas_page     ON rich_menu_areas(page_id);
 
+CREATE INDEX IF NOT EXISTS idx_rich_menu_folders_account ON rich_menu_folders (account_id, display_order);
+
 CREATE INDEX IF NOT EXISTS idx_rich_menu_groups_account ON rich_menu_groups(account_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_rich_menu_pages_group    ON rich_menu_pages(group_id, order_index);
+
+CREATE INDEX IF NOT EXISTS idx_rich_menu_taps_area ON rich_menu_taps (area_id);
 
 CREATE INDEX IF NOT EXISTS idx_saved_friend_searches_account ON saved_friend_searches(line_account_id, created_at);
 

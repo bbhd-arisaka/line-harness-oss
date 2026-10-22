@@ -3,7 +3,8 @@ import { URL } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { getRichMenuReplyText } from '@line-crm/db';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
-import { RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, sendRichMenuReply, sendRichMenuTemplate } from './rich-menu-reply.js';
+import { RICH_MENU_ACTIONS_PREFIX, RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, runRichMenuActions, sendRichMenuReply, sendRichMenuTemplate } from './rich-menu-reply.js';
+import { replaceRichMenuPages, getRichMenuGroupWithPages, getRichMenuTapTotals, createRichMenuFolder, listRichMenuFolders, moveRichMenuGroups, deleteRichMenuFolder } from '@line-crm/db';
 import { toLineAction } from '../lib/rich-menu-publisher.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
@@ -91,5 +92,69 @@ describe('リッチメニュー: テンプレートを送る', () => {
     expect(await sendRichMenuTemplate(db, { replyMessage: vi.fn() } as never, friend, `${RICH_MENU_TEMPLATE_PREFIX}${TPL}`, 't', { replyMessage })).toBe(false);
     expect(await sendRichMenuTemplate(db, { replyMessage: vi.fn() } as never, friend, 'other', 't', { replyMessage })).toBe(false);
     expect(replyMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('リッチメニュー: アクション(Lステップのアクション設定)', () => {
+  const AREA = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+  function withActionArea(actions: unknown[]) {
+    const s = setup();
+    s.sqlite.prepare(`INSERT INTO rich_menu_areas(id,page_id,bounds_x,bounds_y,bounds_width,bounds_height,action_type,action_data) VALUES(?,?,?,?,?,?,?,?)`).run(
+      AREA, 'p1', 0, 0, 100, 100, 'postback', JSON.stringify({ kind: 'actions', actions, displayText: '', inputOption: '' }),
+    );
+    return s;
+  }
+  test('LINEには、押されたら届く印(rmact:<ボタンID>)と、ユーザーメッセージ・アプリ側の動作だけを登録する', () => {
+    expect(toLineAction({ id: AREA, actionType: 'postback', actionData: { kind: 'actions', actions: [], displayText: '予約', inputOption: '' } } as never)).toEqual({ type: 'postback', data: `rmact:${AREA}`, displayText: '予約' });
+    expect(toLineAction({ id: AREA, actionType: 'postback', actionData: { kind: 'actions', actions: [], displayText: '予約', inputOption: 'closeRichMenu' } } as never)).toEqual({ type: 'postback', data: `rmact:${AREA}`, inputOption: 'closeRichMenu' });
+  });
+  test('押されたら、テキスト・テンプレートをまとめて返信し、押された記録を残す', async () => {
+    const { db, sqlite, friend } = withActionArea([
+      { type: 'text', params: { content: '{{name}}様、ありがとうございます' }, condition: null },
+      { type: 'template', params: { templateId: 'tpl-x' }, condition: null },
+    ]);
+    sqlite.prepare(`INSERT INTO templates(id,name,message_type,message_content,kind,line_account_id) VALUES(?,?,?,?,?,?)`).run('tpl-x', 'T', 'flex', JSON.stringify({ lineMessages: [{ type: 'text', text: 'テンプレの1通目' }] }), 'standard', 'acc');
+    const replyMessage = vi.fn(async () => undefined);
+    const ok = await runRichMenuActions(db, { replyMessage: vi.fn() } as never, friend, `${RICH_MENU_ACTIONS_PREFIX}${AREA}`, 'token', { lineAccountId: 'acc', replyMessage });
+    expect(ok).toBe(true);
+    const sent = replyMessage.mock.calls[0] as unknown as [string, Array<{ text: string }>];
+    expect(sent[1].map((m) => m.text)).toEqual(['山田様、ありがとうございます', 'テンプレの1通目']);
+    expect(sqlite.prepare(`SELECT count FROM rich_menu_taps WHERE area_id = ? AND friend_id = 'f1'`).get(AREA)).toEqual({ count: 1 });
+    await runRichMenuActions(db, { replyMessage: vi.fn() } as never, friend, `${RICH_MENU_ACTIONS_PREFIX}${AREA}`, 'token', { lineAccountId: 'acc', replyMessage });
+    expect(sqlite.prepare(`SELECT count FROM rich_menu_taps WHERE area_id = ? AND friend_id = 'f1'`).get(AREA)).toEqual({ count: 2 });
+    const totals = await getRichMenuTapTotals(db, ['g1']);
+    expect(totals.get('g1')).toEqual({ people: 1, taps: 2 });
+  });
+  test('ボタンが見つからない・「アクション」でないときは、何もしない', async () => {
+    const { db, friend } = setup();
+    const replyMessage = vi.fn(async () => undefined);
+    expect(await runRichMenuActions(db, { replyMessage: vi.fn() } as never, friend, `${RICH_MENU_ACTIONS_PREFIX}nope`, 't', { replyMessage })).toBe(false);
+    expect(replyMessage).not.toHaveBeenCalled();
+  });
+  test('保存し直しても、ボタンのIDと番号(並び順)は変わらない。ほかのメニューのIDは引き継がない', async () => {
+    const { db, sqlite } = setup();
+    const area = (id: string | undefined, x: number) => ({ id, boundsX: x, boundsY: 0, boundsWidth: 10, boundsHeight: 10, actionType: 'uri' as const, actionData: { uri: 'https://example.com' } });
+    await replaceRichMenuPages(db, 'g1', [{ id: 'p1', name: 'p', orderIndex: 0, areas: [area(undefined, 0), area(undefined, 10), area(undefined, 20)] }]);
+    const first = (await getRichMenuGroupWithPages(db, 'g1'))!.pages[0].areas;
+    expect(first.map((a) => a.bounds_x)).toEqual([0, 10, 20]);
+    // 並べ替え+1つ削除+別メニューのID+新規
+    sqlite.exec(`INSERT INTO rich_menu_groups(id,account_id,name,chat_bar_text,size) VALUES('g2','acc','他','他','large')`);
+    sqlite.exec(`INSERT INTO rich_menu_pages(id,group_id,order_index,name,alias_id) VALUES('p2','g2',0,'p','a2')`);
+    sqlite.exec(`INSERT INTO rich_menu_areas(id,page_id,bounds_x,bounds_y,bounds_width,bounds_height,action_type,action_data) VALUES('other-area','p2',0,0,1,1,'uri','{}')`);
+    await replaceRichMenuPages(db, 'g1', [{ id: 'p1', name: 'p', orderIndex: 0, areas: [area(first[2].id, 20), area(first[0].id, 0), area('other-area', 99), area(undefined, 50)] }]);
+    const second = (await getRichMenuGroupWithPages(db, 'g1'))!.pages[0].areas;
+    expect(second.map((a) => a.bounds_x)).toEqual([20, 0, 99, 50]);
+    expect(second[0].id).toBe(first[2].id);
+    expect(second[1].id).toBe(first[0].id);
+    expect(second[2].id).not.toBe('other-area');
+    expect((sqlite.prepare(`SELECT COUNT(*) c FROM rich_menu_areas WHERE id = 'other-area'`).get() as { c: number }).c).toBe(1);
+  });
+  test('フォルダ: 作って移して消すと、中のメニューは未分類に戻る', async () => {
+    const { db, sqlite } = setup();
+    const f = await createRichMenuFolder(db, 'acc', '新規');
+    await moveRichMenuGroups(db, ['g1'], f.id);
+    expect((await listRichMenuFolders(db, 'acc'))[0]).toMatchObject({ name: '新規', menu_count: 1 });
+    await deleteRichMenuFolder(db, f.id);
+    expect(sqlite.prepare(`SELECT folder_id FROM rich_menu_groups WHERE id = 'g1'`).get()).toEqual({ folder_id: null });
   });
 });
