@@ -87,8 +87,8 @@ images.post('/api/images/import', async (c) => {
     if (source.protocol !== 'https:' || !IMPORT_ALLOWED_HOSTS.has(source.hostname)) {
       return c.json({ success: false, error: '取り込めない場所の画像です' }, 400);
     }
-    const res = await fetch(source.toString(), { redirect: 'error' });
-    if (!res.ok) return c.json({ success: false, error: `画像を取得できませんでした(${res.status})` }, 502);
+    const res = await fetch(source.toString(), { redirect: 'manual' });
+    if (!res.ok) return c.json({ success: false, error: `画像を取得できませんでした(${res.status})` }, 502); // 転送(3xx)は、ほかの場所へ飛ばされるので取り込まない
     const mimeType = (res.headers.get('content-type') ?? '').split(';')[0];
     if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mimeType)) {
       return c.json({ success: false, error: `対応していない画像の形式です: ${mimeType}` }, 400);

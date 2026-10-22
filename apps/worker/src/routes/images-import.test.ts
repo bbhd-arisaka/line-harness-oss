@@ -20,7 +20,7 @@ describe('POST /api/images/import(Lステップの画像の取り込み)', () =>
     expect(body.data.url).toMatch(/^https:\/\/api\.example\.test\/images\/.+\.png$/);
     expect(body.data).toMatchObject({ mimeType: 'image/png', size: 3 });
     expect(put).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('https://d27rnpuamwvieu.cloudfront.net/abc/normal', { redirect: 'error' });
+    expect(fetchMock).toHaveBeenCalledWith('https://d27rnpuamwvieu.cloudfront.net/abc/normal', { redirect: 'manual' });
   });
   test('ほかの場所・http・壊れたURLは取り込まない(外部へ勝手に取りに行かない)', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch');
