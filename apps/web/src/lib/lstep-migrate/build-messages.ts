@@ -13,7 +13,8 @@ const decode = (s: string) => s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').re
 export const htmlToText = (h: unknown): string =>
   decode(String(h).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n').replace(/<[^>]*>/g, '')).replace(/\n{3,}/g, '\n\n').trim()
 
-const SOURCE: Record<number, DatasetMessage['source']> = { 0: 'user', 2: 'broadcast', 3: 'manual', 10: 'scenario' }
+// Lステップの send_type: 1=シナリオ配信・2=一斉配信・3=スタッフの手動・10=自動(自動応答・アクション)。1 が抜けていて、シナリオ配信が手動の扱いになっていた
+const SOURCE: Record<number, DatasetMessage['source']> = { 0: 'user', 1: 'scenario', 2: 'broadcast', 3: 'manual', 10: 'scenario' }
 export const jst = (ts: number): string => new Date((ts + 9 * 3600) * 1000).toISOString().replace('Z', '+09:00')
 
 const MEDIA_LABEL: Record<string, string> = { sticker: 'スタンプ', image: '画像', video: '動画', audio: '音声', file: 'ファイル', location: '位置情報' }

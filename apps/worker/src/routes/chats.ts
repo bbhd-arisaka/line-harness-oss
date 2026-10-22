@@ -557,6 +557,62 @@ chats.get('/api/chats/pulse', async (c) => {
   }
 });
 
+// トーク内容の検索(個別トークの検索欄から)。公式アカウントの中で、メッセージ本文に検索語を含む友だちと、その該当メッセージを返す。
+// 友だちごとに、新しい該当メッセージ1件(と該当の数)。テキストの本文だけを探す(カード・画像・スタンプの中身は対象外)。
+// D1 の読み取り行数を抑えるため、2文字以上で、1回の検索は最新400件の該当までに絞る。「/api/chats/:id」より先に登録すること。
+chats.get('/api/chats/message-search', async (c) => {
+  try {
+    const lineAccountId = c.req.query('lineAccountId');
+    const q = (c.req.query('q') ?? '').trim();
+    if (!lineAccountId) return c.json({ success: false, error: '公式アカウントを指定してください' }, 400);
+    const allowed = c.get('allowedAccountIds');
+    if (allowed && !allowed.includes(lineAccountId)) return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (q.length < 2 || q.length > 100) return c.json({ success: true, data: { items: [] } });
+    const escaped = q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const rows = await c.env.DB
+      .prepare(
+        `SELECT m.friend_id, m.direction, m.content, m.created_at,
+                f.display_name, f.real_name, f.system_display_name, f.picture_url
+         FROM messages_log m
+         JOIN friends f ON f.id = m.friend_id
+         WHERE f.line_account_id = ?
+           AND m.message_type = 'text'
+           AND (m.delivery_type IS NULL OR m.delivery_type != 'test')
+           AND m.content LIKE ? ESCAPE '\\'
+         ORDER BY m.created_at DESC
+         LIMIT 400`,
+      )
+      .bind(lineAccountId, `%${escaped}%`)
+      .all<Record<string, string | null>>();
+    const byFriend = new Map<string, { friendId: string; name: string; displayName: string | null; pictureUrl: string | null; direction: string; snippet: string; createdAt: string; hits: number }>();
+    for (const r of rows.results ?? []) {
+      const friendId = r.friend_id as string;
+      const hit = byFriend.get(friendId);
+      if (hit) {
+        hit.hits += 1;
+        continue;
+      }
+      const content = r.content ?? '';
+      const at = content.toLowerCase().indexOf(q.toLowerCase());
+      const start = Math.max(0, at - 20);
+      byFriend.set(friendId, {
+        friendId,
+        name: r.real_name?.trim() || r.system_display_name?.trim() || r.display_name || '名前なし',
+        displayName: r.display_name,
+        pictureUrl: r.picture_url,
+        direction: r.direction as string,
+        snippet: `${start > 0 ? '…' : ''}${content.slice(start, start + 80).replace(/\s+/g, ' ')}`,
+        createdAt: r.created_at as string,
+        hits: 1,
+      });
+    }
+    return c.json({ success: true, data: { items: [...byFriend.values()].slice(0, 30) } });
+  } catch (err) {
+    console.error('GET /api/chats/message-search error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 chats.get('/api/chats/:id', async (c) => {
   try {
     const rawId = c.req.param('id');

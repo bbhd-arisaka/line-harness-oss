@@ -269,6 +269,7 @@ const KNOWN_GAPS: readonly string[] = [
   // chats (6)
   'GET /api/chats',
   'GET /api/chats/pulse',
+  'GET /api/chats/message-search',
   'GET /api/line-accounts/{id}/friend-add',
   'GET /api/chats/{id}',
   'POST /api/chats',

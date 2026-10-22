@@ -105,6 +105,8 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
   }
   // 新着の有無だけの確認(時刻1つだけを返す。トークの中身は含まない)
   if (isGet && path === '/api/chats/pulse') return next();
+  // トーク内容の検索: アカウントの確認は、ハンドラーが行う(アカウントの指定が必須)
+  if (isGet && path === '/api/chats/message-search') return queryAccountAllowed(c, allowed, 'lineAccountId') ? next() : forbidden(c);
   const chatMatch = path.match(/^\/api\/chats\/([^/]+)(?:\/.*)?$/);
   if (chatMatch) {
     const accountId = await chatAccountId(db, chatMatch[1]);

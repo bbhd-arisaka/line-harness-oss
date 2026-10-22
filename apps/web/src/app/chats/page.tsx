@@ -190,6 +190,18 @@ interface MessageLog {
   origin?: 'manual' | 'system' | null
 }
 
+/** トーク内容の検索の1件(友だちごとに、新しい該当メッセージ1件と該当の数) */
+interface MessageSearchHit {
+  friendId: string
+  name: string
+  displayName: string | null
+  pictureUrl: string | null
+  direction: 'incoming' | 'outgoing'
+  snippet: string
+  createdAt: string
+  hits: number
+}
+
 /** 送信メッセージの吹き出しの色。手動=アプリと同じ緑、システムからの配信=薄い青 */
 function outgoingBubbleClass(origin: 'manual' | 'system' | null | undefined): string {
   return origin === 'system' ? 'bg-[#cfe5fb] text-[#0b2545]' : 'bg-[#a7e99e] text-[#0b2a0a]'
@@ -953,6 +965,33 @@ export default function ChatsPage() {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [nameQuery, selectedAccountId])
 
+  // トーク内容の検索: 名前の検索と同じ入力欄で、メッセージの本文に含まれる友だちも探す(2文字以上・入力が止まって0.6秒後)
+  const [msgResults, setMsgResults] = useState<MessageSearchHit[]>([])
+  const [msgSearching, setMsgSearching] = useState(false)
+  useEffect(() => {
+    const q = nameQuery.trim()
+    if (q.length < 2 || !selectedAccountId) {
+      setMsgResults([])
+      setMsgSearching(false)
+      return
+    }
+    let cancelled = false
+    setMsgSearching(true)
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchApi<{ success: boolean; data: { items: MessageSearchHit[] } }>(
+          `/api/chats/message-search?lineAccountId=${encodeURIComponent(selectedAccountId)}&q=${encodeURIComponent(q)}`,
+        )
+        if (!cancelled && res.success) setMsgResults(res.data.items)
+      } catch {
+        if (!cancelled) setMsgResults([])
+      } finally {
+        if (!cancelled) setMsgSearching(false)
+      }
+    }, 600)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [nameQuery, selectedAccountId])
+
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId)
     setMessageContent('')
@@ -1256,9 +1295,9 @@ ${t.messageContent}` : t.messageContent))
           {/* 名前検索 */}
           <div className="border-b border-gray-100 px-3 py-2">
             <Input
-              aria-label="友だち名で検索"
+              aria-label="友だち名・トーク内容で検索"
               type="search"
-              placeholder="友だち名を検索"
+              placeholder="友だち名・トーク内容を検索"
               value={nameQuery}
               onChange={(e) => setNameQuery(e.target.value)}
             />
@@ -1288,12 +1327,11 @@ ${t.messageContent}` : t.messageContent))
           {/* Chat List */}
           <div key={`${selectedAccountId ?? ''}|${statusFilter}|${unansweredOnly ? 'u' : ''}`} ref={chatListRef} className="fade-in flex-1 overflow-y-auto">
             {nameQuery.trim() ? (
-              nameSearching && nameResults.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-gray-400">検索中...</p>
-              ) : nameResults.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-gray-400">「{nameQuery.trim()}」に一致する友だちが見つかりません</p>
-              ) : (
-                nameResults.map((f) => {
+              <>
+                {nameSearching && nameResults.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-sm text-gray-400">検索中...</p>
+                ) : null}
+                {nameResults.map((f) => {
                   const display = f.realName?.trim() || f.systemDisplayName?.trim() || f.displayName || '名前なし'
                   return (
                     <Button
@@ -1310,8 +1348,36 @@ ${t.messageContent}` : t.messageContent))
                       </span>
                     </Button>
                   )
-                })
-              )
+                })}
+                {msgResults.length > 0 ? (
+                  <>
+                    <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-xs font-medium text-gray-500">トーク内容</p>
+                    {msgResults.map((h) => (
+                      <Button
+                        key={h.friendId}
+                        type="button"
+                        variant="ghost"
+                        className={`h-auto w-full justify-start gap-3 rounded-none border-b border-gray-100 px-4 py-3 text-left ${selectedChatId === h.friendId ? 'bg-green-50' : ''}`}
+                        onClick={() => { setSelectedFriendId(null); handleSelectChat(h.friendId); setNameQuery('') }}
+                      >
+                        <FriendAvatar friendId={h.friendId} url={h.pictureUrl} name={h.name} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-baseline justify-between gap-2">
+                            <span className="truncate text-sm font-medium text-gray-900">{h.name}</span>
+                            <span className="flex-shrink-0 text-[11px] text-gray-400">{formatYmdSlash(h.createdAt)}{h.hits > 1 ? ` ・ ${h.hits}件` : ''}</span>
+                          </span>
+                          <span className="mt-0.5 line-clamp-2 break-all text-xs text-gray-500">
+                            {h.direction === 'outgoing' ? '送信: ' : ''}{h.snippet}
+                          </span>
+                        </span>
+                      </Button>
+                    ))}
+                  </>
+                ) : null}
+                {!nameSearching && !msgSearching && nameResults.length === 0 && msgResults.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-sm text-gray-400">「{nameQuery.trim()}」に一致する友だち・トークが見つかりません</p>
+                ) : null}
+              </>
             ) : loading ? (
               <div>
                 {[...Array(5)].map((_, i) => (
