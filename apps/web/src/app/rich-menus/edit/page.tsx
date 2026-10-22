@@ -4,15 +4,21 @@ import { useDialogs } from '@/components/ui/dialogs'
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import Header from '@/components/layout/header'
 import { api } from '@/lib/api'
 import { CanvasEditor, type Area } from '@/components/rich-menus/canvas-editor'
-import { AreaProperties } from '@/components/rich-menus/area-properties'
+import {
+  ButtonCard,
+  LAYOUTS,
+  LayoutThumb,
+  MenuPreview,
+  RegionDialog,
+  defaultFor,
+  normalizeArea,
+  useActionLookups,
+} from '@/components/rich-menus/lstep-parts'
 import { Banner } from '@cloudflare/kumo/components/banner'
-import { Button } from '@cloudflare/kumo/components/button'
-import { Checkbox } from '@cloudflare/kumo/components/checkbox'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
-import { Input } from '@cloudflare/kumo/components/input'
+import { Button } from '@cloudflare/kumo/components/button'
 
 type Page = {
   id: string
@@ -36,79 +42,62 @@ type Group = {
   selected: boolean
   status: 'draft' | 'published'
   publishingAt: string | null
+  folderId: string | null
   pages: Page[]
 }
 
-const SIZE_LABEL: Record<Group['size'], string> = {
-  large: '2500×1686',
-  compact: '2500×843',
-}
+const newId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `area-${Math.random().toString(36).slice(2, 10)}`)
 
 export default function RichMenuEditPage() {
-  const dialogs = useDialogs()
   return (
-    <Suspense
-      fallback={
-        <main className="p-6 max-w-7xl mx-auto">
-          <p className="text-sm text-gray-500">読み込み中...</p>
-        </main>
-      }
-    >
+    <Suspense fallback={<main className="p-6"><p className="text-sm text-gray-500">読み込み中...</p></main>}>
       <RichMenuEditPageInner />
     </Suspense>
   )
 }
 
 function RichMenuEditPageInner() {
-  const dialogs = useDialogs()
   const searchParams = useSearchParams()
   const router = useRouter()
   const groupId = searchParams.get('id') ?? ''
-
   if (!groupId) {
     return (
-      <main className="p-6 max-w-7xl mx-auto">
+      <main className="p-6">
         <p className="text-sm text-red-600">id クエリパラメータが必要です</p>
-        <Link href="/rich-menus" className="text-sm text-blue-600 hover:underline mt-2 inline-block">
-          ← 一覧に戻る
-        </Link>
+        <Link href="/rich-menus" className="mt-2 inline-block text-sm text-[#2b7bb9] underline">一覧へ戻る</Link>
       </main>
     )
   }
   return <Editor groupId={groupId} router={router} />
 }
 
-function Editor({
-  groupId,
-  router,
-}: {
-  groupId: string
-  router: ReturnType<typeof useRouter>
-}) {
+const label = 'w-40 shrink-0 pt-2 text-right text-sm font-bold text-[#069e04]'
+const input = 'h-10 w-full rounded border border-[#cacace] bg-white px-3 text-sm outline-none focus:border-[#069e04]'
+const required = <span className="ml-1 rounded bg-[#d9534f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span>
+
+function Editor({ groupId, router }: { groupId: string; router: ReturnType<typeof useRouter> }) {
   const dialogs = useDialogs()
   const [group, setGroup] = useState<Group | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activePageId, setActivePageId] = useState<string | null>(null)
 
-  // フォーム編集用 (group が読めたら反映)
   const [name, setName] = useState('')
   const [chatBarText, setChatBarText] = useState('')
+  const [folderId, setFolderId] = useState<string | null>(null)
   const [pages, setPages] = useState<Page[]>([])
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null)
-  const [preview, setPreview] = useState(false)
-  // isDefaultForAll はこの画面では編集しない (ON/OFF は「友だちに表示」モーダルから)。
-  // ただし persistDraft で送信値を一致させるため、現在値を保持する。
-  const [isDefaultForAll, setIsDefaultForAll] = useState(false)
   const [selected, setSelected] = useState(false)
+  const [isDefaultForAll, setIsDefaultForAll] = useState(false)
+  const [folders, setFolders] = useState<Array<{ id: string; name: string }>>([])
 
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
-  const [unpublishing, setUnpublishing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [imageVersion, setImageVersion] = useState(0)
-  const [pendingConfirm, setPendingConfirm] = useState<{ kind: 'remove-page'; pageId: string } | { kind: 'publish' } | { kind: 'unpublish' } | null>(null)
-
+  const [regionOpen, setRegionOpen] = useState(false)
+  const [pendingConfirm, setPendingConfirm] = useState<{ kind: 'remove-page'; pageId: string } | { kind: 'publish' } | { kind: 'unpublish' } | { kind: 'layout'; key: string } | null>(null)
+  const [dirty, setDirty] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const reload = useCallback(async () => {
@@ -121,13 +110,15 @@ function Editor({
       setGroup(g)
       setName(g.name)
       setChatBarText(g.chatBarText)
+      setFolderId(g.folderId ?? null)
       setIsDefaultForAll(g.isDefaultForAll)
       setSelected(g.selected)
-      setPages(g.pages)
-      setActivePageId((prev) =>
-        prev && g.pages.some((p) => p.id === prev) ? prev : (g.pages[0]?.id ?? null),
-      )
+      setPages(g.pages.map((p) => ({ ...p, areas: p.areas.map(normalizeArea) })))
+      setActivePageId((prev) => (prev && g.pages.some((p) => p.id === prev) ? prev : (g.pages[0]?.id ?? null)))
       setSelectedAreaId(null)
+      setDirty(false)
+      const f = await api.richMenuGroups.folders(g.accountId).catch(() => null)
+      if (f && f.success) setFolders(f.data.folders.map((x) => ({ id: x.id, name: x.name })))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -135,113 +126,117 @@ function Editor({
     }
   }, [groupId])
 
+  useEffect(() => { void reload() }, [reload])
+
+  // 保存していない変更があるまま閉じようとしたら、ブラウザの確認を出す
   useEffect(() => {
-    reload()
-  }, [reload])
+    if (!dirty) return
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [dirty])
+
+  const accountId = group?.accountId ?? ''
+  const { lookups } = useActionLookups(accountId)
 
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0] ?? null
-  const selectedArea =
-    activePage?.areas.find((a) => a.id === selectedAreaId) ?? null
+  const touch = () => setDirty(true)
 
   function updatePage(pageId: string, patch: Partial<Page>) {
     setPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, ...patch } : p)))
+    touch()
   }
-
+  function updateAreas(pageId: string, fn: (areas: Area[]) => Area[]) {
+    setPages((prev) => prev.map((p) => (p.id === pageId ? { ...p, areas: fn(p.areas) } : p)))
+    touch()
+  }
   function updateArea(pageId: string, areaId: string, patch: Partial<Area>) {
-    setPages((prev) =>
-      prev.map((p) =>
-        p.id === pageId
-          ? {
-              ...p,
-              areas: p.areas.map((a) => (a.id === areaId ? { ...a, ...patch } : a)),
-            }
-          : p,
-      ),
-    )
+    updateAreas(pageId, (areas) => areas.map((a) => (a.id === areaId ? { ...a, ...patch } : a)))
   }
 
-  function addArea(pageId: string, area: Area) {
-    setPages((prev) =>
-      prev.map((p) => (p.id === pageId ? { ...p, areas: [...p.areas, area] } : p)),
-    )
+  function addButton(pageId: string) {
+    const area: Area = { id: newId(), boundsX: 0, boundsY: 0, boundsWidth: group?.size === 'compact' ? 833 : 833, boundsHeight: group?.size === 'compact' ? 843 : 843, ...defaultFor('url') }
+    updateAreas(pageId, (areas) => {
+      if (areas.length >= 20) { void dialogs.alert('ボタンは1ページに20個までです。'); return areas }
+      return [...areas, area]
+    })
     setSelectedAreaId(area.id)
   }
+  function moveButton(pageId: string, index: number, dir: -1 | 1) {
+    updateAreas(pageId, (areas) => {
+      const to = index + dir
+      if (to < 0 || to >= areas.length) return areas
+      const next = [...areas]
+      const [x] = next.splice(index, 1)
+      next.splice(to, 0, x)
+      return next
+    })
+  }
+  function copyButton(pageId: string, index: number) {
+    updateAreas(pageId, (areas) => {
+      if (areas.length >= 20) { void dialogs.alert('ボタンは1ページに20個までです。'); return areas }
+      const src = areas[index]
+      const copy: Area = { ...src, id: newId(), boundsX: Math.min(src.boundsX + 40, 2500 - src.boundsWidth), boundsY: Math.min(src.boundsY + 40, (group?.size === 'compact' ? 843 : 1686) - src.boundsHeight) }
+      const next = [...areas]
+      next.splice(index + 1, 0, copy)
+      return next
+    })
+  }
+  function deleteButton(pageId: string, areaId: string) {
+    updateAreas(pageId, (areas) => areas.filter((a) => a.id !== areaId))
+    setSelectedAreaId(null)
+  }
 
-  function deleteArea(pageId: string, areaId: string) {
-    setPages((prev) =>
-      prev.map((p) =>
-        p.id === pageId ? { ...p, areas: p.areas.filter((a) => a.id !== areaId) } : p,
-      ),
+  /** 「テンプレート」(配置のひな形)を選ぶ。いまのボタンの動きは、同じ番号のボタンに引き継ぐ */
+  function applyLayout(key: string) {
+    const layout = LAYOUTS.find((l) => l.key === key)
+    if (!layout || !activePage) return
+    updateAreas(activePage.id, (areas) =>
+      layout.cells.map((c, i) => {
+        const old = areas[i]
+        return { id: old?.id ?? newId(), boundsX: Math.round(c.x), boundsY: Math.round(c.y), boundsWidth: Math.round(c.w), boundsHeight: Math.round(c.h), ...(old ? { actionType: old.actionType, actionData: old.actionData } : defaultFor('url')) }
+      }),
     )
     setSelectedAreaId(null)
   }
 
   function addPage() {
     const nextOrder = pages.length
-    const newPage: Page = {
-      id: `tmp-${Math.random().toString(36).slice(2, 10)}`,
-      orderIndex: nextOrder,
-      name: `ページ ${nextOrder + 1}`,
-      aliasId: '',
-      lineRichmenuId: null,
-      imageR2Key: null,
-      imageContentType: null,
-      areas: [],
-    }
+    const newPage: Page = { id: `tmp-${Math.random().toString(36).slice(2, 10)}`, orderIndex: nextOrder, name: `ページ ${nextOrder + 1}`, aliasId: '', lineRichmenuId: null, imageR2Key: null, imageContentType: null, areas: [] }
     setPages([...pages, newPage])
     setActivePageId(newPage.id)
     setSelectedAreaId(null)
+    touch()
   }
 
   function removePage(pageId: string, confirmed = false) {
-    if (pages.length <= 1) {
-      void dialogs.alert('最低 1 ページは必要です。')
-      return
-    }
-    // 削除しようとしているページが他 page の richmenuswitch から参照されてないか確認。
-    // 参照ありで削除すると publish 時に `target page not found` で失敗する。
-    const referrers = pages
-      .filter((p) => p.id !== pageId)
-      .filter((p) =>
-        p.areas.some(
-          (a) =>
-            a.actionType === 'richmenuswitch' &&
-            (a.actionData as { targetPageId?: string }).targetPageId === pageId,
-        ),
-      )
+    if (pages.length <= 1) { void dialogs.alert('最低 1 ページは必要です。'); return }
+    const referrers = pages.filter((p) => p.id !== pageId).filter((p) => p.areas.some((a) => a.actionType === 'richmenuswitch' && (a.actionData as { targetPageId?: string }).targetPageId === pageId))
     if (referrers.length > 0) {
-      void dialogs.alert(
-        `このページは ${referrers.map((p) => `「${p.name}」`).join(', ')} のタブ切替アクションから参照されています。先に各 area の遷移先を変更してから削除してください。`,
-      )
+      void dialogs.alert(`このページは ${referrers.map((p) => `「${p.name}」`).join(', ')} のボタンから切り替え先に指定されています。先にそのボタンの設定を変えてから削除してください。`)
       return
     }
-    if (!confirmed) {
-      setPendingConfirm({ kind: 'remove-page', pageId })
-      return
-    }
-    const remaining = pages
-      .filter((p) => p.id !== pageId)
-      .map((p, i) => ({ ...p, orderIndex: i }))
+    if (!confirmed) { setPendingConfirm({ kind: 'remove-page', pageId }); return }
+    const remaining = pages.filter((p) => p.id !== pageId).map((p, i) => ({ ...p, orderIndex: i }))
     setPages(remaining)
-    if (activePageId === pageId) {
-      setActivePageId(remaining[0]?.id ?? null)
-    }
+    if (activePageId === pageId) setActivePageId(remaining[0]?.id ?? null)
     setSelectedAreaId(null)
+    touch()
   }
 
   async function persistDraft(): Promise<void> {
     const res = await api.richMenuGroups.update(groupId, {
       name,
       chatBarText,
+      folderId,
       isDefaultForAll,
       selected,
       pages: pages.map((p, i) => ({
-        // 既存 page (UUID) は id を渡す。新規 page (`tmp-*` プレフィックス) は
-        // id を渡さず Worker 側で新 UUID を発行させる。
         ...(p.id.startsWith('tmp-') ? {} : { id: p.id }),
         name: p.name,
         orderIndex: i,
         areas: p.areas.map((a) => ({
+          id: a.id,
           boundsX: a.boundsX,
           boundsY: a.boundsY,
           boundsWidth: a.boundsWidth,
@@ -254,7 +249,15 @@ function Editor({
     if (!res.success) throw new Error(res.error ?? '保存失敗')
   }
 
+  function validate(): string | null {
+    if (!name.trim()) return 'タイトルを入力してください'
+    if (!chatBarText.trim()) return 'トークルームメニューを入力してください'
+    return null
+  }
+
   async function handleSave() {
+    const v = validate()
+    if (v) { setError(v); return }
     setSaving(true)
     setError(null)
     try {
@@ -268,10 +271,9 @@ function Editor({
   }
 
   async function handlePublish(confirmed = false) {
-    if (!confirmed) {
-      setPendingConfirm({ kind: 'publish' })
-      return
-    }
+    const v = validate()
+    if (v) { setError(v); return }
+    if (!confirmed) { setPendingConfirm({ kind: 'publish' }); return }
     setPendingConfirm(null)
     setPublishing(true)
     setError(null)
@@ -279,8 +281,8 @@ function Editor({
       await persistDraft()
       const res = await api.richMenuGroups.publish(groupId)
       if (!res.success) throw new Error(res.error ?? 'LINE 登録失敗')
-      void dialogs.alert('LINE への登録が完了しました。\n\n友だちに表示するには、一覧画面の「友だちに表示」を実行してください。')
       await reload()
+      void dialogs.alert('LINEへの登録が完了しました。友だちに表示するには、一覧の「友だちに表示」を実行してください。')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -289,48 +291,27 @@ function Editor({
   }
 
   async function handleUnpublish(confirmed = false) {
-    if (!confirmed) {
-      setPendingConfirm({ kind: 'unpublish' })
-      return
-    }
+    if (!confirmed) { setPendingConfirm({ kind: 'unpublish' }); return }
     setPendingConfirm(null)
-    setUnpublishing(true)
+    setBusy(true)
     setError(null)
     try {
       const res = await api.richMenuGroups.unpublish(groupId)
       if (!res.success) throw new Error(res.error ?? '取り下げ失敗')
-      const warnings = res.data?.warnings ?? []
-      if (warnings.length > 0) {
-        void dialogs.alert(`取り下げ完了 (一部 warnings あり):\n\n${warnings.join('\n')}`)
-      } else {
-        void dialogs.alert('LINE 上のメニュー登録を取り下げました。')
-      }
       await reload()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
-      setUnpublishing(false)
+      setBusy(false)
     }
   }
 
   async function handleDelete() {
     if (!group) return
-    if (group.status === 'published') {
-      void dialogs.alert(
-        'このリッチメニューは LINE に登録中です。\n\n' +
-          '先に「LINE から取り下げ」を実行してから削除してください。',
-      )
-      return
-    }
-    // 二重確認: メニュー名を入力してもらう
-    const typed = prompt(
-      `この操作は元に戻せません。\n\n削除を確定するには、リッチメニュー名「${group.name}」を入力してください。`,
-    )
+    if (group.status === 'published') { void dialogs.alert('LINEに登録中のメニューです。先に「LINEから取り下げ」を実行してください。'); return }
+    const typed = prompt(`削除を確定するには、リッチメニュー名「${group.name}」を入力してください。`)
     if (typed === null) return
-    if (typed !== group.name) {
-      void dialogs.alert('入力が一致しませんでした。削除をキャンセルしました。')
-      return
-    }
+    if (typed !== group.name) { void dialogs.alert('入力が一致しませんでした。削除をキャンセルしました。'); return }
     try {
       const res = await api.richMenuGroups.delete(groupId)
       if (!res.success) throw new Error(res.error ?? '削除失敗')
@@ -341,18 +322,12 @@ function Editor({
   }
 
   async function handleImageUpload(pageId: string, file: File) {
-    if (pageId.startsWith('tmp-')) {
-      void dialogs.alert('まず Save Draft でページを保存してから画像を upload してください。')
-      return
-    }
+    if (pageId.startsWith('tmp-')) { void dialogs.alert('先に「保存」でページを保存してから、画像を選んでください。'); return }
     setBusy(true)
     setError(null)
     try {
       const res = await api.richMenuGroups.uploadImage(groupId, pageId, file)
-      updatePage(pageId, {
-        imageR2Key: res.data.imageR2Key,
-        imageContentType: res.data.imageContentType,
-      })
+      updatePage(pageId, { imageR2Key: res.data.imageR2Key, imageContentType: res.data.imageContentType })
       setImageVersion((v) => v + 1)
     } catch (e) {
       void dialogs.alert(e instanceof Error ? e.message : String(e))
@@ -361,315 +336,206 @@ function Editor({
     }
   }
 
-  if (loading) {
-    return (
-      <main className="p-6 max-w-7xl mx-auto">
-        <p className="text-sm text-gray-500">読み込み中...</p>
-      </main>
-    )
-  }
+  if (loading) return <main className="p-6"><p className="text-sm text-gray-500">読み込み中...</p></main>
   if (!group) {
     return (
-      <main className="p-6 max-w-7xl mx-auto">
+      <main className="p-6">
         <p className="text-sm text-red-600">{error ?? 'リッチメニューが見つかりません'}</p>
-        <Link href="/rich-menus" className="text-sm text-blue-600 hover:underline mt-2 inline-block">
-          ← 一覧に戻る
-        </Link>
+        <Link href="/rich-menus" className="mt-2 inline-block text-sm text-[#2b7bb9] underline">一覧へ戻る</Link>
       </main>
     )
   }
 
-  // richmenuswitch の遷移先候補は「保存済み page (UUID) のみ」に絞る。
-  // 未保存 page (tmp-*) は persistDraft 時に id が新 UUID に置き換わるので、
-  // ここで targetPageId に出してしまうと publish で `target page not found`
-  // で失敗する。
-  const pagesForSelect = pages
-    .filter((p) => !p.id.startsWith('tmp-'))
-    .map((p) => ({ id: p.id, name: p.name }))
-  const imageUrl = activePage?.imageR2Key
-    ? `${api.richMenuGroups.imageUrl(activePage.imageR2Key)}?v=${imageVersion}`
-    : null
+  const pagesForSelect = pages.filter((p) => !p.id.startsWith('tmp-')).map((p) => ({ id: p.id, name: p.name }))
+  const imageUrl = activePage?.imageR2Key ? `${api.richMenuGroups.imageUrl(activePage.imageR2Key)}?v=${imageVersion}` : null
+  const layouts = LAYOUTS.filter((l) => l.size === group.size)
+  const areas = activePage?.areas ?? []
 
   return (
-    <main className="p-6 max-w-7xl mx-auto">
-      <Header
-        title={name || '(無名)'}
-        description={`サイズ ${SIZE_LABEL[group.size]} • ${group.status === 'published' ? 'LINE 登録済み' : '下書き'}`}
-        action={
-          <div className="flex items-center gap-2">
-            <Checkbox
-                label="プレビュー"
-                checked={preview}
-                onCheckedChange={setPreview}
-              />
-            <Button type="button" variant="secondary" loading={saving}
-              onClick={handleSave}
-              disabled={saving || publishing || unpublishing || busy}
-            >
-              下書き保存
-            </Button>
-            <Button type="button" variant="primary" loading={publishing}
-              onClick={() => void handlePublish()}
-              disabled={saving || publishing || unpublishing || busy}
-            >
-              {group.status === 'published'
-                  ? 'LINE に再登録'
-                  : 'LINE に登録'}
-            </Button>
-          </div>
-        }
-      />
+    <div className="pb-28">
+      <h1 className="mb-6 text-xl font-bold text-[#333]">リッチメニュー編集</h1>
 
-      <Link
-        href="/rich-menus"
-        className="text-sm text-gray-500 hover:underline mb-4 inline-block"
-      >
-        ← 一覧に戻る
-      </Link>
+      {error && <Banner className="mb-4" variant="error" title="操作を完了できませんでした" description={error} />}
 
-      {error && (
-        <Banner className="mb-4" variant="error" title="操作を完了できませんでした" description={error} />
-      )}
-
-      {/* タブバー */}
-      <div className="flex items-center gap-1.5 mb-5 flex-wrap">
-        {pages.map((p) => {
-          const active = p.id === activePageId
-          return (
-            <Button
-              type="button"
-              size="sm"
-              variant={active ? 'primary' : 'secondary'}
+      {pages.length > 1 || pages.some((p) => p.id.startsWith('tmp-')) ? (
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          {pages.map((p) => (
+            <button
               key={p.id}
-              onClick={() => {
-                setActivePageId(p.id)
-                setSelectedAreaId(null)
-              }}
+              type="button"
+              onClick={() => { setActivePageId(p.id); setSelectedAreaId(null) }}
+              className={`rounded border px-3 py-1.5 text-sm ${p.id === activePage?.id ? 'border-[#069e04] bg-[#069e04] font-bold text-white' : 'border-[#cacace] bg-white text-[#333] hover:bg-[#f7f7f9]'}`}
             >
-              {p.name}
-              {p.id.startsWith('tmp-') && (
-                <span className="ml-1 text-xs opacity-70">(未保存)</span>
-              )}
-            </Button>
-          )
-        })}
-        <Button type="button" size="sm" variant="secondary"
-          onClick={addPage}
-        >
-          + ページ追加
-        </Button>
-      </div>
+              {p.name}{p.id.startsWith('tmp-') ? '(未保存)' : ''}
+            </button>
+          ))}
+          <button type="button" onClick={addPage} className="rounded border border-dashed border-[#cacace] px-3 py-1.5 text-sm text-[#555] hover:bg-[#f7f7f9]">+ ページ追加</button>
+        </div>
+      ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        {/* 中央: キャンバス */}
-        <section>
-          {activePage ? (
-            <CanvasEditor
-              areas={activePage.areas}
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="min-w-0 space-y-5">
+          {/* 画像 */}
+          <div className="flex items-start gap-4">
+            <span className={label}>画像</span>
+            <div className="flex items-center gap-3">
+              <input ref={fileInput} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f && activePage) void handleImageUpload(activePage.id, f); e.target.value = '' }} />
+              <button type="button" disabled={busy || !activePage} onClick={() => fileInput.current?.click()} className="rounded bg-[#5bc0de] px-4 py-2 text-sm font-medium text-white hover:bg-[#46b8da] disabled:opacity-50">メニュー画像選択</button>
+              {imageUrl ? <img src={imageUrl} alt="" className="h-12 rounded border border-[#e3e3e6]" /> : null}
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <span className={label}>タイトル{required}</span>
+            <input className={`${input} max-w-[640px]`} value={name} onChange={(e) => { setName(e.target.value); touch() }} />
+          </div>
+
+          <div className="flex items-start gap-4">
+            <span className={label}>フォルダ</span>
+            <select className={`${input} max-w-[320px]`} value={folderId ?? ''} onChange={(e) => { setFolderId(e.target.value || null); touch() }}>
+              <option value="">未分類</option>
+              {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <span className={label}>トークルームメニュー{required}</span>
+            <input className={`${input} max-w-[640px]`} value={chatBarText} maxLength={14} onChange={(e) => { setChatBarText(e.target.value); touch() }} />
+          </div>
+
+          <div className="flex items-start gap-4">
+            <span className={label}>メニューの初期状態</span>
+            <div className="flex items-center gap-5 pt-2 text-sm">
+              <label className="flex items-center gap-1.5"><input type="radio" checked={!selected} onChange={() => { setSelected(false); touch() }} />表示しない</label>
+              <label className="flex items-center gap-1.5"><input type="radio" checked={selected} onChange={() => { setSelected(true); touch() }} />表示する</label>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <span className={label}>テンプレート</span>
+            <div className="flex flex-wrap items-center gap-3">
+              {layouts.map((l) => (
+                <LayoutThumb
+                  key={l.key}
+                  cells={l.cells}
+                  size={l.size}
+                  onClick={() => (areas.some((a) => a.boundsWidth > 0) && areas.length > 0 ? setPendingConfirm({ kind: 'layout', key: l.key }) : applyLayout(l.key))}
+                />
+              ))}
+              <button type="button" onClick={() => { if (activePage) { updateAreas(activePage.id, () => []); setSelectedAreaId(null) } }} className="rounded border border-[#cacace] bg-white px-4 py-2 text-sm hover:bg-[#f7f7f9]">リセット</button>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4">
+            <span className={label}>コンテンツ設定</span>
+            <div className="min-w-0 flex-1 space-y-4">
+              {activePage && areas.map((a, i) => (
+                <ButtonCard
+                  key={a.id}
+                  index={i}
+                  area={a}
+                  pages={pagesForSelect}
+                  lookups={lookups}
+                  accountId={accountId}
+                  selected={selectedAreaId === a.id}
+                  canMoveUp={i > 0}
+                  canMoveDown={i < areas.length - 1}
+                  onChange={(patch) => updateArea(activePage.id, a.id, patch)}
+                  onMove={(dir) => moveButton(activePage.id, i, dir)}
+                  onCopy={() => copyButton(activePage.id, i)}
+                  onDelete={() => deleteButton(activePage.id, a.id)}
+                  onEditRegion={() => { setSelectedAreaId(a.id); setRegionOpen(true) }}
+                />
+              ))}
+              {activePage && (
+                <button type="button" onClick={() => addButton(activePage.id)} className="w-full rounded border border-dashed border-[#9c9ca0] bg-white py-2 text-sm text-[#333] hover:bg-[#f7f7f9]">+ 追加</button>
+              )}
+            </div>
+          </div>
+
+          {/* ページ・メニューの操作(ふだんは使わない) */}
+          <div className="ml-44 flex flex-wrap items-center gap-2 border-t border-[#e3e3e6] pt-4 text-xs">
+            {activePage && pages.length > 1 && (
+              <>
+                <input className="h-8 w-40 rounded border border-[#cacace] px-2 text-xs" value={activePage.name} onChange={(e) => updatePage(activePage.id, { name: e.target.value })} aria-label="ページ名" />
+                <button type="button" onClick={() => removePage(activePage.id)} className="rounded border border-[#e5a09b] bg-white px-3 py-1.5 text-[#d92d20] hover:bg-[#fef3f2]">このページを削除</button>
+              </>
+            )}
+            {pages.length === 1 && <button type="button" onClick={addPage} className="rounded border border-[#cacace] bg-white px-3 py-1.5 hover:bg-[#f7f7f9]">+ ページ追加</button>}
+            {group.status === 'published' && <button type="button" onClick={() => void handleUnpublish()} disabled={busy} className="rounded border border-[#e5a09b] bg-white px-3 py-1.5 text-[#d92d20] hover:bg-[#fef3f2]">LINEから取り下げ</button>}
+            <button type="button" onClick={() => void handleDelete()} className="rounded border border-[#e5a09b] bg-white px-3 py-1.5 text-[#d92d20] hover:bg-[#fef3f2]">このメニューを削除</button>
+          </div>
+        </div>
+
+        <aside className="min-w-0">
+          <div className="sticky top-4">
+            <p className="mb-2 text-sm font-bold text-[#069e04]">プレビュー</p>
+            <MenuPreview
+              areas={areas}
               size={group.size}
               imageUrl={imageUrl}
-              selectedAreaId={selectedAreaId}
-              onSelectArea={setSelectedAreaId}
-              onAddArea={(area) => addArea(activePage.id, area)}
-              onUpdateArea={(id, patch) => updateArea(activePage.id, id, patch)}
-              onDeleteArea={(id) => deleteArea(activePage.id, id)}
-              preview={preview}
-              onPreviewAction={(area) => {
-                if (area.actionType === 'uri') {
-                  const uri = (area.actionData as { uri?: string }).uri
-                  if (uri) window.open(uri, '_blank')
-                } else if (area.actionType === 'richmenuswitch') {
-                  const targetId = (area.actionData as { targetPageId?: string }).targetPageId
-                  if (targetId && pages.some((p) => p.id === targetId)) {
-                    setActivePageId(targetId)
-                    setSelectedAreaId(null)
-                  }
-                } else {
-                  void dialogs.alert(`action: ${area.actionType}\n${JSON.stringify(area.actionData)}`)
-                }
+              chatBarText={chatBarText}
+              selectedId={selectedAreaId}
+              onSelect={(id) => {
+                setSelectedAreaId(id)
+                document.getElementById(`rm-button-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
               }}
             />
-          ) : (
-            <p className="text-sm text-gray-500">ページがありません</p>
-          )}
-        </section>
-
-        {/* 右パネル */}
-        <aside className="space-y-5">
-          {/* メニュー設定 */}
-          <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900">メニュー設定</h2>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">名前</span>
-              <Input
-                label="名前"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-              <p className="mt-1 text-[11px] text-gray-500">管理画面でだけ使う名前 (友だちには見えない)</p>
-            </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-600">トーク画面下の文言</span>
-              <Input
-                label="トーク画面下の文言"
-                value={chatBarText}
-                onChange={(e) => setChatBarText(e.target.value)}
-                maxLength={14}
-              />
-              <p className="mt-1 text-[11px] text-gray-500">14 文字以内 (友だちのトーク画面でメニューを開く前に表示)</p>
-            </label>
-            <div>
-              <Checkbox
-                label="トークを開いたときにメニューを表示する"
-                checked={selected}
-                onCheckedChange={setSelected}
-              />
-                <span className="block mt-1 ml-7 text-[11px] text-gray-500">
-                  変更後は「LINE に登録」をやり直すと反映されます。
-                </span>
-            </div>
-          </section>
-
-          {/* ページ設定 (画像 upload 含む、常時表示) */}
-          {activePage && (
-            <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5 space-y-4">
-              <h2 className="text-sm font-semibold text-gray-900">ページ設定</h2>
-              <label className="block">
-                <span className="text-xs font-medium text-gray-600">ページ名</span>
-                <Input
-                  label="ページ名"
-                  value={activePage.name}
-                  onChange={(e) =>
-                    updatePage(activePage.id, { name: e.target.value })
-                  }
-                />
-              </label>
-              <div>
-                <span className="text-xs font-medium text-gray-600">画像</span>
-                {activePage.imageR2Key ? (
-                  <p className="mt-1 text-xs text-gray-700">✓ アップロード済み</p>
-                ) : (
-                  <p className="mt-1 text-xs text-gray-400">未設定</p>
-                )}
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleImageUpload(activePage.id, file)
-                    e.target.value = ''
-                  }}
-                />
-                <Button type="button" size="sm" variant="secondary"
-                  onClick={() => fileInput.current?.click()}
-                  disabled={busy || activePage.id.startsWith('tmp-')}
-                  className="mt-2"
-                >
-                  {activePage.imageR2Key ? '画像を差し替え' : '画像を選択'}
-                </Button>
-                <p className="mt-1.5 text-[11px] text-gray-500">
-                  PNG / JPEG, {SIZE_LABEL[group.size]}, 1MB 以下
-                </p>
-                {activePage.id.startsWith('tmp-') && (
-                  <p className="mt-1 text-[11px] text-amber-600">
-                    新規ページは「下書き保存」してから画像をアップロードしてください
-                  </p>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-400 pt-3 border-t border-gray-100">
-                中央のキャンバスでドラッグして tap 領域 (areas) を追加・編集できます。
-              </p>
-            </section>
-          )}
-
-          {/* 選択中エリア (area が選択されている時のみ追加表示) */}
-          {selectedArea && activePage && (
-            <section className="bg-white border border-gray-200 rounded-lg shadow-sm p-5">
-              <AreaProperties
-                area={selectedArea}
-                pages={pagesForSelect}
-                onUpdate={(patch) =>
-                  updateArea(activePage.id, selectedArea.id, patch)
-                }
-                onDelete={() => deleteArea(activePage.id, selectedArea.id)}
-              />
-            </section>
-          )}
+          </div>
         </aside>
       </div>
 
-      {/* ─────────── 危険な操作 (画面最下部に分離) ─────────── */}
-      <section className="mt-10 bg-red-50 border border-red-200 rounded-lg shadow-sm p-5">
-        <h2 className="text-sm font-semibold text-red-700 mb-1">危険な操作</h2>
-        <p className="text-xs text-red-600 mb-4">
-          以下の操作は元に戻せません。誤操作を避けるため、別セクションにまとめています。
-        </p>
-        <div className="space-y-3">
-          {group.status === 'published' && (
-            <div className="flex items-start justify-between gap-4 bg-white border border-red-200 rounded-lg p-4">
-              <div className="flex-1">
-                <div className="text-sm font-medium text-gray-900">LINE から取り下げ</div>
-                <div className="text-xs text-gray-600 mt-0.5">
-                  LINE 公式アカウント上のメニュー登録 (alias / richmenu / 全員のデフォルト設定) を解除します。
-                  友だちのトーク画面からメニューが消えます。下書きに戻すので、再登録すれば復旧できます。
-                </div>
-              </div>
-              <Button type="button" variant="destructive" loading={unpublishing}
-                onClick={() => void handleUnpublish()}
-                disabled={saving || publishing || unpublishing || busy}
-                className="shrink-0"
-              >
-                LINE から取り下げ
-              </Button>
-            </div>
-          )}
-          {activePage && pages.length > 1 && (
-            <div className="flex items-start justify-between gap-4 bg-white border border-red-200 rounded-lg p-4">
-              <div className="flex-1">
-                <div className="text-sm font-medium text-gray-900">
-                  ページ「{activePage.name}」を削除
-                </div>
-                <div className="text-xs text-gray-600 mt-0.5">
-                  現在表示中のページを削除します。他のページから「タブ切替」でこのページを参照している場合は事前に解除が必要です。
-                </div>
-              </div>
-              <Button type="button" variant="destructive"
-                onClick={() => removePage(activePage.id)}
-                className="shrink-0"
-              >
-                ページ削除
-              </Button>
-            </div>
-          )}
-          <div className="flex items-start justify-between gap-4 bg-white border border-red-300 rounded-lg p-4">
-            <div className="flex-1">
-              <div className="text-sm font-medium text-gray-900">
-                このリッチメニュー全体を削除
-              </div>
-              <div className="text-xs text-gray-600 mt-0.5">
-                {group.status === 'published'
-                  ? '⚠ 先に「LINE から取り下げ」を実行してください。LINE 上のメニューが残ったままだと友だちに表示され続けます。'
-                  : '管理画面と DB から完全に削除します。元には戻せません。'}
-              </div>
-            </div>
-            <Button type="button" variant="destructive"
-              onClick={handleDelete}
-              className="shrink-0"
-            >
-              削除
-            </Button>
-          </div>
+      {/* 下の固定バー */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#e3e3e6] bg-white py-3 lg:left-60">
+        <div className="relative mx-auto flex max-w-5xl items-center justify-center gap-3 px-4">
+          <Link href="/rich-menus" className="absolute left-4 text-xs text-[#2b7bb9] underline">一覧へ戻る</Link>
+          <button type="button" onClick={() => void handleSave()} disabled={saving || publishing || busy} className="min-w-40 rounded bg-[#5cb85c] px-8 py-2.5 text-sm font-bold text-white hover:bg-[#4cae4c] disabled:opacity-60">{saving ? '保存中...' : '保存'}</button>
+          <button type="button" onClick={() => void handlePublish()} disabled={saving || publishing || busy} className="rounded border border-[#069e04] bg-white px-5 py-2.5 text-sm font-bold text-[#069e04] hover:bg-[#f1faf1] disabled:opacity-60">{publishing ? '登録中...' : group.status === 'published' ? 'LINEに再登録' : 'LINEに登録'}</button>
         </div>
-      </section>
+      </div>
+
+      <RegionDialog open={regionOpen} onClose={() => setRegionOpen(false)}>
+        {activePage && (
+          <CanvasEditor
+            areas={areas}
+            size={group.size}
+            imageUrl={imageUrl}
+            selectedAreaId={selectedAreaId}
+            onSelectArea={setSelectedAreaId}
+            onAddArea={(area) => { updateAreas(activePage.id, (list) => [...list, { ...area, ...defaultFor('url') }]); setSelectedAreaId(area.id) }}
+            onUpdateArea={(id, patch) => updateArea(activePage.id, id, patch)}
+            onDeleteArea={(id) => deleteButton(activePage.id, id)}
+          />
+        )}
+      </RegionDialog>
+
       <Dialog.Root role="alertdialog" open={pendingConfirm !== null} onOpenChange={(open) => { if (!open) setPendingConfirm(null) }}>
         <Dialog>
-          <Dialog.Title>{pendingConfirm?.kind === 'publish' ? 'LINEに登録しますか？' : pendingConfirm?.kind === 'unpublish' ? 'LINEから取り下げますか？' : 'このページを削除しますか？'}</Dialog.Title>
-          <Dialog.Description className="mt-2">{pendingConfirm?.kind === 'publish' ? '登録後、友だちに見せるには一覧画面の「友だちに表示」を実行します。' : pendingConfirm?.kind === 'unpublish' ? '現在表示中の友だちのトーク画面からもメニューが消えます。' : 'ページと設定したタップ領域を削除します。'}</Dialog.Description>
-          <div className="mt-6 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setPendingConfirm(null)}>キャンセル</Button><Button type="button" variant={pendingConfirm?.kind === 'publish' ? 'primary' : 'destructive'} onClick={() => { if (pendingConfirm?.kind === 'publish') void handlePublish(true); else if (pendingConfirm?.kind === 'unpublish') void handleUnpublish(true); else if (pendingConfirm?.kind === 'remove-page') removePage(pendingConfirm.pageId, true) }}>実行する</Button></div>
+          <Dialog.Title>
+            {pendingConfirm?.kind === 'publish' ? 'LINEに登録しますか？' : pendingConfirm?.kind === 'unpublish' ? 'LINEから取り下げますか？' : pendingConfirm?.kind === 'layout' ? 'ボタンの配置を変えますか？' : 'このページを削除しますか？'}
+          </Dialog.Title>
+          <Dialog.Description className="mt-2">
+            {pendingConfirm?.kind === 'publish' ? '登録後、友だちに見せるには一覧の「友だちに表示」を実行します。' : pendingConfirm?.kind === 'unpublish' ? '表示中の友だちのトーク画面からもメニューが消えます。' : pendingConfirm?.kind === 'layout' ? 'ボタンの位置が、選んだ配置に変わります。ボタンの動きは、同じ番号のボタンに引き継がれます。' : 'ページと、設定したボタンを削除します。'}
+          </Dialog.Description>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setPendingConfirm(null)}>キャンセル</Button>
+            <Button
+              type="button"
+              variant={pendingConfirm?.kind === 'publish' || pendingConfirm?.kind === 'layout' ? 'primary' : 'destructive'}
+              onClick={() => {
+                if (!pendingConfirm) return
+                if (pendingConfirm.kind === 'publish') void handlePublish(true)
+                else if (pendingConfirm.kind === 'unpublish') void handleUnpublish(true)
+                else if (pendingConfirm.kind === 'layout') { const k = pendingConfirm.key; setPendingConfirm(null); applyLayout(k) }
+                else removePage(pendingConfirm.pageId, true)
+                if (pendingConfirm.kind === 'remove-page') setPendingConfirm(null)
+              }}
+            >
+              実行する
+            </Button>
+          </div>
         </Dialog>
       </Dialog.Root>
-    </main>
+    </div>
   )
 }

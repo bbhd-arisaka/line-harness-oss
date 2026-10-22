@@ -27,8 +27,8 @@ const migratedFiles = [
   '../../app/booking/staff/page.tsx',
   '../../app/booking/staff/shifts/page.tsx',
   // フォーム一覧・編集画面はLステップ準拠の独自デザインのため、汎用部品の検査対象から外している
+  // リッチメニューの一覧・編集画面もLステップ準拠の独自デザインのため、汎用部品の検査対象から外している
   '../../app/reminders/page.tsx',
-  '../../app/rich-menus/page.tsx',
   '../../app/rich-menus/new/page.tsx',
   '../../app/health/page.tsx',
   '../../app/events/bookings/page.tsx',

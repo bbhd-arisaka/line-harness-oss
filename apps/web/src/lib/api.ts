@@ -1590,10 +1590,25 @@ export const api = {
         selected: boolean;
         status: 'draft' | 'published';
         publishingAt: string | null;
+        folderId: string | null;
         thumbnailR2Key: string | null;
+        /** ボタンを押した人数・回数(「アクション」のボタンだけ) */
+        taps: { people: number; taps: number };
         createdAt: string;
         updatedAt: string;
       }>>>(`/api/rich-menu-groups?accountId=${encodeURIComponent(accountId)}`),
+
+    folders: (accountId: string) =>
+      fetchApi<ApiResponse<{ uncategorizedCount: number; folders: Array<{ id: string; name: string; order: number; menuCount: number }> }>>(
+        `/api/rich-menu-folders?accountId=${encodeURIComponent(accountId)}`,
+      ),
+    createFolder: (accountId: string, name: string) =>
+      fetchApi<ApiResponse<{ id: string; name: string }>>('/api/rich-menu-folders', { method: 'POST', body: JSON.stringify({ accountId, name }) }),
+    renameFolder: (id: string, name: string) =>
+      fetchApi<ApiResponse<null>>(`/api/rich-menu-folders/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+    deleteFolder: (id: string) => fetchApi<ApiResponse<null>>(`/api/rich-menu-folders/${id}`, { method: 'DELETE' }),
+    move: (ids: string[], folderId: string | null) =>
+      fetchApi<ApiResponse<null>>('/api/rich-menu-groups-move', { method: 'PUT', body: JSON.stringify({ ids, folderId }) }),
 
     get: (groupId: string) =>
       fetchApi<ApiResponse<{
@@ -1607,6 +1622,7 @@ export const api = {
         selected: boolean;
         status: 'draft' | 'published';
         publishingAt: string | null;
+        folderId: string | null;
         createdAt: string;
         updatedAt: string;
         pages: Array<{
@@ -1656,6 +1672,7 @@ export const api = {
 
     update: (groupId: string, input: {
       name?: string;
+      folderId?: string | null;
       chatBarText?: string;
       isDefaultForAll?: boolean;
       selected?: boolean;
@@ -1664,6 +1681,8 @@ export const api = {
         name: string;
         orderIndex: number;
         areas: Array<{
+          /** 既存のボタンのID(保存し直しても変わらない) */
+          id?: string;
           boundsX: number;
           boundsY: number;
           boundsWidth: number;

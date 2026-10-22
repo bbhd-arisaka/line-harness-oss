@@ -1,13 +1,12 @@
 'use client'
 
 import { useDialogs } from '@/components/ui/dialogs'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import Header from '@/components/layout/header'
+import { useRouter } from 'next/navigation'
 import { useAccount } from '@/contexts/account-context'
 import { api } from '@/lib/api'
 import { ApplyToTagModal } from '@/components/rich-menus/apply-to-tag-modal'
-import { Badge } from '@cloudflare/kumo/components/badge'
 import { Banner } from '@cloudflare/kumo/components/banner'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Dialog } from '@cloudflare/kumo/components/dialog'
@@ -21,13 +20,13 @@ type RichMenuGroupListItem = {
   status: 'draft' | 'published'
   isDefaultForAll: boolean
   selected: boolean
+  folderId: string | null
   thumbnailR2Key: string | null
+  taps: { people: number; taps: number }
   updatedAt: string
 }
 
-function StatusBadge({ status }: { status: 'draft' | 'published' }) {
-  return <Badge variant={status === 'published' ? 'success' : 'neutral'}>{status === 'published' ? 'LINE 登録済み' : '下書き'}</Badge>
-}
+type Folder = { id: string; name: string; order: number; menuCount: number }
 
 type LineMenu = {
   richMenuId: string
@@ -46,19 +45,29 @@ type LineMenu = {
   } | null
 }
 
+const UNCATEGORIZED = '__none__'
+const fld = 'h-9 rounded border border-[#cacace] bg-white px-3 text-sm outline-none focus:border-[#069e04]'
+
 export default function RichMenusListPage() {
   const dialogs = useDialogs()
+  const router = useRouter()
   const { selectedAccount } = useAccount()
   const [groups, setGroups] = useState<RichMenuGroupListItem[]>([])
-  const [external, setExternal] = useState<{
-    currentDefault: string | null
-    lineMenus: LineMenu[]
-  } | null>(null)
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [uncategorized, setUncategorized] = useState(0)
+  const [folder, setFolder] = useState<string>(UNCATEGORIZED)
+  const [search, setSearch] = useState('')
+  const [external, setExternal] = useState<{ currentDefault: string | null; lineMenus: LineMenu[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [externalError, setExternalError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [applyTo, setApplyTo] = useState<RichMenuGroupListItem | null>(null)
-  const [pendingAction, setPendingAction] = useState<{ kind: 'delete-group'; group: RichMenuGroupListItem } | { kind: 'delete-external' | 'import'; menu: LineMenu } | null>(null)
+  const [rowMenu, setRowMenu] = useState<string | null>(null)
+  const [newMenuOpen, setNewMenuOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [pendingAction, setPendingAction] = useState<{ kind: 'delete-group'; group: RichMenuGroupListItem } | { kind: 'delete-external' | 'import'; menu: LineMenu } | { kind: 'delete-folder'; folder: Folder } | null>(null)
+  const [folderEdit, setFolderEdit] = useState<{ id: string | null; name: string } | null>(null)
+  const [moveFor, setMoveFor] = useState<RichMenuGroupListItem | null>(null)
 
   const reload = useCallback(async () => {
     if (!selectedAccount?.id) return
@@ -66,10 +75,10 @@ export default function RichMenusListPage() {
     setError(null)
     setExternalError(null)
     try {
-      // 並列に: D1 管理 group の一覧と、LINE 上の現状
-      const [groupsRes, externalRes] = await Promise.allSettled([
+      const [groupsRes, externalRes, folderRes] = await Promise.allSettled([
         api.richMenuGroups.list(selectedAccount.id),
         api.richMenuGroups.external(selectedAccount.id),
+        api.richMenuGroups.folders(selectedAccount.id),
       ])
       if (groupsRes.status === 'fulfilled') {
         if (!groupsRes.value.success) throw new Error(groupsRes.value.error ?? '取得失敗')
@@ -77,20 +86,16 @@ export default function RichMenusListPage() {
       } else {
         throw groupsRes.reason
       }
+      if (folderRes.status === 'fulfilled' && folderRes.value.success) {
+        setFolders(folderRes.value.data.folders)
+        setUncategorized(folderRes.value.data.uncategorizedCount)
+      }
       if (externalRes.status === 'fulfilled') {
         const v = externalRes.value
-        if (v.success) {
-          setExternal(v.data)
-        } else {
-          setExternalError(v.error ?? 'LINE 上の状態取得に失敗')
-          setExternal(null)
-        }
+        if (v.success) setExternal(v.data)
+        else { setExternalError(v.error ?? 'LINE 上の状態取得に失敗'); setExternal(null) }
       } else {
-        setExternalError(
-          externalRes.reason instanceof Error
-            ? externalRes.reason.message
-            : String(externalRes.reason),
-        )
+        setExternalError(externalRes.reason instanceof Error ? externalRes.reason.message : String(externalRes.reason))
         setExternal(null)
       }
     } catch (e) {
@@ -100,16 +105,38 @@ export default function RichMenusListPage() {
     }
   }, [selectedAccount?.id])
 
-  useEffect(() => {
-    reload()
-  }, [reload])
+  useEffect(() => { void reload() }, [reload])
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return groups.filter((g) => (folder === UNCATEGORIZED ? !g.folderId : g.folderId === folder) && (!q || g.name.toLowerCase().includes(q)))
+  }, [groups, folder, search])
+
+  async function createMenu(size: 'large' | 'compact') {
+    if (!selectedAccount?.id || creating) return
+    setCreating(true)
+    setNewMenuOpen(false)
+    try {
+      const res = await api.richMenuGroups.create({
+        accountId: selectedAccount.id,
+        name: '新しいリッチメニュー',
+        chatBarText: 'メニュー',
+        size,
+        selected: true,
+        pages: [{ name: 'ページ 1', orderIndex: 0, areas: [] }],
+      })
+      if (!res.success) throw new Error(res.error ?? '作成失敗')
+      if (folder !== UNCATEGORIZED) await api.richMenuGroups.update(res.data.id, { folderId: folder })
+      router.push(`/rich-menus/edit?id=${res.data.id}`)
+    } catch (e) {
+      void dialogs.alert(e instanceof Error ? e.message : String(e))
+      setCreating(false)
+    }
+  }
 
   async function handleDelete(group: RichMenuGroupListItem, confirmed = false) {
     if (group.status === 'published') {
-      void dialogs.alert(
-        `「${group.name}」は LINE に登録されています。\n\n` +
-          '編集画面の「危険な操作」から「LINE から取り下げ」を実行してから、改めて削除してください。',
-      )
+      void dialogs.alert(`「${group.name}」は LINE に登録されています。\n\n編集画面で「LINEから取り下げ」を実行してから、改めて削除してください。`)
       return
     }
     if (!confirmed) { setPendingAction({ kind: 'delete-group', group }); return }
@@ -150,156 +177,205 @@ export default function RichMenusListPage() {
     }
   }
 
+  async function saveFolder() {
+    if (!selectedAccount?.id || !folderEdit) return
+    const name = folderEdit.name.trim()
+    if (!name) return
+    try {
+      const res = folderEdit.id ? await api.richMenuGroups.renameFolder(folderEdit.id, name) : await api.richMenuGroups.createFolder(selectedAccount.id, name)
+      if (!res.success) throw new Error(res.error ?? '保存できませんでした')
+      setFolderEdit(null)
+      await reload()
+    } catch (e) {
+      void dialogs.alert(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  async function removeFolder(f: Folder, confirmed = false) {
+    if (!confirmed) { setPendingAction({ kind: 'delete-folder', folder: f }); return }
+    setPendingAction(null)
+    const res = await api.richMenuGroups.deleteFolder(f.id)
+    if (!res.success) { void dialogs.alert(res.error ?? '削除できませんでした'); return }
+    if (folder === f.id) setFolder(UNCATEGORIZED)
+    await reload()
+  }
+
+  async function moveTo(g: RichMenuGroupListItem, folderId: string | null) {
+    setMoveFor(null)
+    const res = await api.richMenuGroups.move([g.id], folderId)
+    if (!res.success) { void dialogs.alert(res.error ?? '移動できませんでした'); return }
+    await reload()
+  }
+
   return (
-    <main className="p-6 max-w-7xl mx-auto">
-      <Header
-        title="リッチメニュー"
-        description="LINE トーク画面下に表示されるメニュー。タブ切替対応。"
-        action={
-          <Link
-            href="/rich-menus/new"
-            className="inline-flex items-center gap-1 rounded-lg bg-kumo-brand px-4 py-2 text-sm font-medium text-kumo-inverse hover:bg-kumo-brand-hover"
-          >
-            <span className="text-lg leading-none">+</span> 新規作成
-          </Link>
-        }
-      />
+    <div>
+      <h1 className="mb-1 text-xl font-bold text-[#333]">リッチメニュー</h1>
 
-      {!selectedAccount && (
-        <div className="text-sm text-gray-500">
-          アカウントを選択してください。
-        </div>
-      )}
+      {!selectedAccount && <div className="mt-4 text-sm text-gray-500">アカウントを選択してください。</div>}
+      {selectedAccount && error && <Banner className="my-4" variant="error" title="読み込めませんでした" description={error} />}
 
-      {selectedAccount && loading && (
-        <div className="text-sm text-gray-500">読み込み中...</div>
-      )}
+      {selectedAccount && (
+        <div className="mt-4 flex flex-col gap-4 lg:flex-row">
+          {/* 左: フォルダ */}
+          <aside className="w-full shrink-0 lg:w-56">
+            <button type="button" onClick={() => setFolderEdit({ id: null, name: '' })} className="mb-2 w-full rounded border border-[#cacace] bg-white px-3 py-2 text-left text-sm hover:bg-[#f7f7f9]">+ 新しいフォルダ</button>
+            <div className="rounded border border-[#e3e3e6] bg-[#f4f4f6]">
+              <FolderRow active={folder === UNCATEGORIZED} name="未分類" count={uncategorized} onClick={() => setFolder(UNCATEGORIZED)} />
+              {folders.map((f) => (
+                <FolderRow
+                  key={f.id}
+                  active={folder === f.id}
+                  name={f.name}
+                  count={f.menuCount}
+                  onClick={() => setFolder(f.id)}
+                  onRename={() => setFolderEdit({ id: f.id, name: f.name })}
+                  onDelete={() => void removeFolder(f)}
+                />
+              ))}
+            </div>
+          </aside>
 
-      {selectedAccount && !loading && error && (
-        <Banner className="mb-4" variant="error" title="読み込めませんでした" description={error} />
-      )}
-
-      {/* LINE 公式アカウントの現状 (admin 管理外の rich menu も含む) */}
-      {selectedAccount && !loading && external && (
-        <ExternalSection
-          accountId={selectedAccount.id}
-          accountName={selectedAccount.displayName || selectedAccount.name}
-          external={external}
-          onDeleteExternal={handleDeleteExternal}
-          onImport={handleImport}
-        />
-      )}
-      {selectedAccount && !loading && externalError && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3 rounded mb-6">
-          LINE 公式アカウントの状態取得に失敗しました: {externalError}
-        </div>
-      )}
-
-      {/* Admin 管理メニュー見出し */}
-      {selectedAccount && !loading && !error && (
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">
-          管理画面で作成・編集するメニュー
-        </h2>
-      )}
-
-      {selectedAccount && !loading && !error && groups.length === 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-12 text-center">
-          <p className="text-gray-500 mb-4">
-            まだリッチメニューが作成されていません。
-          </p>
-          <Link
-            href="/rich-menus/new"
-            className="inline-flex items-center gap-1 rounded-lg bg-kumo-brand px-4 py-2 text-sm font-medium text-kumo-inverse hover:bg-kumo-brand-hover"
-          >
-            <span className="text-lg leading-none">+</span> 最初のメニューを作る
-          </Link>
-        </div>
-      )}
-
-      {selectedAccount && !loading && !error && groups.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {groups.map((g) => (
-            <div
-              key={g.id}
-              className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex flex-col"
-            >
-              <Link
-                href={`/rich-menus/edit?id=${g.id}`}
-                className="flex-1 hover:bg-gray-50 rounded-t-lg overflow-hidden"
-              >
-                {/* thumbnail */}
-                <div
-                  className="w-full bg-gray-100 border-b border-gray-100"
-                  style={{
-                    aspectRatio: g.size === 'large' ? '2500 / 1686' : '2500 / 843',
-                  }}
-                >
-                  {g.thumbnailR2Key ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={api.richMenuGroups.imageUrl(g.thumbnailR2Key)}
-                      alt={g.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                      画像未設定
-                    </div>
-                  )}
-                </div>
-                <div className="p-5">
-                  <div className="flex items-start justify-between mb-2 gap-2">
-                    <h2 className="font-semibold text-gray-900 truncate">{g.name}</h2>
-                    <StatusBadge status={g.status} />
+          {/* 右: メニューの表 */}
+          <section className="min-w-0 flex-1">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <button type="button" disabled={creating} onClick={() => setNewMenuOpen((v) => !v)} className="rounded bg-[#069e04] px-4 py-2 text-sm font-bold text-white hover:bg-[#058503] disabled:opacity-60">+ 新しいリッチメニュー ▾</button>
+                {newMenuOpen && (
+                  <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded border border-[#cacace] bg-white py-1 text-sm shadow-lg">
+                    <button type="button" className="block w-full px-3 py-2 text-left hover:bg-[#f1f1f4]" onClick={() => void createMenu('large')}>大(2500×1686)</button>
+                    <button type="button" className="block w-full px-3 py-2 text-left hover:bg-[#f1f1f4]" onClick={() => void createMenu('compact')}>小(2500×843)</button>
                   </div>
-                  <p className="text-sm text-gray-500 truncate">
-                    トーク表示: <span className="text-gray-700">{g.chatBarText}</span>
-                  </p>
-                  <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                    <span>サイズ: {g.size === 'large' ? '2500×1686' : '2500×843'}</span>
-                    {g.isDefaultForAll && (
-                      <span className="text-blue-600 font-medium">★ 全員のデフォルト</span>
-                    )}
-                    <span>{g.selected ? '初期表示: 開く' : '初期表示: 閉じる'}</span>
-                  </div>
-                </div>
-              </Link>
-              <div className="border-t border-gray-100 px-4 py-2.5 flex justify-end gap-4 text-xs">
-                {g.status === 'published' && (
-                  <Button type="button" size="xs" variant="primary"
-                    onClick={() => setApplyTo(g)}
-                  >
-                    友だちに表示
-                  </Button>
                 )}
-                <Link
-                  href={`/rich-menus/edit?id=${g.id}`}
-                  className="text-gray-600 hover:underline"
-                >
-                  編集
-                </Link>
-                <Button type="button" size="xs" variant="destructive"
-                  onClick={() => handleDelete(g)}
-                >
-                  削除
-                </Button>
+              </div>
+              <div className="ml-auto flex">
+                <input className={`${fld} w-56 rounded-r-none`} placeholder="検索" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="リッチメニューを検索" />
+                <span className="flex h-9 w-10 items-center justify-center rounded-r bg-[#757578] text-white" aria-hidden="true">⌕</span>
               </div>
             </div>
-          ))}
+
+            {loading ? (
+              <p className="py-8 text-center text-sm text-[#757578]">読み込み中...</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="min-w-[44rem]">
+                  <div className="grid grid-cols-[minmax(12rem,1fr)_8rem_9rem_9rem_2.5rem] items-center bg-[#f1f1f4] px-3 text-xs text-[#757578]" style={{ height: 40 }}>
+                    <span>リッチメニュー名</span>
+                    <span>メニュー初期状態</span>
+                    <span>画像</span>
+                    <span>計測</span>
+                    <span />
+                  </div>
+                  {visible.length === 0 ? (
+                    <p className="border-b border-[#e3e3e6] py-6 text-center text-sm text-[#757578]">リッチメニューが作成されていません</p>
+                  ) : (
+                    visible.map((g) => (
+                      <div key={g.id} className="relative grid grid-cols-[minmax(12rem,1fr)_8rem_9rem_9rem_2.5rem] items-center border-b border-[#e3e3e6] bg-white px-3 py-2 text-sm hover:bg-[#fafafb]">
+                        <div className="min-w-0 pr-3">
+                          <Link href={`/rich-menus/edit?id=${g.id}`} className="block truncate font-bold text-[#2b7bb9] underline">{g.name}</Link>
+                          <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] ${g.status === 'published' ? 'bg-[#e7f8ee] text-[#058503]' : 'bg-[#f1f1f4] text-[#757578]'}`}>{g.status === 'published' ? 'LINE登録済み' : '下書き'}</span>
+                        </div>
+                        <span>{g.selected ? '表示する' : '表示しない'}</span>
+                        <div className="py-1">
+                          {g.thumbnailR2Key ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={api.richMenuGroups.imageUrl(g.thumbnailR2Key)} alt={g.name} className="h-12 rounded border border-[#e3e3e6] object-cover" />
+                          ) : (
+                            <span className="text-xs text-[#9c9ca0]">未設定</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-[#555]">{g.taps.people > 0 ? `${g.taps.people.toLocaleString('ja-JP')}人 / ${g.taps.taps.toLocaleString('ja-JP')}回` : '-'}</span>
+                        <div className="relative flex justify-end">
+                          <button type="button" aria-label="メニュー" className="px-1.5 text-base font-bold" onClick={() => setRowMenu((v) => (v === g.id ? null : g.id))}>⋮</button>
+                          {rowMenu === g.id && (
+                            <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded border border-[#cacace] bg-white py-1 text-sm shadow-lg">
+                              {g.status === 'published' && <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => { setRowMenu(null); setApplyTo(g) }}>友だちに表示</button>}
+                              <Link href={`/rich-menus/edit?id=${g.id}`} className="block px-3 py-1.5 hover:bg-[#f1f1f4]">編集</Link>
+                              <button type="button" className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f1f4]" onClick={() => { setRowMenu(null); setMoveFor(g) }}>フォルダへ移動</button>
+                              <button type="button" className="block w-full px-3 py-1.5 text-left text-[#d92d20] hover:bg-[#fef3f2]" onClick={() => { setRowMenu(null); void handleDelete(g) }}>削除</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       )}
 
-      {applyTo && (
-        <ApplyToTagModal
-          groupId={applyTo.id}
-          groupName={applyTo.name}
-          onClose={() => setApplyTo(null)}
-        />
+      {/* LINE 公式アカウントの現状 (管理画面外のメニューも含む) */}
+      {selectedAccount && !loading && external && (
+        <details className="mt-10">
+          <summary className="cursor-pointer text-sm font-bold text-[#555]">LINE上のメニューの状態</summary>
+          <div className="mt-3">
+            <ExternalSection
+              accountId={selectedAccount.id}
+              accountName={selectedAccount.displayName || selectedAccount.name}
+              external={external}
+              onDeleteExternal={handleDeleteExternal}
+              onImport={handleImport}
+            />
+          </div>
+        </details>
       )}
-      <Dialog.Root role="alertdialog" open={pendingAction !== null} onOpenChange={(open) => { if (!open) setPendingAction(null) }}>
-        <Dialog><Dialog.Title>{pendingAction?.kind === 'import' ? '管理画面に取り込みますか？' : 'リッチメニューを削除しますか？'}</Dialog.Title><Dialog.Description className="mt-2">{pendingAction?.kind === 'import' ? '取り込み後は管理画面から編集と再適用ができます。' : 'この操作は元に戻せません。'}</Dialog.Description><div className="mt-6 flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setPendingAction(null)}>キャンセル</Button><Button type="button" variant={pendingAction?.kind === 'import' ? 'primary' : 'destructive'} onClick={() => { if (pendingAction?.kind === 'delete-group') void handleDelete(pendingAction.group, true); else if (pendingAction?.kind === 'delete-external') void handleDeleteExternal(pendingAction.menu, true); else if (pendingAction?.kind === 'import') void handleImport(pendingAction.menu, true) }}>実行する</Button></div></Dialog>
+      {selectedAccount && !loading && externalError && (
+        <div className="mt-6 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">LINE 公式アカウントの状態取得に失敗しました: {externalError}</div>
+      )}
+
+      {applyTo && <ApplyToTagModal groupId={applyTo.id} groupName={applyTo.name} onClose={() => setApplyTo(null)} />}
+
+      <Dialog.Root open={folderEdit !== null} onOpenChange={(o) => { if (!o) setFolderEdit(null) }}>
+        <Dialog className="w-full max-w-sm p-5">
+          <Dialog.Title>{folderEdit?.id ? 'フォルダ名を変更' : '新しいフォルダ'}</Dialog.Title>
+          <input autoFocus className={`${fld} mt-4 w-full`} value={folderEdit?.name ?? ''} onChange={(e) => setFolderEdit((p) => (p ? { ...p, name: e.target.value } : p))} onKeyDown={(e) => { if (e.key === 'Enter') void saveFolder() }} aria-label="フォルダ名" />
+          <div className="mt-5 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setFolderEdit(null)}>キャンセル</Button>
+            <Button type="button" variant="primary" disabled={!folderEdit?.name.trim()} onClick={() => void saveFolder()}>保存</Button>
+          </div>
+        </Dialog>
       </Dialog.Root>
-    </main>
+
+      <Dialog.Root open={moveFor !== null} onOpenChange={(o) => { if (!o) setMoveFor(null) }}>
+        <Dialog className="w-full max-w-sm p-5">
+          <Dialog.Title>フォルダへ移動</Dialog.Title>
+          <div className="mt-4 space-y-1">
+            <button type="button" className="block w-full rounded border border-[#e3e3e6] px-3 py-2 text-left text-sm hover:bg-[#f7f7f9]" onClick={() => moveFor && void moveTo(moveFor, null)}>未分類</button>
+            {folders.map((f) => <button key={f.id} type="button" className="block w-full rounded border border-[#e3e3e6] px-3 py-2 text-left text-sm hover:bg-[#f7f7f9]" onClick={() => moveFor && void moveTo(moveFor, f.id)}>{f.name}</button>)}
+          </div>
+        </Dialog>
+      </Dialog.Root>
+
+      <Dialog.Root role="alertdialog" open={pendingAction !== null} onOpenChange={(open) => { if (!open) setPendingAction(null) }}>
+        <Dialog>
+          <Dialog.Title>{pendingAction?.kind === 'import' ? '管理画面に取り込みますか？' : pendingAction?.kind === 'delete-folder' ? 'フォルダを削除しますか？' : 'リッチメニューを削除しますか？'}</Dialog.Title>
+          <Dialog.Description className="mt-2">{pendingAction?.kind === 'import' ? '取り込み後は管理画面から編集と再適用ができます。' : pendingAction?.kind === 'delete-folder' ? '中のメニューは「未分類」に戻ります。' : 'この操作は元に戻せません。'}</Dialog.Description>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setPendingAction(null)}>キャンセル</Button>
+            <Button type="button" variant={pendingAction?.kind === 'import' ? 'primary' : 'destructive'} onClick={() => { if (pendingAction?.kind === 'delete-group') void handleDelete(pendingAction.group, true); else if (pendingAction?.kind === 'delete-external') void handleDeleteExternal(pendingAction.menu, true); else if (pendingAction?.kind === 'import') void handleImport(pendingAction.menu, true); else if (pendingAction?.kind === 'delete-folder') void removeFolder(pendingAction.folder, true) }}>実行する</Button>
+          </div>
+        </Dialog>
+      </Dialog.Root>
+    </div>
+  )
+}
+
+function FolderRow({ active, name, count, onClick, onRename, onDelete }: { active: boolean; name: string; count: number; onClick: () => void; onRename?: () => void; onDelete?: () => void }) {
+  return (
+    <div className={`group flex items-center border-b border-[#e3e3e6] last:border-b-0 ${active ? 'bg-[#fdf3d6]' : 'hover:bg-[#ececef]'}`}>
+      <button type="button" onClick={onClick} className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left text-sm">
+        <span aria-hidden="true">{active ? '📂' : '📁'}</span>
+        <span className="truncate">{name}</span>
+        <span className="ml-auto text-xs text-[#757578]">{count}</span>
+      </button>
+      {onRename && (
+        <button type="button" aria-label="フォルダ名を変更" onClick={onRename} className="px-1.5 text-xs text-[#757578] opacity-0 hover:text-[#333] group-hover:opacity-100">✎</button>
+      )}
+      {onDelete && (
+        <button type="button" aria-label="フォルダを削除" onClick={onDelete} className="px-1.5 text-xs text-[#757578] opacity-0 hover:text-[#d92d20] group-hover:opacity-100">✕</button>
+      )}
+    </div>
   )
 }
 
