@@ -445,6 +445,7 @@ const KNOWN_GAPS: readonly string[] = [
   // images (2)
   'DELETE /api/images/{key}',
   'POST /api/images',
+  'POST /api/images/import',
   // affiliates-report (1)
   'GET /api/affiliates-report',
   // capabilities (1)

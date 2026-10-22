@@ -72,6 +72,41 @@ images.post('/api/images', async (c) => {
   }
 });
 
+// POST /api/images/import — 他のサービスの画像を、こちらに取り込んで保存する(Lステップからの引き継ぎ用)。
+// 取り込める場所は、Lステップの画像置き場(CloudFront の1か所)だけ。https のみ・10MBまで・画像だけ。
+const IMPORT_ALLOWED_HOSTS = new Set(['d27rnpuamwvieu.cloudfront.net']);
+images.post('/api/images/import', async (c) => {
+  try {
+    const body = await c.req.json<{ url?: unknown }>().catch(() => ({}) as { url?: unknown });
+    let source: URL;
+    try {
+      source = new URL(typeof body.url === 'string' ? body.url : '');
+    } catch {
+      return c.json({ success: false, error: 'url が正しくありません' }, 400);
+    }
+    if (source.protocol !== 'https:' || !IMPORT_ALLOWED_HOSTS.has(source.hostname)) {
+      return c.json({ success: false, error: '取り込めない場所の画像です' }, 400);
+    }
+    const res = await fetch(source.toString(), { redirect: 'error' });
+    if (!res.ok) return c.json({ success: false, error: `画像を取得できませんでした(${res.status})` }, 502);
+    const mimeType = (res.headers.get('content-type') ?? '').split(';')[0];
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mimeType)) {
+      return c.json({ success: false, error: `対応していない画像の形式です: ${mimeType}` }, 400);
+    }
+    const data = await res.arrayBuffer();
+    if (data.byteLength > 10 * 1024 * 1024) return c.json({ success: false, error: '画像が大きすぎます(10MBまで)' }, 400);
+    const ext = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1];
+    const id = crypto.randomUUID();
+    const key = `${id}.${ext}`;
+    await c.env.IMAGES.put(key, data, { httpMetadata: { contentType: mimeType }, customMetadata: { originalFilename: source.pathname.split('/').filter(Boolean).slice(-2).join('-') } });
+    const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+    return c.json({ success: true, data: { id, key, url: `${workerUrl}/images/${key}`, mimeType, size: data.byteLength } }, 201);
+  } catch (err) {
+    console.error('POST /api/images/import error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // POST /api/media-files?kind=audio|video — 音声(m4a)・動画(mp4)のアップロード(テンプレートの音声・動画メッセージ用)。
 // 本文は生のファイル(Content-Type は audio/* / video/mp4)。Workers の受け取り上限(約100MB)に合わせ、95MB まで。
 // 保存先・公開URLは画像と同じ(/images/{uuid}.{ext})。
