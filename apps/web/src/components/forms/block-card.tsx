@@ -217,7 +217,7 @@ export function BlockCard({
 
           {!isDisplay && (
             <label className="mt-6 flex items-center gap-1.5 whitespace-nowrap text-xs">
-              <input type="checkbox" checked={block.hidden} onChange={(e) => onChange({ hidden: e.target.checked })} />
+              <input type="checkbox" checked={block.hideTitle} onChange={(e) => onChange({ hideTitle: e.target.checked })} />
               非表示
             </label>
           )}

@@ -96,7 +96,10 @@ export interface BlockDraft {
   type: FieldType
   label: string
   required: boolean
+  /** 項目ごと隠す(画面には出さず値だけ送る)。取り込み時に作る「Lステップの追加項目」だけが使う。画面では変えられない */
   hidden: boolean
+  /** 項目名を隠す(タイトルだけ出さない。画面の「非表示」) */
+  hideTitle: boolean
   description: string
   defaultValue: string
   placeholder: string
@@ -140,6 +143,7 @@ export function newBlock(type: FieldType, section: number): BlockDraft {
     label: '',
     required: false,
     hidden: false,
+    hideTitle: false,
     description: '',
     defaultValue: '',
     placeholder: '',
@@ -208,6 +212,7 @@ export interface ApiField {
   placeholder?: string
   maxLength?: number
   hidden?: boolean
+  hideTitle?: boolean
   optionActions?: Record<string, OptionAction>
   allowOther?: boolean
   defaultOptions?: string[]
@@ -232,6 +237,7 @@ export function blockFromApi(f: ApiField): BlockDraft {
     label: f.label,
     required: Boolean(f.required),
     hidden: Boolean(f.hidden),
+    hideTitle: Boolean(f.hideTitle),
     description: f.description ?? '',
     defaultValue: f.defaultValue ?? '',
     placeholder: f.placeholder ?? '',
@@ -287,6 +293,7 @@ export function blocksToApi(blocks: BlockDraft[]): ApiField[] {
     used.add(name)
     const f: ApiField = { name, label: b.label.trim(), type: b.type, required: b.required, section: b.section }
     if (b.hidden) f.hidden = true
+    if (b.hideTitle) f.hideTitle = true
     if (OPTION_TYPES.includes(b.type)) f.options = b.options.map((o) => o.trim()).filter(Boolean)
     if ((REGISTRATION_TARGET_TYPES.includes(b.type) || b.type === 'file') && b.registrationTargets.length > 0) f.registrationTargets = b.registrationTargets
     if (CHOICE_ACTION_TYPES.includes(b.type)) {

@@ -47,6 +47,8 @@ interface FormField {
   defaultValue?: string;
   maxLength?: number;
   hidden?: boolean;
+  /** Lステップの「項目名を隠す」: 項目のタイトル(ラベル)だけを出さない。入力欄は出る(hidden は項目ごと隠す別の設定) */
+  hideTitle?: boolean;
   // 選択系ブロックの「その他」「初期表示」。
   allowOther?: boolean;
   defaultOptions?: string[];
@@ -288,9 +290,9 @@ function renderField(field: FormField, previousValue?: unknown): string {
   if (field.name === 'x_username') {
     return `
       <div class="form-field">
-        <label class="form-label" for="field-${escapeHtml(field.name)}">
+        ${field.hideTitle ? '' : `<label class="form-label" for="field-${escapeHtml(field.name)}">
           ${escapeHtml(field.label)}${requiredMark}
-        </label>
+        </label>`}
         <div class="x-autocomplete-wrap">
           <input
             type="text"
@@ -449,9 +451,9 @@ function renderField(field: FormField, previousValue?: unknown): string {
 
   return `
     <div class="form-field" data-field-name="${escapeHtml(field.name)}"${field.hidden ? ' hidden' : ''}>
-      <label class="form-label" for="field-${escapeHtml(field.name)}">
+      ${field.hideTitle ? '' : `<label class="form-label" for="field-${escapeHtml(field.name)}">
         ${escapeHtml(field.label)}${requiredMark}
-      </label>
+      </label>`}
       ${descriptionHtml}
       ${inputHtml}
     </div>
