@@ -175,6 +175,7 @@ const KNOWN_GAPS: readonly string[] = [
   'DELETE /api/rich-menu-groups/{groupId}',
   'GET /api/rich-menu-groups',
   'GET /api/rich-menu-groups/external',
+  'GET /api/rich-menu-groups/external/{richMenuId}',
   'GET /api/rich-menu-groups/external/{richMenuId}/image',
   'GET /api/rich-menu-groups/{groupId}',
   'PATCH /api/rich-menu-groups/{groupId}',

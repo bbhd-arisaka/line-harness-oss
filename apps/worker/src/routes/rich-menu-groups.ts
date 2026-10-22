@@ -260,6 +260,20 @@ function parsePatchBody(raw: unknown): Parsed<{ meta: UpdateRichMenuGroupMetaInp
 
 // ----- Routes -----
 
+// LINE 上の rich menu の中身(ボタンの位置と動き)を返す。Lステップなど、こちらの管理外で作られたメニューを作り直すときの下調べ用(読み取りだけ)。
+richMenuGroups.get('/api/rich-menu-groups/external/:richMenuId', async (c) => {
+  const richMenuId = c.req.param('richMenuId');
+  const accountId = c.req.query('accountId');
+  if (!accountId) return c.json({ success: false, error: 'accountId query param required' }, 400);
+  const account = await getLineAccountById(c.env.DB, accountId);
+  if (!account) return c.json({ success: false, error: 'line account not found' }, 404);
+  const res = await fetch(`https://api.line.me/v2/bot/richmenu/${encodeURIComponent(richMenuId)}`, {
+    headers: { Authorization: `Bearer ${account.channel_access_token}` },
+  });
+  if (!res.ok) return c.json({ success: false, error: `LINE 詳細取得失敗: ${res.status}` }, res.status === 404 ? 404 : 502);
+  return c.json({ success: true, data: await res.json() });
+});
+
 // LINE 上の rich menu の画像をプロキシで返す (Authorization が必要なため
 // admin 経由で取得して画面に流す)。
 richMenuGroups.get('/api/rich-menu-groups/external/:richMenuId/image', async (c) => {
