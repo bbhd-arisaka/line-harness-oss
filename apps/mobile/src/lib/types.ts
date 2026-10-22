@@ -58,6 +58,17 @@ export interface BroadcastItem {
   segmentConditions: { operator?: string; rules?: unknown[] } | null;
   lastError: string | null;
   createdAt: string;
+  /** LINEが集計した開封・クリック(配信の翌日から)。まだ取れていないときは null。古いサーバーでは無い */
+  insight?: BroadcastInsight | null;
+}
+
+/** 配信の開封・クリック(人数と、配信した人に対する割合 0〜1) */
+export interface BroadcastInsight {
+  delivered: number | null;
+  uniqueImpression: number | null;
+  uniqueClick: number | null;
+  openRate: number | null;
+  clickRate: number | null;
 }
 
 /** GET /api/broadcasts/:id/progress */

@@ -176,6 +176,21 @@ function serializeBroadcast(row: DbBroadcast) {
     // 直近の送信失敗理由 (クォータ不足ガード等)。送信成功で null に戻る。
     lastError: (r.last_error as string | undefined) ?? null,
     createdAt: row.created_at,
+    // LINEが集計した開封・クリック(配信の翌日から取れる)。まだ取れていないときは null
+    insight: serializeInsight(r),
+  };
+}
+
+/** 一覧・詳細に添える開封・クリックの数字。取れていない配信は null */
+function serializeInsight(r: Record<string, unknown>) {
+  if (r.insight_status !== 'ready') return null;
+  return {
+    delivered: (r.delivered as number | null) ?? null,
+    uniqueImpression: (r.unique_impression as number | null) ?? null,
+    uniqueClick: (r.unique_click as number | null) ?? null,
+    openRate: (r.open_rate as number | null) ?? null,
+    clickRate: (r.click_rate as number | null) ?? null,
+    fetchedAt: (r.insight_fetched_at as string | null) ?? null,
   };
 }
 
@@ -1220,6 +1235,8 @@ broadcasts.post('/api/broadcasts/:id/fetch-insight', async (c) => {
       uniqueImpression = (overview.uniqueImpression as number) ?? null;
       uniqueClick = (overview.uniqueClick as number) ?? null;
       uniqueMediaPlayed = (overview.uniqueMediaPlayed as number) ?? null;
+      // unit の集計には配信数が含まれないので、送れた人数で開封率を出す
+      delivered = (broadcast as unknown as Record<string, number | null>).success_count ?? null;
       rawResponse = JSON.stringify(response);
     }
 

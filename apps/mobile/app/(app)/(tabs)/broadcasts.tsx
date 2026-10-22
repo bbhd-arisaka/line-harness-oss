@@ -6,7 +6,7 @@ import { AccountBar } from '../../../src/components/account-bar';
 import { Button, EmptyView, ErrorView, LoadingView } from '../../../src/components/ui';
 import { api } from '../../../src/state/services';
 import { useAccounts, useAuth } from '../../../src/state/session';
-import { describeSavedConditions, broadcastStatusLabel, messageSummary } from '../../../src/lib/broadcast';
+import { describeSavedConditions, broadcastStatusLabel, insightFigures, messageSummary } from '../../../src/lib/broadcast';
 import { formatScheduled } from '../../../src/lib/schedule';
 import { formatListTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
@@ -99,6 +99,7 @@ export default function BroadcastsScreen() {
           ListEmptyComponent={<EmptyView title="まだ配信がありません" message="「新しい配信を作る」から、友だち全員、または条件で絞り込んだ友だちに、メッセージを送れます。" />}
           renderItem={({ item }) => {
             const narrowed = describeSavedConditions(item.segmentConditions);
+            const figures = insightFigures(item.insight);
             return (
               <Pressable
                 accessibilityRole="button"
@@ -118,6 +119,7 @@ export default function BroadcastsScreen() {
                     {item.status === 'scheduled' && item.scheduledAt ? `(${formatScheduled(item.scheduledAt)})` : ''}
                     {item.status === 'sent' || item.status === 'sending' ? ` ・ ${item.successCount.toLocaleString('ja-JP')}/${item.totalCount.toLocaleString('ja-JP')}人` : ''}
                     {narrowed ? ` ・ ${narrowed}` : ''}
+                    {figures ? ` ・ 開封 ${figures.open.rate ?? `${figures.open.count.toLocaleString('ja-JP')}人`}` : ''}
                     {` ・ ${formatListTime(item.sentAt ?? item.createdAt)}`}
                   </Text>
                   {item.lastError ? <Text style={{ color: c.danger, fontSize: 12, marginTop: 2 }}>{item.lastError}</Text> : null}

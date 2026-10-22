@@ -36,13 +36,14 @@ export async function processInsightFetch(
           item.lineRequestId,
         )) as Record<string, unknown>
         const overview = response.overview as Record<string, unknown> | undefined
-        await updateInsightResult(db, item.insightId, {
-          delivered: (overview?.delivered as number) ?? null,
+        const result = {
+          delivered: (overview?.delivered as number) ?? item.successCount,
           uniqueImpression: (overview?.uniqueImpression as number) ?? null,
           uniqueClick: (overview?.uniqueClick as number) ?? null,
           uniqueMediaPlayed: (overview?.uniqueMediaPlayed as number) ?? null,
           rawResponse: JSON.stringify(response),
-        })
+        }
+        await saveInsight(db, item, result)
       } else if (item.aggregationUnit && item.targetType === 'multi-account-dedup') {
         // Multi-account dedup — 同じ unit を複数チャネルで使ってるので、
         // account_ids をループして各アカウントの token で getUnitInsight を呼び合算する。
@@ -91,13 +92,11 @@ export async function processInsightFetch(
           // retry させる (markInsightFailed が retryCount を上げて次回再試行)。
           await markInsightFailed(db, item.insightId, item.retryCount)
         } else {
-          // 1件でもデータが取れたなら ready に確定する。messages 配列が空の場合は
-          // null をセット (insight 未集計 → 翌日に手動 fetch すれば取れる可能性)。
           // delivered は unit insight 仕様上含まれない。dedup では
           // broadcasts.success_count を delivered の近似値として渡す。これにより
           // updateInsightResult が open_rate / click_rate を計算できる
           // (手動 /fetch-insight ルートと一貫した動作)。
-          await updateInsightResult(db, item.insightId, {
+          await saveInsight(db, item, {
             delivered: item.successCount,
             uniqueImpression: hasAnyData ? aggImpression : null,
             uniqueClick: hasAnyData ? aggClick : null,
@@ -115,8 +114,9 @@ export async function processInsightFetch(
         )) as Record<string, unknown>
         const messages = response.messages as Array<Record<string, unknown>> | undefined
         const overview = messages?.[0] || {}
-        await updateInsightResult(db, item.insightId, {
-          delivered: null,
+        // unit の集計には「配信数」が含まれないので、送れた人数(success_count)で開封率を出す
+        await saveInsight(db, item, {
+          delivered: item.successCount,
           uniqueImpression: (overview.uniqueImpression as number) ?? null,
           uniqueClick: (overview.uniqueClick as number) ?? null,
           uniqueMediaPlayed: (overview.uniqueMediaPlayed as number) ?? null,
@@ -134,4 +134,21 @@ export async function processInsightFetch(
       await markInsightFailed(db, item.insightId, item.retryCount)
     }
   }
+}
+
+/**
+ * 取れた数字を保存する。LINEの集計がまだ間に合っていない(開封もクリックも空)ときは、確定せずに
+ * 翌日またやり直す(3回やっても空なら failed)。すでに取れている数字を、空の結果で上書きしない。
+ */
+async function saveInsight(
+  db: D1Database,
+  item: { insightId: string; retryCount: number; wasReady?: boolean },
+  result: Parameters<typeof updateInsightResult>[2],
+): Promise<void> {
+  const empty = result.uniqueImpression == null && result.uniqueClick == null
+  if (empty) {
+    if (!item.wasReady) await markInsightFailed(db, item.insightId, item.retryCount)
+    return
+  }
+  await updateInsightResult(db, item.insightId, result)
 }

@@ -6,7 +6,7 @@ import { useInterval } from '../../../src/state/hooks';
 import { Button, Card, confirmAsync, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
 import { withReadableWidth } from '../../../src/components/readable-width';
 import { TaggedText } from '../../../src/components/tagged-text';
-import { broadcastStatusLabel, describeSavedConditions } from '../../../src/lib/broadcast';
+import { broadcastStatusLabel, describeSavedConditions, insightFigures } from '../../../src/lib/broadcast';
 import { formatDateTime } from '../../../src/lib/format';
 import { formatScheduled } from '../../../src/lib/schedule';
 import { describeError } from '../../../src/lib/errors';
@@ -88,6 +88,7 @@ function BroadcastDetailScreen() {
   // 配信するメッセージの全部(古いサーバーは1通だけ)
   const shown = item.messages && item.messages.length > 0 ? item.messages : [{ type: item.messageType, content: item.messageContent }];
   const percent = item.totalCount > 0 ? Math.min(100, Math.round((item.successCount / item.totalCount) * 100)) : 0;
+  const figures = insightFigures(item.insight);
   const deletable = item.status === 'draft' || item.status === 'scheduled';
 
   return (
@@ -106,6 +107,12 @@ function BroadcastDetailScreen() {
             <Text style={{ color: c.textSub, fontSize: 13, marginTop: 4 }}>
               {item.successCount.toLocaleString('ja-JP')} / {item.totalCount.toLocaleString('ja-JP')}人に配信
             </Text>
+          </View>
+        ) : null}
+        {figures ? (
+          <View style={styles.figures}>
+            <Figure label="開封" count={figures.open.count} rate={figures.open.rate} />
+            {figures.click ? <Figure label="クリック" count={figures.click.count} rate={figures.click.rate} /> : null}
           </View>
         ) : null}
         {item.lastError ? <Text style={{ color: c.danger, fontSize: 13, marginTop: 8 }}>{item.lastError}</Text> : null}
@@ -138,6 +145,21 @@ function BroadcastDetailScreen() {
   );
 }
 
+/** 開封・クリックの数字1つ(人数を大きく、割合をその下に) */
+function Figure({ label, count, rate }: { label: string; count: number; rate: string | null }) {
+  const c = useColors();
+  return (
+    <View style={[styles.figure, { backgroundColor: c.background, borderColor: c.border }]}>
+      <Text style={{ color: c.textSub, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: c.text, fontSize: 22, fontWeight: '800' }}>
+        {count.toLocaleString('ja-JP')}
+        <Text style={{ fontSize: 13, fontWeight: '600' }}>人</Text>
+      </Text>
+      {rate ? <Text style={{ color: c.primaryText, fontSize: 13, fontWeight: '700' }}>{rate}</Text> : null}
+    </View>
+  );
+}
+
 /** 画像メッセージ1通(内容は、LINE が求める JSON の文字列) */
 function ImageMessage({ content }: { content: string }) {
   const c = useColors();
@@ -157,4 +179,6 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 8, paddingBottom: 40 },
   bar: { height: 8, borderRadius: 4, overflow: 'hidden' },
   barFill: { height: 8, borderRadius: 4 },
+  figures: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  figure: { flex: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10, gap: 2 },
 });

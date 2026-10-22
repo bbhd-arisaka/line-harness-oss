@@ -344,7 +344,7 @@ export default function BroadcastDetail({ broadcastId }: BroadcastDetailProps) {
       )}
 
       {/* Insight */}
-      {broadcast.status === 'sent' && insight && (
+      {broadcast.status === 'sent' && insight && insight.status === 'ready' && (
         <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">配信実績</h3>
           <div className="grid grid-cols-3 gap-4 text-center">

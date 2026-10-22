@@ -35,7 +35,8 @@ export interface Broadcast {
 export async function getBroadcasts(db: D1Database, accountId?: string): Promise<Broadcast[]> {
   let sql = `SELECT b.*,
        bi.status as insight_status,
-       bi.open_rate, bi.click_rate
+       bi.delivered, bi.unique_impression, bi.unique_click,
+       bi.open_rate, bi.click_rate, bi.fetched_at as insight_fetched_at
 FROM broadcasts b
 LEFT JOIN broadcast_insights bi ON b.id = bi.broadcast_id
   AND bi.id = (SELECT id FROM broadcast_insights WHERE broadcast_id = b.id ORDER BY created_at DESC LIMIT 1)`;
@@ -273,18 +274,27 @@ export async function getPendingInsights(
     accountIds: string[] | null;
     failedAccountIds: string[] | null;
     successCount: number | null;
+    /** すでに数字が取れている行の取り直しか(空の結果で上書きしない判断に使う) */
+    wasReady: boolean;
   }>
 > {
   const result = await db
     .prepare(
-      `SELECT bi.id as insight_id, bi.broadcast_id, bi.retry_count,
+      `SELECT bi.id as insight_id, bi.broadcast_id, bi.retry_count, bi.status as insight_status,
               b.line_request_id, b.aggregation_unit, b.sent_at, b.line_account_id,
               b.target_type, b.account_ids, b.failed_account_ids, b.success_count
        FROM broadcast_insights bi
        JOIN broadcasts b ON bi.broadcast_id = b.id
-       WHERE bi.status = 'pending'
-         AND b.sent_at IS NOT NULL
-         AND julianday('now', '+9 hours') - julianday(b.sent_at) >= 3`,
+       WHERE b.sent_at IS NOT NULL
+         AND (
+           -- まだ数字が取れていないもの: 配信の翌日から取りに行く(LINEの集計が間に合っていなければ、翌日にまたやり直す)
+           (bi.status = 'pending'
+             AND julianday('now', '+9 hours') - julianday(b.sent_at) >= 1)
+           -- 取れたものも、配信から1週間は1日おきに取り直す(開封は配信のあとも少しずつ増えるため)
+           OR (bi.status = 'ready'
+             AND julianday('now', '+9 hours') - julianday(b.sent_at) BETWEEN 1 AND 8
+             AND (bi.fetched_at IS NULL OR julianday('now', '+9 hours') - julianday(bi.fetched_at) >= 0.8))
+         )`,
     )
     .all();
   const parseArr = (v: unknown): string[] | null => {
@@ -310,6 +320,7 @@ export async function getPendingInsights(
     accountIds: parseArr(r.account_ids),
     failedAccountIds: parseArr(r.failed_account_ids),
     successCount: (r.success_count as number | null) ?? null,
+    wasReady: r.insight_status === 'ready',
   }));
 }
 

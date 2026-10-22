@@ -137,6 +137,8 @@ export type ApiBroadcast = Omit<Broadcast, 'targetType'> & {
   dedupPriority: string[] | null;
   failedAccountIds: string[] | null;
   trackLinks: boolean;
+  /** LINEが集計した開封・クリック。まだ取れていない配信は null */
+  insight?: Omit<BroadcastInsight, 'uniqueMediaPlayed'> | null;
 };
 
 export type BroadcastInsight = {

@@ -284,3 +284,21 @@ export function newUuid(random: () => number = Math.random): string {
 export function draftSignature(parts: { accountId: string; messages: DraftMessage[] }): string {
   return `${parts.accountId}\n${JSON.stringify(toApiMessages(parts.messages))}`;
 }
+
+/** 割合(0〜1)を「45.2%」の形に。取れていなければ null */
+export function formatRate(rate: number | null | undefined): string | null {
+  if (rate == null || !Number.isFinite(rate)) return null;
+  const pct = Math.round(rate * 1000) / 10;
+  return `${pct.toLocaleString('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 0 })}%`;
+}
+
+/** 配信の開封・クリックの表示。開封の数字が取れていない配信は null(画面に何も出さない) */
+export function insightFigures(
+  insight: { uniqueImpression: number | null; uniqueClick: number | null; openRate: number | null; clickRate: number | null } | null | undefined,
+): { open: { count: number; rate: string | null }; click: { count: number; rate: string | null } | null } | null {
+  if (!insight || insight.uniqueImpression == null) return null;
+  return {
+    open: { count: insight.uniqueImpression, rate: formatRate(insight.openRate) },
+    click: insight.uniqueClick == null ? null : { count: insight.uniqueClick, rate: formatRate(insight.clickRate) },
+  };
+}

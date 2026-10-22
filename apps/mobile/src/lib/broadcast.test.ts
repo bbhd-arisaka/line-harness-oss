@@ -4,6 +4,8 @@ import {
   checkMessage,
   checkMessages,
   findUnsupportedTag,
+  formatRate,
+  insightFigures,
   formTag,
   insertAtSelection,
   MAX_BROADCAST_MESSAGES,
@@ -203,5 +205,28 @@ describe('本名の差し込みの確認', () => {
     expect(usesRealName([m('こんにちは{{real_name}}様')])).toBe(true);
     expect(usesRealName([m('こんにちは{{name}}さん'), m('本名なし')])).toBe(false);
     expect(usesRealName([{ ...newDraftMessage('image', 'i'), imageUrl: 'https://x/a.jpg' }])).toBe(false);
+  });
+});
+
+describe('開封・クリックの表示', () => {
+  it('割合を、小数1桁までの%にする', () => {
+    expect(formatRate(0.4523)).toBe('45.2%');
+    expect(formatRate(0.5)).toBe('50%');
+    expect(formatRate(0)).toBe('0%');
+    expect(formatRate(null)).toBeNull();
+  });
+  it('開封の数字が取れていない配信は、何も出さない', () => {
+    expect(insightFigures(null)).toBeNull();
+    expect(insightFigures({ uniqueImpression: null, uniqueClick: null, openRate: null, clickRate: null })).toBeNull();
+  });
+  it('開封とクリックを、人数と割合で返す', () => {
+    expect(insightFigures({ uniqueImpression: 120, uniqueClick: 9, openRate: 0.6, clickRate: 0.045 })).toEqual({
+      open: { count: 120, rate: '60%' },
+      click: { count: 9, rate: '4.5%' },
+    });
+    expect(insightFigures({ uniqueImpression: 5, uniqueClick: null, openRate: null, clickRate: null })).toEqual({
+      open: { count: 5, rate: null },
+      click: null,
+    });
   });
 });

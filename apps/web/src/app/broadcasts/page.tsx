@@ -79,18 +79,12 @@ function BroadcastList() {
       })
       .catch(() => {})
   }, [templateId])
-  const [insights, setInsights] = useState<Record<string, BroadcastInsight>>({})
+  // 「開封数を取得」を押して取れた数字(一覧に最初から入っている数字より新しい)
+  const [insights, setInsights] = useState<Record<string, Pick<BroadcastInsight, 'delivered' | 'uniqueImpression' | 'uniqueClick' | 'openRate' | 'clickRate'>>>({})
   const [fetchingInsight, setFetchingInsight] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<BroadcastTab>('all')
   const [deleteTarget, setDeleteTarget] = useState<ApiBroadcast | null>(null)
   const [deleting, setDeleting] = useState(false)
-
-  const loadInsight = async (id: string) => {
-    try {
-      const res = await api.broadcasts.getInsight(id)
-      if (res.success && res.data) setInsights((current) => ({ ...current, [id]: res.data! }))
-    } catch { /* non-blocking */ }
-  }
 
   const handleFetchInsight = async (id: string) => {
     setFetchingInsight(id)
@@ -99,7 +93,7 @@ function BroadcastList() {
       if (res.success && res.data) setInsights((current) => ({ ...current, [id]: res.data }))
       else if (!res.success) setError(res.error)
     } catch {
-      setError('インサイトの取得に失敗しました')
+      setError('開封数の取得に失敗しました')
     } finally {
       setFetchingInsight(null)
     }
@@ -124,7 +118,6 @@ function BroadcastList() {
   }, [selectedAccountId])
 
   useEffect(() => { void load() }, [load])
-  useEffect(() => { broadcasts.filter((item) => item.status === 'sent').forEach((item) => { void loadInsight(item.id) }) }, [broadcasts])
 
   const handleDelete = async () => {
     if (!deleteTarget) return
@@ -190,7 +183,7 @@ function BroadcastList() {
                   <Table.Head>配信対象</Table.Head>
                   <Table.Head>予約日時</Table.Head>
                   <Table.Head>送信完了日時</Table.Head>
-                  <Table.Head>実績</Table.Head>
+                  <Table.Head>開封・クリック</Table.Head>
                   <Table.Head><span className="sr-only">操作</span></Table.Head>
                 </Table.Row>
               </Table.Header>
@@ -199,7 +192,8 @@ function BroadcastList() {
                   const status = broadcastStatus(broadcast)
                   const tagName = getTagName(broadcast.targetTagId)
                   const isDedup = broadcast.targetType === 'multi-account-dedup'
-                  const insight = insights[broadcast.id]
+                  const insight = insights[broadcast.id] ?? broadcast.insight ?? undefined
+                  const waiting = broadcast.sentAt ? Date.now() - new Date(broadcast.sentAt).getTime() < 24 * 60 * 60 * 1000 : false
                   return (
                     <Table.Row key={broadcast.id}>
                       <Table.Cell>
@@ -225,8 +219,10 @@ function BroadcastList() {
                             {insight.uniqueImpression != null ? <p>開封 <strong className="text-kumo-info">{insight.uniqueImpression.toLocaleString('ja-JP')}</strong>{insight.openRate != null ? ` (${(insight.openRate * 100).toFixed(1)}%)` : ''}</p> : null}
                             {insight.uniqueClick != null ? <p>クリック <strong className="text-kumo-success">{insight.uniqueClick.toLocaleString('ja-JP')}</strong>{insight.clickRate != null ? ` (${(insight.clickRate * 100).toFixed(1)}%)` : ''}</p> : null}
                           </div>
+                        ) : waiting ? (
+                          <span className="text-xs text-kumo-subtle">集計待ち</span>
                         ) : (
-                          <Button type="button" size="xs" variant="ghost" loading={fetchingInsight === broadcast.id} onClick={() => void handleFetchInsight(broadcast.id)}>インサイト取得</Button>
+                          <Button type="button" size="xs" variant="ghost" loading={fetchingInsight === broadcast.id} onClick={() => void handleFetchInsight(broadcast.id)}>開封数を取得</Button>
                         )}
                       </Table.Cell>
                       <Table.Cell className="text-right">
