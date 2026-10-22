@@ -619,6 +619,65 @@ lineAccounts.put('/api/line-accounts/:id/lstep-forward', requireRole('owner'), a
   }
 });
 
+// ── LINE の Webhook URL の確認・切り替え・疎通テスト(Lステップからの本番切り替え用) ──
+// LINE Developers の画面を開かずに、この公式アカウントの Webhook を beyond line 単独に切り替えたり、元に戻したりする。
+// 切り替えは「URLを書き換えるだけ」で、いつでも元に戻せる(PUT で元のURLを入れる)。
+
+async function lineWebhookCall(token: string, method: 'GET' | 'PUT' | 'POST', path: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> | null }> {
+  const res = await fetch(`https://api.line.me/v2/bot/channel/webhook/${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  return { status: res.status, json };
+}
+
+lineAccounts.get('/api/line-accounts/:id/webhook', requireRole('owner', 'admin'), async (c) => {
+  try {
+    const account = await getLineAccountById(c.env.DB, c.req.param('id')!);
+    if (!account) return c.json({ success: false, error: 'LINE account not found' }, 404);
+    const r = await lineWebhookCall(account.channel_access_token, 'GET', 'endpoint');
+    if (r.status !== 200) return c.json({ success: false, error: `LINEから取得できませんでした(${r.status})` }, 502);
+    return c.json({ success: true, data: { endpoint: (r.json?.endpoint as string) ?? '', active: r.json?.active === true, ownEndpoint: `${new URL(c.req.url).origin}/webhook` } });
+  } catch (err) {
+    console.error('GET /api/line-accounts/:id/webhook error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+lineAccounts.put('/api/line-accounts/:id/webhook', requireRole('owner'), async (c) => {
+  try {
+    const account = await getLineAccountById(c.env.DB, c.req.param('id')!);
+    if (!account) return c.json({ success: false, error: 'LINE account not found' }, 404);
+    const body = await c.req.json<{ endpoint?: unknown }>().catch(() => ({}) as { endpoint?: unknown });
+    const endpoint = typeof body.endpoint === 'string' ? body.endpoint.trim() : '';
+    let ok = false;
+    try { ok = new URL(endpoint).protocol === 'https:' && endpoint.length <= 500; } catch { ok = false; }
+    if (!ok) return c.json({ success: false, error: 'https のURLを指定してください' }, 400);
+    const before = await lineWebhookCall(account.channel_access_token, 'GET', 'endpoint');
+    const r = await lineWebhookCall(account.channel_access_token, 'PUT', 'endpoint', { endpoint });
+    if (r.status !== 200) return c.json({ success: false, error: `LINEに設定できませんでした(${r.status}: ${JSON.stringify(r.json)})` }, 502);
+    return c.json({ success: true, data: { previous: (before.json?.endpoint as string) ?? null, endpoint } });
+  } catch (err) {
+    console.error('PUT /api/line-accounts/:id/webhook error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+lineAccounts.post('/api/line-accounts/:id/webhook-test', requireRole('owner', 'admin'), async (c) => {
+  try {
+    const account = await getLineAccountById(c.env.DB, c.req.param('id')!);
+    if (!account) return c.json({ success: false, error: 'LINE account not found' }, 404);
+    const r = await lineWebhookCall(account.channel_access_token, 'POST', 'test', {});
+    if (r.status !== 200) return c.json({ success: false, error: `LINEのテストを実行できませんでした(${r.status})` }, 502);
+    return c.json({ success: true, data: { ok: r.json?.success === true, statusCode: r.json?.statusCode ?? null, reason: r.json?.reason ?? null, detail: r.json?.detail ?? null } });
+  } catch (err) {
+    console.error('POST /api/line-accounts/:id/webhook-test error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // POST /api/line-accounts - create
 lineAccounts.post('/api/line-accounts', requireRole('owner'), async (c) => {
   try {
