@@ -1,6 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '@/lib/api'
+import { useAccount } from '@/contexts/account-context'
 import type { Area } from './canvas-editor'
 import { EmojiPicker } from './emoji-picker'
 import { TagTextEditor, type TagTextEditorHandle } from '@/components/ui/tag-text-editor'
@@ -22,11 +24,12 @@ type Props = {
  *           押されたときに店舗側が本文を返信する。長文(5,000文字まで)・改行・絵文字OK。
  *  - message: お客様が送ったことになるテキスト。LINEの仕様で300文字まで。
  */
-type UiAction = 'uri' | 'reply' | 'message' | 'richmenuswitch' | 'postback'
+type UiAction = 'uri' | 'reply' | 'template' | 'message' | 'richmenuswitch' | 'postback'
 
 const ACTION_OPTIONS: { value: UiAction; label: string }[] = [
   { value: 'uri', label: 'URLを開く' },
   { value: 'reply', label: '店舗からメッセージを送る(長文・改行・絵文字OK)' },
+  { value: 'template', label: 'テンプレートを送る(パック・カルーセルも可)' },
   { value: 'message', label: 'お客様がテキストを送る(300文字まで)' },
   { value: 'richmenuswitch', label: 'メニューのページを切り替える' },
   { value: 'postback', label: '上級者向け(postback)' },
@@ -35,6 +38,7 @@ const ACTION_OPTIONS: { value: UiAction; label: string }[] = [
 function uiActionOf(area: Area): UiAction {
   const data = (area.actionData ?? {}) as Record<string, unknown>
   if (area.actionType === 'postback' && data.kind === 'reply') return 'reply'
+  if (area.actionType === 'postback' && data.kind === 'template') return 'template'
   return area.actionType
 }
 
@@ -45,6 +49,8 @@ function defaultActionData(type: UiAction): Record<string, unknown> {
     case 'reply':
       // replyId は、押されたボタンと本文を結びつける目印。編集して保存し直しても変わらない
       return { kind: 'reply', replyId: crypto.randomUUID(), replyText: '' }
+    case 'template':
+      return { kind: 'template', templateId: '' }
     case 'message':
       return { text: '' }
     case 'postback':
@@ -167,6 +173,34 @@ function TextAreaWithEmoji({
   )
 }
 
+/** 「テンプレートを送る」で、送るテンプレート(パック)を選ぶ。いま選んでいる公式アカウントのテンプレートから */
+function TemplateSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const { selectedAccountId } = useAccount()
+  const [items, setItems] = useState<Array<{ id: string; name: string }>>([])
+  useEffect(() => {
+    if (!selectedAccountId) return
+    let cancelled = false
+    api.tpl
+      .items({ lineAccountId: selectedAccountId, folder: 'all', pageSize: 100 })
+      .then((r) => { if (!cancelled && r.success) setItems(r.data.items.map((t) => ({ id: t.id, name: t.name }))) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedAccountId])
+  const known = items.some((t) => t.id === value)
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="送るテンプレート"
+      className="mt-0.5 block w-full border border-gray-300 rounded px-2 py-1 text-sm"
+    >
+      <option value="">テンプレートを選択</option>
+      {value && !known ? <option value={value}>(選択中のテンプレート)</option> : null}
+      {items.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
+  )
+}
+
 /** LINEのメッセージアクションの送信テキストは300文字まで。店舗から送るメッセージ(テキスト)は5,000文字まで。改行も1文字。 */
 const MESSAGE_TEXT_LIMIT = 300
 const REPLY_TEXT_LIMIT = 5000
@@ -208,7 +242,7 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
           value={uiAction}
           onChange={(e) => {
             const next = e.target.value as UiAction
-            onUpdate({ actionType: next === 'reply' ? 'postback' : next, actionData: defaultActionData(next) })
+            onUpdate({ actionType: next === 'reply' || next === 'template' ? 'postback' : next, actionData: defaultActionData(next) })
           }}
           className="mt-0.5 block w-full border border-gray-300 rounded px-2 py-1 text-sm"
         >
@@ -253,6 +287,13 @@ export function AreaProperties({ area, pages, onUpdate, onDelete }: Props) {
             ボタンを押すと、お客様の発言としては表示されず、店舗からこの文章が届きます。<TaggedText text="{{name}}" /> でお客様の名前を入れられます。
           </p>
         </div>
+      )}
+
+      {uiAction === 'template' && (
+        <TemplateSelect
+          value={(data.templateId as string) ?? ''}
+          onChange={(templateId) => onUpdate({ actionData: { kind: 'template', templateId } })}
+        />
       )}
 
       {uiAction === 'message' && (

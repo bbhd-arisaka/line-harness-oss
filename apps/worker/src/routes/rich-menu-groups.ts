@@ -116,6 +116,13 @@ function parseAreaInput(raw: unknown): Parsed<RichMenuAreaInput> {
     const replyId = typeof actionData.replyId === 'string' && RICH_MENU_REPLY_ID_RE.test(actionData.replyId) ? actionData.replyId : crypto.randomUUID();
     actionData = { kind: 'reply', replyId, replyText: actionData.replyText };
   }
+  if (r.actionType === 'postback' && actionData.kind === 'template') {
+    // 「テンプレートを送る」: テンプレート(パック)のIDだけを持つ。中身は押されたときに読むので、あとで直せば反映される
+    if (typeof actionData.templateId !== 'string' || !RICH_MENU_REPLY_ID_RE.test(actionData.templateId)) {
+      return { ok: false, error: '送るテンプレートが正しくありません' };
+    }
+    actionData = { kind: 'template', templateId: actionData.templateId };
+  }
   return {
     ok: true,
     value: {

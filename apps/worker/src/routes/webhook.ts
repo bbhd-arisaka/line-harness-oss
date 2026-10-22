@@ -31,7 +31,7 @@ import { publishChatEvent } from '../services/chat-events.js';
 import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { TEMPLATE_POSTBACK_PREFIX, handleTemplatePostback } from '../services/template-postback.js';
-import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from '../services/rich-menu-reply.js';
+import { RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, sendRichMenuReply, sendRichMenuTemplate } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import { ignoresFriendAddSettings } from '../services/inflow-route-runtime.js';
 import type { FriendAddedNotice, FriendBlockedNotice, IncomingMessageNotice } from '../services/push-notify.js';
@@ -568,6 +568,18 @@ async function handleEvent(
           ? (token, messages) => replyViaHarnessProxy(workerUrl, lineAccessToken, token, messages, proxyDispatch)
           : undefined,
       });
+    }
+
+    // リッチメニューの「テンプレートを送る」ボタン: テンプレートを店舗から返信する(並行運用中のアカウントは、Lステップが応答するので何もしない)
+    if (!parallelMode && postbackData.startsWith(RICH_MENU_TEMPLATE_PREFIX)) {
+      const sent = await sendRichMenuTemplate(db, lineClient, friend, postbackData, event.replyToken, {
+        lineAccountId,
+        workerUrl,
+        replyMessage: workerUrl
+          ? (token, messages) => replyViaHarnessProxy(workerUrl, lineAccessToken, token, messages, proxyDispatch)
+          : undefined,
+      });
+      if (sent) return;
     }
 
     // テンプレート(質問・カルーセル・フレックス)のボタン: 回数制限・返信・タグ・情報欄・シナリオ・アクション。自動応答には回さない

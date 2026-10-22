@@ -34,6 +34,12 @@ export function toLineAction(a: Pick<AreaInput, 'actionType' | 'actionData'>): R
     if (typeof text !== 'string' || text.trim() === '') throw new Error('店舗から送るメッセージが空のエリアがあります');
     return { type: 'postback', data: `rmreply:${replyId}` };
   }
+  if (a.actionType === 'postback' && a.actionData.kind === 'template') {
+    // 「テンプレートを送る」: 押されたら `rmtpl:<templateId>` を受け取り、テンプレートを店舗から返信する
+    const templateId = a.actionData.templateId;
+    if (typeof templateId !== 'string' || !templateId) throw new Error('送るテンプレートが選ばれていないエリアがあります');
+    return { type: 'postback', data: `rmtpl:${templateId}` };
+  }
   return { type: a.actionType, ...a.actionData };
 }
 

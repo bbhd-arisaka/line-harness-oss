@@ -3,7 +3,7 @@ import { URL } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { getRichMenuReplyText } from '@line-crm/db';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
-import { RICH_MENU_REPLY_PREFIX, sendRichMenuReply } from './rich-menu-reply.js';
+import { RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, sendRichMenuReply, sendRichMenuTemplate } from './rich-menu-reply.js';
 import { toLineAction } from '../lib/rich-menu-publisher.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
@@ -61,6 +61,35 @@ describe('リッチメニュー: 店舗からメッセージを送る', () => {
     const lineClient = { replyMessage: vi.fn() } as never;
     expect(await sendRichMenuReply(db, lineClient, friend, `${RICH_MENU_REPLY_PREFIX}00000000-0000-4000-8000-000000000000`, 't', { replyMessage })).toBe(false);
     expect(await sendRichMenuReply(db, lineClient, friend, 'switch-to-xyz', 't', { replyMessage })).toBe(false);
+    expect(replyMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('リッチメニュー: テンプレートを送る', () => {
+  const TPL = '7d1f0a52-3c8e-4f55-9a07-1b2c3d4e5f60';
+  test('LINEには、押されたら届く印(rmtpl:<テンプレートID>)だけを登録する。テンプレートが空なら公開できない', () => {
+    expect(toLineAction({ actionType: 'postback', actionData: { kind: 'template', templateId: TPL } })).toEqual({ type: 'postback', data: `rmtpl:${TPL}` });
+    expect(() => toLineAction({ actionType: 'postback', actionData: { kind: 'template', templateId: '' } })).toThrow(/テンプレート/);
+  });
+  test('ボタンが押されたら、テンプレートの複数通を店舗から返信し(差し込み語は置き換え)、送信ログに残す', async () => {
+    const { db, sqlite, friend } = setup();
+    sqlite.prepare(`INSERT INTO templates(id,name,message_type,message_content,kind,line_account_id) VALUES(?,?,?,?,?,?)`).run(
+      TPL, '予約動線', 'flex', JSON.stringify({ lineMessages: [{ type: 'text', text: '{{name}}様 ご予約はこちら' }, { type: 'text', text: '2通目' }] }), 'pack', 'acc',
+    );
+    const replyMessage = vi.fn(async () => undefined);
+    const ok = await sendRichMenuTemplate(db, { replyMessage: vi.fn() } as never, friend, `${RICH_MENU_TEMPLATE_PREFIX}${TPL}`, 'token', { lineAccountId: 'acc', replyMessage });
+    expect(ok).toBe(true);
+    const sent = replyMessage.mock.calls[0] as unknown as [string, Array<{ type: string; text: string }>];
+    expect(sent[0]).toBe('token');
+    expect(sent[1].map((m) => m.text)).toEqual(['山田様 ご予約はこちら', '2通目']);
+    const n = (sqlite.prepare(`SELECT COUNT(*) c FROM messages_log WHERE friend_id='f1' AND direction='outgoing'`).get() as { c: number }).c;
+    expect(n).toBe(2);
+  });
+  test('テンプレートが見つからない・印が違うときは、何も送らない', async () => {
+    const { db, friend } = setup();
+    const replyMessage = vi.fn(async () => undefined);
+    expect(await sendRichMenuTemplate(db, { replyMessage: vi.fn() } as never, friend, `${RICH_MENU_TEMPLATE_PREFIX}${TPL}`, 't', { replyMessage })).toBe(false);
+    expect(await sendRichMenuTemplate(db, { replyMessage: vi.fn() } as never, friend, 'other', 't', { replyMessage })).toBe(false);
     expect(replyMessage).not.toHaveBeenCalled();
   });
 });
