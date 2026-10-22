@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createFormSubmission: vi.fn(),
   verifyCallerLineUserId: vi.fn(),
   push: vi.fn(),
+  getLibraryTemplate: vi.fn(),
 }));
 
 vi.mock('@line-crm/db', () => ({
@@ -26,6 +27,7 @@ vi.mock('@line-crm/db', () => ({
   countFormSubmissions: vi.fn(async () => 0),
   getTrackedLinkById: vi.fn(),
   getMessageTemplateById: vi.fn(),
+  getLibraryTemplate: mocks.getLibraryTemplate,
   getLineAccountById: vi.fn(),
   resolveDefaultLineAccount: vi.fn(async () => null),
   stopAllFriendScenarios: vi.fn(),
@@ -158,6 +160,26 @@ describe('回答後メッセージ', () => {
       }),
     );
     await submit();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  test('「テンプレートを送る」: パックの複数通を、差し込み語を置き換えて、そのまま送る', async () => {
+    mocks.getFormById.mockResolvedValue(form({ lstep_options: JSON.stringify({ answerMessage: { mode: 'template', templateId: 'tpl-1' } }) }));
+    mocks.getLibraryTemplate.mockResolvedValue({
+      id: 'tpl-1',
+      message_type: 'flex',
+      message_content: JSON.stringify({ lineMessages: [{ type: 'text', text: '{{name}}様 ご回答ありがとうございます' }, { type: 'template', altText: 'カルーセル', template: { type: 'carousel', columns: [] } }] }),
+    });
+    expect((await submit()).status).toBe(201);
+    const msgs = (mocks.push.mock.calls[0]?.[3] ?? []) as Array<Record<string, unknown>>;
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toMatchObject({ type: 'text', text: '山田様 ご回答ありがとうございます' });
+    expect(msgs[1]).toMatchObject({ type: 'template' });
+  });
+  test('「テンプレートを送る」で、テンプレートが見つからないときは、何も送らない', async () => {
+    mocks.getFormById.mockResolvedValue(form({ lstep_options: JSON.stringify({ answerMessage: { mode: 'template', templateId: 'gone' } }) }));
+    mocks.getLibraryTemplate.mockResolvedValue(null);
+    expect((await submit()).status).toBe(201);
     expect(mocks.push).not.toHaveBeenCalled();
   });
 });

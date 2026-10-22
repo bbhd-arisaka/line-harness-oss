@@ -366,7 +366,7 @@ export interface LstepOptions {
   startsAt?: string | null
   backgroundImageOpacity?: number
   thanksText?: string
-  answerMessage?: { mode: 'none' | 'summary' | 'custom'; title?: string }
+  answerMessage?: { mode: 'none' | 'summary' | 'custom' | 'template'; title?: string; templateId?: string }
   /** 回答があったとき、トークに出す「回答結果を見る」カード(お客様には送らない)の設定 */
   answerCard?: { enabled?: boolean /* 旧設定。今は無視(常にオン) */; title?: string; body?: string; buttonLabel?: string }
 }

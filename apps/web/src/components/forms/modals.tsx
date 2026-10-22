@@ -8,6 +8,8 @@ import { TaggedText } from './tagged-text'
 import { Modal as SharedModal } from '@/components/ui/modal'
 import type { FormDraft, LstepOptions } from './editor-types'
 import ImageUploader from '@/components/shared/image-uploader'
+import { api } from '@/lib/api'
+import { useAccount } from '@/contexts/account-context'
 
 /** Lステップ風モーダル: 緑の見出し・右上×・下に「閉じる」「保存する」。背景は暗く+ぼかし、開閉はフェード。 */
 function ModalFrame({
@@ -64,6 +66,29 @@ const check = 'flex items-center gap-2 text-sm'
 // ─────────────────────────────────────────────────────────────
 // オプション設定
 // ─────────────────────────────────────────────────────────────
+
+/** 回答後に送るテンプレート(パック)を選ぶ。いま選んでいる公式アカウントのテンプレートから */
+function AnswerTemplateSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const { selectedAccountId } = useAccount()
+  const [items, setItems] = useState<Array<{ id: string; name: string }>>([])
+  useEffect(() => {
+    if (!selectedAccountId) return
+    let cancelled = false
+    api.tpl
+      .items({ lineAccountId: selectedAccountId, folder: 'all', pageSize: 100 })
+      .then((r) => { if (!cancelled && r.success) setItems(r.data.items.map((t) => ({ id: t.id, name: t.name }))) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedAccountId])
+  const known = items.some((t) => t.id === value)
+  return (
+    <select className={input} value={value} onChange={(e) => onChange(e.target.value)} aria-label="回答後に送るテンプレート">
+      <option value="">テンプレートを選択</option>
+      {value && !known ? <option value={value}>(選択中のテンプレート)</option> : null}
+      {items.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
+  )
+}
 
 export function OptionModal({
   open,
@@ -174,7 +199,7 @@ export function OptionModal({
         <Sub label="回答後メッセージ">
           {(() => {
             const mode = l.answerMessage?.mode ?? (d.onSubmitMessageContent ? 'custom' : 'none')
-            const setMode = (m: 'none' | 'summary' | 'custom') => setL({ answerMessage: { ...l.answerMessage, mode: m } })
+            const setMode = (m: 'none' | 'summary' | 'custom' | 'template') => setL({ answerMessage: { ...l.answerMessage, mode: m } })
             const isFlex = d.onSubmitMessageType === 'flex'
             return (
               <div className="space-y-2">
@@ -182,6 +207,7 @@ export function OptionModal({
                   ['none', '送らない', '回答してもお客様への自動メッセージは送りません(通常はこちら)'],
                   ['summary', '回答内容のまとめを送る', 'お客様の回答を一覧にしたカードを、トークに自動で送ります'],
                   ['custom', '自分で書いた文章を送る', '「ご予約ありがとうございます」など、決まった文章を送ります'],
+                  ['template', 'テンプレートを送る', '作ってあるテンプレート・パック(複数通・カルーセルも可)を送ります'],
                 ] as const).map(([value, label, help]) => (
                   <label key={value} className="flex items-start gap-2 text-sm">
                     <input type="radio" name="answerMessageMode" className="mt-1" checked={mode === value} onChange={() => setMode(value)} />
@@ -191,6 +217,12 @@ export function OptionModal({
                     </span>
                   </label>
                 ))}
+                {mode === 'template' && (
+                  <AnswerTemplateSelect
+                    value={l.answerMessage?.templateId ?? ''}
+                    onChange={(templateId) => setL({ answerMessage: { mode: 'template', templateId } })}
+                  />
+                )}
                 {mode === 'summary' && (
                   <input
                     className={input}

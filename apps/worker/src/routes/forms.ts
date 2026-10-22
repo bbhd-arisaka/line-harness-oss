@@ -82,6 +82,8 @@ function parseFormLstepOptions(raw: string | null | undefined): FormLstepOptions
   }
 }
 import { awardActivityMileage } from '../services/activity-mileage.js';
+import { getLibraryTemplate } from '@line-crm/db';
+import { rawMessagesOf } from '../services/raw-message.js';
 
 const forms = new Hono<Env>();
 
@@ -1214,7 +1216,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
           // 回答後メッセージの種類(フォームごとに設定)。未設定のフォームは「送らない」。
           // 以前は未設定でも、宣伝文入りの「診断結果」カードを自動で送っていた(お客様向けには不適切)。
           const answerMessage = parseFormLstepOptions(form.lstep_options).answerMessage;
-          const answerMode: 'none' | 'summary' | 'custom' =
+          const answerMode: 'none' | 'summary' | 'custom' | 'template' =
             answerMessage?.mode ?? (form.on_submit_message_type && form.on_submit_message_content ? 'custom' : 'none');
 
           // Build the answer-summary Flex card showing their answers
@@ -1259,6 +1261,15 @@ forms.post('/api/forms/:id/submit', async (c) => {
           if (rewardFromTrackedLink) {
             // Tracked-link reward template overrides everything (per-campaign reward)
             messages.push(rewardFromTrackedLink as ReturnType<typeof buildMessage>);
+          } else if (answerMode === 'template' && answerMessage?.templateId) {
+            // テンプレート(パック)を送る: 複数通・カルーセルなど、テンプレートの中身をそのまま(差し込み語は置き換えて)送る。LINEの1回の送信は最大5通
+            const tpl = await getLibraryTemplate(c.env.DB, answerMessage.templateId);
+            if (tpl) {
+              const expanded = expandVariables(tpl.message_content, friendData, apiOrigin, tpl.message_type === 'text' ? 'text' : 'flex');
+              const raw = rawMessagesOf(tpl.message_type, expanded);
+              if (raw) messages.push(...(raw as unknown as ReturnType<typeof buildMessage>[]).slice(0, 5));
+              else messages.push(buildMessage(tpl.message_type as 'text' | 'flex' | 'image', expanded));
+            }
           } else if (answerMode === 'custom' && form.on_submit_message_type && form.on_submit_message_content) {
             // 自分で書いた回答後メッセージ
             const expanded = expandVariables(form.on_submit_message_content, friendData, apiOrigin, form.on_submit_message_type);

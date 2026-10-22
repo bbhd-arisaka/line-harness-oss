@@ -76,8 +76,9 @@ export interface FormLstepOptions {
    * - none    : 送らない(既定)
    * - summary : 回答内容のまとめ(「診断結果」風のカード)を送る
    * - custom  : 自分で書いた文章を送る(forms.on_submit_message_* を使用)
+   * - template: テンプレート(またはパック)を送る(templateId。複数通・カルーセルも送れる)
    */
-  answerMessage?: { mode: 'none' | 'summary' | 'custom'; title?: string };
+  answerMessage?: { mode: 'none' | 'summary' | 'custom' | 'template'; title?: string; templateId?: string };
   /**
    * 回答があったとき、トークに「お客様から届いたカード」(回答結果を見るボタン付き)を出す。常にオン(切り替えなし)。
    * お客様には何も送らない(トークの履歴に、お客様側のメッセージとして残るだけ)。スタッフはWeb版・アプリで回答結果を開ける。
