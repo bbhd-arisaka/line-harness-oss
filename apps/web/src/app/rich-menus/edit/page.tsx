@@ -71,7 +71,7 @@ function RichMenuEditPageInner() {
   return <Editor groupId={groupId} router={router} />
 }
 
-const label = 'w-40 shrink-0 pt-2 text-right text-sm font-bold text-[#069e04]'
+const label = 'w-48 shrink-0 whitespace-nowrap pt-2 text-right text-sm font-bold text-[#069e04]'
 const input = 'h-10 w-full rounded border border-[#cacace] bg-white px-3 text-sm outline-none focus:border-[#069e04]'
 const required = <span className="ml-1 rounded bg-[#d9534f] px-1.5 py-0.5 text-[10px] font-bold text-white">必須</span>
 
@@ -454,7 +454,7 @@ function Editor({ groupId, router }: { groupId: string; router: ReturnType<typeo
           </div>
 
           {/* ページ・メニューの操作(ふだんは使わない) */}
-          <div className="ml-44 flex flex-wrap items-center gap-2 border-t border-[#e3e3e6] pt-4 text-xs">
+          <div className="ml-52 flex flex-wrap items-center gap-2 border-t border-[#e3e3e6] pt-4 text-xs">
             {activePage && pages.length > 1 && (
               <>
                 <input className="h-8 w-40 rounded border border-[#cacace] px-2 text-xs" value={activePage.name} onChange={(e) => updatePage(activePage.id, { name: e.target.value })} aria-label="ページ名" />
