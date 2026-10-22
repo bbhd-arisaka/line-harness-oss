@@ -11,6 +11,13 @@ export const GOOGLE_CALENDAR_OAUTH_SCOPE = [
   'https://www.googleapis.com/auth/calendar.events.freebusy',
 ].join(' ');
 
+// フォーム回答のスプレッドシート連携用。ファイル一覧(名前だけ)・シート読み書き・連携したアカウントのメール表示に必要な3権限。
+export const GOOGLE_SHEETS_OAUTH_SCOPE = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.metadata.readonly',
+  'https://www.googleapis.com/auth/userinfo.email',
+].join(' ');
+
 export interface GoogleOAuthClientCredentials {
   oauthClientId?: string;
   oauthClientSecret?: string;
@@ -24,6 +31,8 @@ export interface GoogleOAuthStatePayload {
   staffId: string;
   expiresAt: number;
   adminOrigin?: string;
+  /** 'sheets' = フォーム回答のスプレッドシート連携(コールバックは予約と共通のURLを使う) */
+  purpose?: 'sheets';
 }
 
 interface GoogleTokenResponse {
@@ -97,6 +106,7 @@ export async function verifyGoogleOAuthState(
     typeof payload.staffId !== 'string' ||
     typeof payload.expiresAt !== 'number' ||
     (payload.adminOrigin !== undefined && typeof payload.adminOrigin !== 'string') ||
+    (payload.purpose !== undefined && payload.purpose !== 'sheets') ||
     payload.expiresAt < now.getTime()
   ) {
     throw new Error('invalid_google_oauth_state');
@@ -108,13 +118,14 @@ export function buildGoogleOAuthAuthorizationUrl(input: {
   clientId: string;
   redirectUri: string;
   state: string;
+  scope?: string;
 }): string {
   const url = new URL(GOOGLE_AUTH_URL);
   url.search = new URLSearchParams({
     client_id: input.clientId,
     redirect_uri: input.redirectUri,
     response_type: 'code',
-    scope: GOOGLE_CALENDAR_OAUTH_SCOPE,
+    scope: input.scope ?? GOOGLE_CALENDAR_OAUTH_SCOPE,
     access_type: 'offline',
     prompt: 'consent',
     state: input.state,

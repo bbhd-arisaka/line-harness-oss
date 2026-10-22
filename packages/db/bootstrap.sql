@@ -428,6 +428,18 @@ CREATE TABLE IF NOT EXISTS form_folders (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS form_google_sheet_links (
+  form_id TEXT PRIMARY KEY REFERENCES forms (id) ON DELETE CASCADE,
+  connection_id TEXT NOT NULL REFERENCES google_sheets_connections (id) ON DELETE CASCADE,
+  spreadsheet_id TEXT NOT NULL,
+  spreadsheet_title TEXT,
+  sheet_title TEXT NOT NULL,
+  last_exported_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS form_opens (
   id TEXT PRIMARY KEY,
   form_id TEXT NOT NULL,
@@ -598,6 +610,19 @@ CREATE TABLE IF NOT EXISTS google_calendar_connections (
   last_error    TEXT,
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE TABLE IF NOT EXISTS google_sheets_connections (
+  id TEXT PRIMARY KEY,
+  google_email TEXT NOT NULL,
+  access_token TEXT,
+  access_token_expires_at TEXT,
+  refresh_token TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  last_error TEXT,
+  connected_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS import_batch_ops (
@@ -1632,6 +1657,8 @@ CREATE INDEX IF NOT EXISTS idx_event_slots_event_starts ON event_slots (event_id
 
 CREATE INDEX IF NOT EXISTS idx_events_account_published_sort ON events (line_account_id, is_published, sort_order);
 
+CREATE INDEX IF NOT EXISTS idx_form_google_sheet_links_conn ON form_google_sheet_links (connection_id);
+
 CREATE INDEX IF NOT EXISTS idx_form_opens_form ON form_opens (form_id, opened_at);
 
 CREATE INDEX IF NOT EXISTS idx_form_submissions_form ON form_submissions (form_id);
@@ -1678,6 +1705,8 @@ CREATE INDEX IF NOT EXISTS idx_friends_user_id ON friends (user_id);
 
 CREATE INDEX IF NOT EXISTS idx_google_calendar_connections_staff
   ON google_calendar_connections (line_account_id, staff_id, is_active);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_google_sheets_connections_email ON google_sheets_connections (google_email);
 
 CREATE INDEX IF NOT EXISTS idx_health_logs_account_created_at
   ON account_health_logs (line_account_id, created_at DESC);

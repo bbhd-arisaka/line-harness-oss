@@ -119,7 +119,8 @@
     "111_remove_system_display_name.sql",
     "112_templates_lstep.sql",
     "113_template_taps.sql",
-    "114_rich_menu_lstep.sql"
+    "114_rich_menu_lstep.sql",
+    "115_google_sheets_oauth.sql"
   ],
-  "migrationCount": 120
+  "migrationCount": 121
 }

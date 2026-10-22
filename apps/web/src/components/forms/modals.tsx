@@ -10,6 +10,7 @@ import type { FormDraft, LstepOptions } from './editor-types'
 import ImageUploader from '@/components/shared/image-uploader'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
+import { GoogleSheetPicker } from './google-sheet-picker'
 
 /** Lステップ風モーダル: 緑の見出し・右上×・下に「閉じる」「保存する」。背景は暗く+ぼかし、開閉はフェード。 */
 function ModalFrame({
@@ -95,7 +96,6 @@ export function OptionModal({
   draft,
   tags,
   scenarios,
-  sheetsEmail,
   onClose,
   onSave,
 }: {
@@ -103,7 +103,6 @@ export function OptionModal({
   draft: FormDraft
   tags: Array<{ id: string; name: string }>
   scenarios: Array<{ id: string; name: string }>
-  sheetsEmail: string | null
   onClose: () => void
   onSave: (patch: Partial<FormDraft>) => void
 }) {
@@ -131,15 +130,7 @@ export function OptionModal({
           使用する
         </label>
         {d.googleSheetsEnabled && (
-          <div className="space-y-2">
-            <input className={input} placeholder="スプレッドシートのURL" value={d.googleSheetUrl} onChange={(e) => set({ googleSheetUrl: e.target.value })} />
-            <input className={input} placeholder="シート名(タブ名)" value={d.googleSheetName} onChange={(e) => set({ googleSheetName: e.target.value })} />
-            <p className="text-[11px] text-[#757578]">
-              スプレッドシートの共有設定で、次のアドレスを「編集者」として追加してください:
-              <br />
-              <span className="font-mono">{sheetsEmail ?? '(サービスアカウント未設定)'}</span>
-            </p>
-          </div>
+          <GoogleSheetPicker value={d.googleLink} onChange={(googleLink) => set({ googleLink })} />
         )}
       </Row>
 

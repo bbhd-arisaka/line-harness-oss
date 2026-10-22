@@ -378,6 +378,15 @@ export interface LstepOptions {
   answerCard?: { enabled?: boolean /* 旧設定。今は無視(常にオン) */; title?: string; body?: string; buttonLabel?: string }
 }
 
+/** 回答を書き出すスプレッドシート(管理画面で紐づけたGoogleアカウント経由) */
+export interface GoogleSheetLink {
+  connectionId: string
+  spreadsheetId: string
+  spreadsheetTitle: string
+  sheetTitle: string
+  lastError?: string | null
+}
+
 export interface FormDraft {
   name: string
   folderId: string
@@ -385,6 +394,7 @@ export interface FormDraft {
   sectionCount: number
   // オプション設定
   googleSheetsEnabled: boolean
+  googleLink: GoogleSheetLink | null
   googleSheetUrl: string
   googleSheetName: string
   onSubmitTagId: string
@@ -424,6 +434,7 @@ export function emptyDraft(folderId: string): FormDraft {
     blocks: [],
     sectionCount: 1,
     googleSheetsEnabled: false,
+    googleLink: null,
     googleSheetUrl: '',
     googleSheetName: '',
     onSubmitTagId: '',

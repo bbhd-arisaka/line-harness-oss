@@ -23,6 +23,7 @@ import {
   type BlockDraft,
   type FieldType,
   type FormDraft,
+  type GoogleSheetLink,
 } from '@/components/forms/editor-types'
 
 interface Folder { id: string; name: string }
@@ -63,7 +64,6 @@ export default function FormEditPage() {
   const [reminders, setReminders] = useState<Array<{ id: string; name: string }>>([])
   const [pickerFields, setPickerFields] = useState<PickerField[]>([])
   const [pickerFolders, setPickerFolders] = useState<PickerFolder[]>([])
-  const [sheetsEmail, setSheetsEmail] = useState<string | null>(null)
 
   const [section, setSection] = useState(1) // 0=共通ヘッダ
   const [selectedRowId, setSelectedRowId] = useState<number | null>(null)
@@ -85,14 +85,13 @@ export default function FormEditPage() {
     setFormId(id)
     ;(async () => {
       try {
-        const [fRes, tRes, sRes, rRes, dRes, pfRes, gRes] = await Promise.all([
+        const [fRes, tRes, sRes, rRes, dRes, pfRes] = await Promise.all([
           fetchApi<{ success: boolean; data: Folder[] }>('/api/forms/folders'),
           api.tags.list(),
           api.scenarios.list(),
           api.reminders.list(),
           fetchApi<{ success: boolean; data: PickerField[] }>('/api/friend-fields/definitions'),
           fetchApi<{ success: boolean; data: PickerFolder[] }>('/api/friend-fields/folders'),
-          fetchApi<{ success: boolean; data: { serviceAccountEmail: string | null } }>('/api/forms/integrations/google-sheets').catch(() => null),
         ])
         if (fRes.success) setFolders(fRes.data)
         if (tRes.success) setTags(tRes.data.map((t) => ({ id: t.id, name: t.name })))
@@ -100,11 +99,11 @@ export default function FormEditPage() {
         if (rRes.success) setReminders(rRes.data.map((r) => ({ id: r.id, name: r.name })))
         if (dRes.success) setPickerFields(dRes.data)
         if (pfRes.success) setPickerFolders(pfRes.data)
-        if (gRes && gRes.success) setSheetsEmail(gRes.data.serviceAccountEmail)
         if (id) {
           const res = await fetchApi<{ success: boolean; data: Record<string, unknown> }>(`/api/forms/${id}`)
           if (res.success) {
-            setDraft(draftFromApi(res.data))
+            const link = await fetchApi<{ success: boolean; data: (GoogleSheetLink & { connectionStatus?: string }) | null }>(`/api/forms/${id}/google-sheet`).catch(() => null)
+            setDraft({ ...draftFromApi(res.data), googleLink: link?.data ?? null })
             setFormUrl((res.data.formUrl as string | null) ?? null)
           } else {
             setError('フォームが見つかりませんでした')
@@ -266,6 +265,16 @@ export default function FormEditPage() {
         ? await fetchApi<{ success: boolean; error?: string }>(`/api/forms/${formId}`, { method: 'PUT', body: JSON.stringify(payload) })
         : await fetchApi<{ success: boolean; error?: string }>('/api/forms', { method: 'POST', body: JSON.stringify(payload) })
       if (!res.success) { setError(res.error || '保存に失敗しました'); return }
+      // 回答の書き出し先(Googleアカウント経由)は、フォーム本体とは別に保存する
+      const savedId = formId ?? ((res as { data?: { id?: string } }).data?.id ?? null)
+      if (savedId) {
+        const link = draft.googleSheetsEnabled ? draft.googleLink : null
+        if (link && link.spreadsheetId && link.sheetTitle) {
+          await fetchApi(`/api/forms/${savedId}/google-sheet`, { method: 'PUT', body: JSON.stringify(link) })
+        } else {
+          await fetchApi(`/api/forms/${savedId}/google-sheet`, { method: 'DELETE' })
+        }
+      }
       setDirty(false)
       router.push(`/form-submissions?group=${draft.folderId}`)
     } catch (e) {
@@ -512,7 +521,6 @@ export default function FormEditPage() {
           draft={draft}
           tags={tags}
           scenarios={scenarios}
-          sheetsEmail={sheetsEmail}
           onClose={() => setModal(null)}
           onSave={(p) => { patch(p); setModal(null) }}
         />

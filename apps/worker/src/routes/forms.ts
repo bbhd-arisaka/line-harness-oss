@@ -36,6 +36,7 @@ import { publishChatEventInBackground } from '../services/chat-events.js';
 import { verifyCallerLineUserId } from '../services/liff-auth.js';
 import { findCallerFriend } from '../services/caller-friend.js';
 import { exportSubmissionToGoogleSheet } from '../services/google-sheets-export.js';
+import { exportSubmissionViaOAuth } from '../services/google-sheets-oauth.js';
 import { pushViaHarnessProxy } from '../services/line-proxy-send.js';
 import { dispatchLineProxyLocally } from '../services/local-line-proxy.js';
 import type {
@@ -1129,12 +1130,16 @@ forms.post('/api/forms/:id/submit', async (c) => {
       }
 
       // Lステップの「Googleスプレッドシート連携 β版」相当。失敗しても回答自体は保存済み(allSettledでログのみ)。
-      if (form.google_sheets_enabled && form.google_sheet_url) {
+      // 管理画面でGoogleアカウントを紐づけた書き出し先があればそちらへ。なければ従来のサービスアカウント方式。
+      if (form.google_sheets_enabled) {
+        const exportContext = { friendName: friend.display_name, submittedAt: submission.created_at };
         sideEffects.push(
-          exportSubmissionToGoogleSheet(c.env, form, submissionData, {
-            friendName: friend.display_name,
-            submittedAt: submission.created_at,
-          }),
+          (async () => {
+            const sent = await exportSubmissionViaOAuth(c.env, form.id, form.fields, submissionData, exportContext);
+            if (!sent && form.google_sheet_url) {
+              await exportSubmissionToGoogleSheet(c.env, form, submissionData, exportContext);
+            }
+          })(),
         );
       }
 

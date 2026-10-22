@@ -44,6 +44,8 @@ import {
   verifyGoogleOAuthState,
 } from '../services/google-oauth.js';
 
+import { handleSheetsOAuthCallback } from './google-sheets.js';
+
 const booking = new Hono<Env>();
 const GOOGLE_OAUTH_CALLBACK_PATH = '/api/booking/google-calendar/oauth/callback';
 const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60_000;
@@ -1241,6 +1243,8 @@ booking.get(GOOGLE_OAUTH_CALLBACK_PATH, async (c) => {
     const payload = await verifyGoogleOAuthState(state, c.env.API_KEY);
     staffId = payload.staffId;
     adminOrigin = payload.adminOrigin;
+    // フォーム回答のスプレッドシート連携も、同じ(Google登録済みの)コールバックURLを使う
+    if (payload.purpose === 'sheets') return await handleSheetsOAuthCallback(c, payload);
     if (c.req.query('error')) {
       return c.redirect(adminCalendarReturnUrl(c.env, staffId, 'denied', adminOrigin));
     }
