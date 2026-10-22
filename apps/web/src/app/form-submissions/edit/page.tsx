@@ -48,7 +48,7 @@ function scrollWithin(containerId: string, elementId: string, align: 'center' | 
   container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
 }
 
-const toolBtn = 'px-2 py-1 text-xs font-bold text-[#069e04] disabled:text-[#9fd49d] disabled:cursor-not-allowed'
+const toolBtn = 'whitespace-nowrap px-2 py-1 text-xs font-bold text-[#069e04] disabled:text-[#9fd49d] disabled:cursor-not-allowed'
 
 export default function FormEditPage() {
   const dialogs = useDialogs()
@@ -416,8 +416,8 @@ export default function FormEditPage() {
             </div>
 
             <div className="flex items-center justify-between border-b border-[#e3e3e6] bg-[#f4f4f4] px-4 py-2">
-              <span className="text-sm font-bold">ブロック設定</span>
-              <div className="flex items-center gap-1">
+              <span className="whitespace-nowrap text-sm font-bold">ブロック設定</span>
+              <div className="flex flex-wrap items-center justify-end gap-1">
                 <button type="button" className={toolBtn} disabled={past.length === 0} onClick={undo} aria-label="元に戻す">↶</button>
                 <button type="button" className={toolBtn} disabled={future.length === 0} onClick={redo} aria-label="やり直す">↷</button>
                 <button type="button" className={toolBtn} disabled={!selectedInSection} onClick={() => moveSelected(-1)}>上に移動</button>
@@ -483,7 +483,7 @@ export default function FormEditPage() {
             </div>
           </div>
           {/* 右: プレビュー */}
-          <div className="w-[24rem] flex-shrink-0 border-l border-[#e3e3e6]">
+          <div className="w-[20rem] flex-shrink-0 border-l border-[#e3e3e6] xl:w-[24rem]">
             <PreviewFrame draft={draft} section={section} selectedRowId={selectedRowId} onSelect={selectFromPreview} />
           </div>
 

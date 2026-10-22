@@ -295,7 +295,7 @@ export function BlockCard({
               />
               {hasFriendTarget && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-[#757578]">友だち情報欄</span>
+                  <span className="whitespace-nowrap text-[11px] text-[#757578]">友だち情報欄</span>
                   <FriendFieldPicker
                     value={friendTarget?.fieldKey ?? ''}
                     fields={pickerFields}
@@ -322,7 +322,7 @@ export function BlockCard({
               />
               {block.choiceMode === 'friend' && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-[#757578]">友だち情報欄</span>
+                  <span className="whitespace-nowrap text-[11px] text-[#757578]">友だち情報欄</span>
                   <FriendFieldPicker
                     value={block.friendFieldKey}
                     fields={pickerFields}
@@ -491,7 +491,7 @@ export function BlockCard({
             )}
             {friendOnly && hasFriendTarget && (
               <div className="mt-2 flex items-center gap-2">
-                <span className="text-[11px] text-[#757578]">友だち情報欄</span>
+                <span className="whitespace-nowrap text-[11px] text-[#757578]">友だち情報欄</span>
                 <FriendFieldPicker
                   value={friendTarget?.fieldKey ?? ''}
                   fields={pickerFields}

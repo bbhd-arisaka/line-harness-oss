@@ -298,8 +298,9 @@ export default function FriendFieldsPage() {
             </div>
           </div>
 
-          <div className="mt-3">
-            <div className="grid grid-cols-[2.5rem_2rem_1fr_7rem_10rem_7rem_5.5rem] items-center bg-[#f1f1f4] px-2 text-xs text-[#757578]" style={{ height: 40 }}>
+          <div className={`mt-3 overflow-x-auto ${rowMenuId ? 'pb-44' : ''}`}>
+            <div className="min-w-[44rem]">
+            <div className="grid grid-cols-[2.5rem_2rem_minmax(10rem,1fr)_7rem_10rem_7rem_5.5rem] items-center bg-[#f1f1f4] px-2 text-xs text-[#757578]" style={{ height: 40 }}>
               <span />
               <input
                 type="checkbox"
@@ -328,7 +329,7 @@ export default function FriendFieldsPage() {
                   onDragStart={() => { dragDefId.current = d.id }}
                   onDragOver={(e) => { if (dragEnabled) e.preventDefault() }}
                   onDrop={() => void dropDefinition(d.id)}
-                  className="item-enter grid grid-cols-[2.5rem_2rem_1fr_7rem_10rem_7rem_5.5rem] items-center border-b border-[#e3e3e6] bg-white px-2 text-sm transition-colors duration-150 hover:bg-[#fafafb]"
+                  className="item-enter grid grid-cols-[2.5rem_2rem_minmax(10rem,1fr)_7rem_10rem_7rem_5.5rem] items-center border-b border-[#e3e3e6] bg-white px-2 text-sm transition-colors duration-150 hover:bg-[#fafafb]"
                   style={{ height: 47 }}
                 >
                   <span className="pl-1">{dragEnabled ? <DragHandle /> : null}</span>
@@ -369,6 +370,7 @@ export default function FriendFieldsPage() {
                 </div>
               ))
             )}
+            </div>
           </div>
 
           {pageCount > 1 && (

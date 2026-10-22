@@ -183,7 +183,8 @@ export default function FormListPage() {
   }
 
   const newHref = `/form-submissions/edit?group=${selectedFolderId === UNASSIGNED ? '' : selectedFolderId}`
-  const cols = 'grid-cols-[1fr_11rem_9rem_10rem_8rem_6rem_3rem]'
+  // フォーム名の列が、狭い画面で潰れない(縦に1文字ずつ並ぶ)ように、最低の幅(minmax)と、横に動かせる枠(overflow-x-auto)をつける
+  const cols = 'grid-cols-[minmax(12rem,1fr)_10rem_6.5rem_6rem_6.5rem_5rem_2.5rem]'
 
   return (
     <div>
@@ -273,7 +274,8 @@ export default function FormListPage() {
             </div>
           </div>
 
-          <div className="mt-3">
+          <div className={`mt-3 overflow-x-auto ${rowMenuId ? 'pb-44' : ''}`}>
+           <div className="min-w-[46rem]">
             <div className={`grid ${cols} items-center bg-[#f1f1f4] px-4 text-xs text-[#757578]`} style={{ height: 40 }}>
               <span>フォーム名</span>
               <span>タグコード</span>
@@ -348,6 +350,7 @@ export default function FormListPage() {
                 )
               })
             )}
+           </div>
           </div>
 
           {pageCount > 1 && (
