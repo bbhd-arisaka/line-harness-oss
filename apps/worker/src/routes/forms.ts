@@ -1195,6 +1195,9 @@ forms.post('/api/forms/:id/submit', async (c) => {
           console.log('Form reply: starting for friendId', friendId);
           const friend = await getFriendById(db, friendId!);
           if (!friend?.line_user_id) { console.log('Form reply: no line_user_id'); return; }
+          // Lステップと並行運用中の公式アカウントは、受信・記録だけで、お客様へは何も自動送信しない
+          const replyAccount = friend.line_account_id ? await getLineAccountById(db, friend.line_account_id) : null;
+          if (replyAccount?.lstep_forward_url) { console.log('Form reply: parallel-run account, skip'); return; }
           console.log('Form reply: sending to', friend.line_user_id);
           const accessToken = await resolveFriendAccessToken(
             db,

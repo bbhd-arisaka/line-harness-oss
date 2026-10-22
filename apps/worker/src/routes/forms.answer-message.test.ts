@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   verifyCallerLineUserId: vi.fn(),
   push: vi.fn(),
   getLibraryTemplate: vi.fn(),
+  getLineAccountById: vi.fn(),
 }));
 
 vi.mock('@line-crm/db', () => ({
@@ -28,7 +29,7 @@ vi.mock('@line-crm/db', () => ({
   getTrackedLinkById: vi.fn(),
   getMessageTemplateById: vi.fn(),
   getLibraryTemplate: mocks.getLibraryTemplate,
-  getLineAccountById: vi.fn(),
+  getLineAccountById: mocks.getLineAccountById,
   resolveDefaultLineAccount: vi.fn(async () => null),
   stopAllFriendScenarios: vi.fn(),
   updateFriendRegistrationFields: vi.fn(),
@@ -179,6 +180,14 @@ describe('回答後メッセージ', () => {
   test('「テンプレートを送る」で、テンプレートが見つからないときは、何も送らない', async () => {
     mocks.getFormById.mockResolvedValue(form({ lstep_options: JSON.stringify({ answerMessage: { mode: 'template', templateId: 'gone' } }) }));
     mocks.getLibraryTemplate.mockResolvedValue(null);
+    expect((await submit()).status).toBe(201);
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  test('Lステップと並行運用中の公式アカウントの友だちには、回答後メッセージを送らない', async () => {
+    mocks.getFormById.mockResolvedValue(form({ on_submit_message_type: 'text', on_submit_message_content: 'ありがとう', lstep_options: JSON.stringify({ answerMessage: { mode: 'custom' } }) }));
+    mocks.getFriendById.mockResolvedValue({ id: 'friend-1', line_user_id: 'U1', display_name: '山田', metadata: '{}', line_account_id: 'acc-parallel' });
+    mocks.getLineAccountById.mockResolvedValue({ id: 'acc-parallel', lstep_forward_url: 'https://rcv.example/x' });
     expect((await submit()).status).toBe(201);
     expect(mocks.push).not.toHaveBeenCalled();
   });
