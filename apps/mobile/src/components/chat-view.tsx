@@ -114,7 +114,7 @@ const BubbleView = memo(function BubbleView({
       <View
         style={[
           styles.bubble,
-          { backgroundColor: out ? c.bubbleOutgoing : c.bubbleIncoming },
+          { backgroundColor: out ? (bubble.system ? c.bubbleSystem : c.bubbleOutgoing) : c.bubbleIncoming },
           out ? styles.bubbleOut : styles.bubbleIn,
         ]}
       >
@@ -127,7 +127,7 @@ const BubbleView = memo(function BubbleView({
             <Image source={{ uri: bubble.imageUrl }} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
           </Pressable>
         ) : (
-          <MessageText text={bubble.text} style={[styles.bubbleText, { color: out ? c.bubbleOutgoingText : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' }]} />
+          <MessageText text={bubble.text} style={[styles.bubbleText, { color: out ? (bubble.system ? c.bubbleSystemText : c.bubbleOutgoingText) : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' }]} />
         )}
       </View>
       {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}

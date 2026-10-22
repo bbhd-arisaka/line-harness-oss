@@ -217,6 +217,8 @@ export function parseFormAnswerCard(content: string): FormAnswerCard | null {
 export interface Bubble {
   id: string;
   side: 'incoming' | 'outgoing';
+  /** 送ったメッセージの出どころ。system=一斉配信・シナリオ・自動応答など(吹き出しを薄い青にする)。手動・受信・不明は manual 扱い */
+  system?: boolean;
   kind: BubbleKind;
   /** 本文、または画像・スタンプ等の代替表示 */
   text: string;
@@ -249,7 +251,7 @@ function parseImageUrls(content: string): { preview: string | null; full: string
 /** 1通のメッセージを、画面に出す吹き出しの形にする */
 export function toBubble(m: ChatMessage): Bubble {
   const side = m.direction === 'outgoing' ? 'outgoing' : 'incoming';
-  const base = { id: m.id, side, time: formatTime(m.createdAt), createdAt: m.createdAt } as const;
+  const base = { id: m.id, side, system: side === 'outgoing' && m.origin === 'system', time: formatTime(m.createdAt), createdAt: m.createdAt } as const;
   switch (m.messageType) {
     case 'text':
       return { ...base, kind: 'text', text: m.content, imageUrl: null };

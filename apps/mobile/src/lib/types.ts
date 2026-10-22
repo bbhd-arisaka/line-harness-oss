@@ -165,6 +165,8 @@ export interface ChatMessage {
   /** text=本文、image=JSON({originalContentUrl,previewImageUrl}) か "[画像]"、flex=JSON、sticker=JSON か "[スタンプ]" */
   content: string;
   createdAt: string;
+  /** 送信の出どころ: manual=スタッフの手動 / system=一斉配信・シナリオ・自動応答など(受信・古いサーバーは無し) */
+  origin?: 'manual' | 'system' | null;
 }
 
 /** トークに残る出来事のログ(タグ・ブロック・フォーム回答など)。type は増えるので string */

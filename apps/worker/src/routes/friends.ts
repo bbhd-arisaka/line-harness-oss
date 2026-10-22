@@ -1,3 +1,4 @@
+import { messageOrigin } from '../services/message-origin.js';
 import { Hono } from 'hono';
 import { invalidateUnansweredCache } from '../services/unanswered-inbox.js';
 import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
@@ -750,14 +751,25 @@ friends.get('/api/friends/:id/messages', async (c) => {
     // same history across DirectMessagePanel and the chat panel.
     const result = await c.env.DB
       .prepare(
-        `SELECT id, direction, message_type as messageType, content, created_at as createdAt
+        `SELECT id, direction, message_type as messageType, content, created_at as createdAt, source, broadcast_id, scenario_step_id
          FROM messages_log WHERE friend_id = ?
            AND (delivery_type IS NULL OR delivery_type != 'test')
          ORDER BY created_at DESC LIMIT 200`,
       )
       .bind(friendId)
-      .all<{ id: string; direction: string; messageType: string; content: string; createdAt: string }>();
-    return c.json({ success: true, data: result.results.reverse() });
+      .all<{ id: string; direction: string; messageType: string; content: string; createdAt: string; source: string | null; broadcast_id: string | null; scenario_step_id: string | null }>();
+    return c.json({
+      success: true,
+      data: result.results.reverse().map((m) => ({
+        id: m.id,
+        direction: m.direction,
+        messageType: m.messageType,
+        content: m.content,
+        createdAt: m.createdAt,
+        // manual=スタッフの手動 / system=一斉配信・シナリオ・自動応答など(受信は null)
+        origin: messageOrigin(m),
+      })),
+    });
   } catch (err) {
     console.error('GET /api/friends/:id/messages error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

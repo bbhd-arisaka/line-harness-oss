@@ -60,7 +60,7 @@ describe('GET /api/chats/:id の events', () => {
     // 既存のフィールド
     expect(body.data).toMatchObject({ id: 'f1', friendId: 'f1', friendName: 'たろう', status: 'resolved' });
     expect(body.data.messages).toEqual([
-      { id: 'm1', direction: 'incoming', messageType: 'text', content: 'こんにちは', createdAt: '2026-10-01T09:30:00.000' },
+      { id: 'm1', direction: 'incoming', messageType: 'text', content: 'こんにちは', createdAt: '2026-10-01T09:30:00.000', origin: null },
     ]);
   });
 

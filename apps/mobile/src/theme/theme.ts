@@ -22,6 +22,9 @@ export interface Colors {
   bubbleIncomingText: string;
   bubbleOutgoing: string;
   bubbleOutgoingText: string;
+  /** システムからの配信(一斉配信・シナリオ・自動応答など)の吹き出し */
+  bubbleSystem: string;
+  bubbleSystemText: string;
   chatBackground: string;
   inputBackground: string;
 }
@@ -45,6 +48,8 @@ export const lightColors: Colors = {
   bubbleIncomingText: '#101828',
   bubbleOutgoing: '#a7e99e',
   bubbleOutgoingText: '#0b2a0a',
+  bubbleSystem: '#cfe5fb',
+  bubbleSystemText: '#0b2545',
   chatBackground: '#e9edf2',
   inputBackground: '#f2f4f7',
 };
@@ -68,6 +73,8 @@ export const darkColors: Colors = {
   bubbleIncomingText: '#f2f4f7',
   bubbleOutgoing: '#1f7a3d',
   bubbleOutgoingText: '#ffffff',
+  bubbleSystem: '#24527f',
+  bubbleSystemText: '#ffffff',
   chatBackground: '#10151b',
   inputBackground: '#1d232b',
 };

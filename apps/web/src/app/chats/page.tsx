@@ -56,6 +56,8 @@ interface ChatMessage {
   messageType: string
   content: string
   createdAt: string
+  /** 送信の出どころ: manual=スタッフの手動 / system=一斉配信・シナリオ・自動応答など(受信・古いサーバーは無し) */
+  origin?: 'manual' | 'system' | null
 }
 
 // リッチメニューのタブ切替 (richmenuswitch) は、webhook が postback data
@@ -185,6 +187,12 @@ interface MessageLog {
   messageType: string
   content: string
   createdAt: string
+  origin?: 'manual' | 'system' | null
+}
+
+/** 送信メッセージの吹き出しの色。手動=アプリと同じ緑、システムからの配信=薄い青 */
+function outgoingBubbleClass(origin: 'manual' | 'system' | null | undefined): string {
+  return origin === 'system' ? 'bg-[#cfe5fb] text-[#0b2545]' : 'bg-[#a7e99e] text-[#0b2a0a]'
 }
 
 function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
@@ -226,6 +234,7 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
       setMessages((prev) => [...prev, {
         id: crypto.randomUUID(),
         direction: 'outgoing',
+        origin: 'manual',
         messageType: 'text',
         content: message,
         createdAt: new Date().toISOString(),
@@ -291,11 +300,11 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
               ) : (
                 <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
                   msg.direction === 'outgoing'
-                    ? 'bg-green-500 text-white'
+                    ? outgoingBubbleClass(msg.origin)
                     : 'bg-gray-100 text-gray-900'
                 }`}>
                   <div className="text-sm whitespace-pre-wrap break-words">{renderContent(msg)}</div>
-                  <p className={`text-xs mt-1 ${msg.direction === 'outgoing' ? 'text-green-200' : 'text-gray-400'}`}>
+                  <p className={`text-xs mt-1 ${msg.direction === 'outgoing' ? 'text-black/45' : 'text-gray-400'}`}>
                     {new Date(msg.createdAt).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
@@ -1025,6 +1034,7 @@ export default function ChatsPage() {
             {
               id: crypto.randomUUID(),
               direction: 'outgoing',
+              origin: 'manual',
               messageType: 'image',
               content: imgPayload,
               createdAt: now,
@@ -1074,6 +1084,7 @@ export default function ChatsPage() {
             {
               id: crypto.randomUUID(),
               direction: 'outgoing',
+              origin: 'manual',
               messageType: 'text',
               content,
               createdAt: now,
@@ -1671,7 +1682,7 @@ ${t.messageContent}` : t.messageContent))
                               <div
                                 className={`max-w-[75%] lg:max-w-[60%] px-3 py-2 text-sm break-words whitespace-pre-wrap ${
                                   isOutgoing
-                                    ? 'rounded-tl-2xl rounded-tr-md rounded-bl-2xl rounded-br-2xl bg-kumo-brand text-kumo-inverse'
+                                    ? `rounded-tl-2xl rounded-tr-md rounded-bl-2xl rounded-br-2xl ${outgoingBubbleClass(msg.origin)}`
                                     : 'rounded-tl-md rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white text-gray-900'
                                 }`}
                               >

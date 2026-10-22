@@ -1,3 +1,4 @@
+import { messageOrigin } from '../services/message-origin.js';
 import { Hono } from 'hono';
 import { expandFormLinks, hasFormTag, FORM_LINK_UNAVAILABLE_MESSAGE } from '../services/form-link.js';
 import { getUnsupportedBroadcastVariables, renderBroadcastMessageContent } from '../services/render-message.js';
@@ -599,7 +600,7 @@ chats.get('/api/chats/:id', async (c) => {
     // 現状の最重量ユーザー(481件)の2倍バッファ。これ以上の履歴はページング未実装（Phase 2 TODO）。
     const messages = await c.env.DB
       .prepare(
-        `SELECT id, friend_id, direction, message_type, content, created_at
+        `SELECT id, friend_id, direction, message_type, content, created_at, source, broadcast_id, scenario_step_id
          FROM messages_log
          WHERE friend_id = ? AND (delivery_type IS NULL OR delivery_type != 'test')
          ORDER BY created_at DESC LIMIT 1000`,
@@ -632,6 +633,8 @@ chats.get('/api/chats/:id', async (c) => {
           messageType: m.message_type,
           content: m.content,
           createdAt: m.created_at,
+          // 送信の出どころ: manual=スタッフの手動 / system=一斉配信・シナリオ・自動応答など(受信は null)
+          origin: messageOrigin(m),
         })),
         events: events.map((e) => ({
           id: e.id,

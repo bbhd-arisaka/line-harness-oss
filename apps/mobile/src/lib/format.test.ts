@@ -107,6 +107,11 @@ describe('吹き出し', () => {
   it('テキスト', () => {
     expect(toBubble(msg({}))).toMatchObject({ side: 'incoming', kind: 'text', text: 'こんにちは', time: '10:00' });
     expect(toBubble(msg({ direction: 'outgoing' })).side).toBe('outgoing');
+    // システムからの配信(一斉配信・シナリオなど)だけ、薄い青にする目印が付く。手動・受信・古いサーバーは付かない
+    expect(toBubble(msg({ direction: 'outgoing', origin: 'system' })).system).toBe(true);
+    expect(toBubble(msg({ direction: 'outgoing', origin: 'manual' })).system).toBe(false);
+    expect(toBubble(msg({ direction: 'outgoing' })).system).toBe(false);
+    expect(toBubble(msg({ direction: 'incoming', origin: 'system' })).system).toBe(false);
   });
   it('画像: URL が取れれば表示、取れなければ代替表示', () => {
     const json = JSON.stringify({ originalContentUrl: 'https://x.test/o.jpg', previewImageUrl: 'https://x.test/p.jpg' });
