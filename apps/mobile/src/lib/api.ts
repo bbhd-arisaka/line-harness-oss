@@ -4,6 +4,7 @@ import type {
   BroadcastItem,
   BroadcastProgress,
   ChatDetail,
+  MessageSearchHit,
   ChatStatus,
   ChatSummary,
   FormAnswerDetail,
@@ -190,6 +191,9 @@ export function createApiClient(options: ApiClientOptions) {
           beforeId: params.before?.id,
         },
       }),
+    /** トーク内容の検索(メッセージ本文に検索語を含む友だちと、その該当メッセージ)。2文字以上 */
+    searchChatMessages: (lineAccountId: string, q: string) =>
+      request<{ items: MessageSearchHit[] }>('GET', '/api/chats/message-search', { query: { lineAccountId, q } }),
     /** ホーム(トップ)の集計。fresh=true で、覚えている結果を使わず作り直す */
     getHome: (lineAccountId: string, fresh = false) =>
       request<HomeSummary>('GET', '/api/home', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),

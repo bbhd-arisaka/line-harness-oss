@@ -114,6 +114,14 @@ describe('トーク', () => {
     );
   });
 
+  it('トーク内容の検索: アカウントと検索語をクエリにして、items を返す', async () => {
+    const hit = { friendId: 'f1', name: '有坂', displayName: null, pictureUrl: null, direction: 'incoming', snippet: '…予約したい', createdAt: '2026-10-03T10:00:00.000+09:00', hits: 2 };
+    const { api, fetchImpl } = setup(jsonResponse({ success: true, data: { items: [hit] } }));
+    const res = await api.searchChatMessages('acc 1', '予約 変更');
+    expect(res.items).toEqual([hit]);
+    expect(lastCall(fetchImpl).url).toBe('https://example.test/api/chats/message-search?lineAccountId=acc%201&q=%E4%BA%88%E7%B4%84%20%E5%A4%89%E6%9B%B4');
+  });
+
   it('送信: text として POST する', async () => {
     const { api, fetchImpl } = setup(jsonResponse({ success: true, data: { sent: true, messageId: 'm1' } }));
     const res = await api.sendChatText('friend-1', 'こんにちは');

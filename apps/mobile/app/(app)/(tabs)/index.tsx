@@ -8,7 +8,7 @@ import { Avatar, EmptyView, ErrorView, LoadingView, StatusBadge } from '../../..
 import { api } from '../../../src/state/services';
 import { useAccounts } from '../../../src/state/session';
 import { formatListTime, messagePreview } from '../../../src/lib/format';
-import type { ChatStatus, ChatSummary } from '../../../src/lib/types';
+import type { ChatStatus, ChatSummary, MessageSearchHit } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 import { describeError } from '../../../src/lib/errors';
 import { isSplitLayout, LIST_PANE_WIDTH } from '../../../src/lib/layout';
@@ -24,6 +24,8 @@ import { FadeIn } from '../../../src/components/fade-in';
 import { animateLayout } from '../../../src/lib/motion';
 
 const PAGE_SIZE = 50;
+/** トーク内容の検索は、2文字以上から(サーバー側も同じ) */
+const MESSAGE_SEARCH_MIN = 2;
 
 type Filter = 'all' | ChatStatus;
 const FILTERS: { key: Filter; label: string }[] = [
@@ -75,6 +77,36 @@ const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: 
   );
 });
 
+/** トーク内容の検索結果の1行: 名前・該当メッセージの一部・日付 */
+const MessageHitRow = memo(function MessageHitRow({ hit, onPress }: { hit: MessageSearchHit; onPress: (id: string) => void }) {
+  const c = useColors();
+  return (
+    <Pressable
+      onPress={() => onPress(hit.friendId)}
+      accessibilityRole="button"
+      accessibilityLabel={`${hit.name}。${hit.snippet}`}
+      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.inputBackground : c.card, borderBottomColor: c.border }]}
+    >
+      <Avatar uri={hit.pictureUrl} name={hit.name} size={48} />
+      <View style={styles.rowBody}>
+        <View style={styles.rowTop}>
+          <Text style={[styles.name, { color: c.text, fontWeight: '600' }]} numberOfLines={1}>
+            {hit.name}
+          </Text>
+          <Text style={{ color: c.textMuted, fontSize: 12 }}>
+            {formatListTime(hit.createdAt)}
+            {hit.hits > 1 ? ` ・ ${hit.hits}件` : ''}
+          </Text>
+        </View>
+        <Text style={[styles.preview, { color: c.textMuted, marginTop: 3 }]} numberOfLines={2}>
+          {hit.direction === 'outgoing' ? '送信: ' : ''}
+          {hit.snippet}
+        </Text>
+      </View>
+    </Pressable>
+  );
+});
+
 /**
  * トークの一覧。
  * - 通常: 行をタップすると、トーク画面を開く
@@ -98,6 +130,9 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   const [query, setQuery] = useState('');
   const search = useDebounced(query.trim(), 400);
   const [items, setItems] = useState<ChatSummary[]>([]);
+  // トーク内容の検索(名前の検索と同じ入力欄)。名前の結果の下に「トークの内容」として出す
+  const [msgHits, setMsgHits] = useState<MessageSearchHit[]>([]);
+  const [msgSearching, setMsgSearching] = useState(false);
   // ピン留めしたトーク(一覧の上に出す。ふつうの一覧とは別に、小さな問い合わせで取る)
   const [pinnedItems, setPinnedItems] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,6 +184,32 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
     },
     [accountId, filter, search],
   );
+
+  // 検索語がメッセージの本文に含まれる友だちも探す(入力が止まったあと・2文字以上)
+  useEffect(() => {
+    if (!accountId || search.length < MESSAGE_SEARCH_MIN) {
+      setMsgHits([]);
+      setMsgSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setMsgSearching(true);
+    api
+      .searchChatMessages(accountId, search)
+      .then((res) => {
+        if (!cancelled) setMsgHits(res.items);
+      })
+      .catch(() => {
+        // 名前の検索は使えるので、内容の検索が失敗しても何も出さない
+        if (!cancelled) setMsgHits([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMsgSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, search]);
 
   // アカウント・絞り込み・検索が変わったら最初から
   useEffect(() => {
@@ -296,7 +357,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="名前で検索"
+            placeholder="名前・トークの内容で検索"
             placeholderTextColor={c.textMuted}
             returnKeyType="search"
             autoCapitalize="none"
@@ -342,12 +403,26 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
             ) : null
           }
           ListEmptyComponent={
+            search && (msgHits.length > 0 || msgSearching) ? null : (
             <EmptyView
               title={search ? '見つかりませんでした' : filter === 'all' ? 'トークはまだありません' : `${FILTERS.find((f) => f.key === filter)?.label}のトークはありません`}
             />
+            )
           }
-          ListFooterComponent={loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}
-          contentContainerStyle={items.length === 0 && pinnedItems.length === 0 ? { flexGrow: 1 } : undefined}
+          ListFooterComponent={
+            <>
+              {loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}
+              {msgHits.length > 0 ? (
+                <View>
+                  <Text style={[styles.sectionLabel, { color: c.textMuted, backgroundColor: c.inputBackground }]}>トークの内容</Text>
+                  {msgHits.map((h) => (
+                    <MessageHitRow key={h.friendId} hit={h} onPress={openChat} />
+                  ))}
+                </View>
+              ) : null}
+            </>
+          }
+          contentContainerStyle={items.length === 0 && pinnedItems.length === 0 && msgHits.length === 0 ? { flexGrow: 1 } : undefined}
         />
         </FadeIn>
       )}
@@ -392,5 +467,6 @@ const styles = StyleSheet.create({
   preview: { flex: 1, fontSize: 14 },
   unreadDot: { position: 'absolute', top: -1, right: -1, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
   pinBadge: { position: 'absolute', right: -4, bottom: -4, width: 24, height: 24, borderRadius: 12, borderWidth: 2, backgroundColor: '#4f6bed', alignItems: 'center', justifyContent: 'center' },
+  sectionLabel: { paddingHorizontal: 16, paddingVertical: 6, fontSize: 12, fontWeight: '600' },
   banner: { padding: 10, margin: 12, borderRadius: 10 },
 });

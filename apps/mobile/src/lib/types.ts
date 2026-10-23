@@ -137,6 +137,19 @@ export interface PushSettings {
 /** chats.status: unread=未対応 / in_progress=対応中 / resolved=対応済み */
 export type ChatStatus = 'unread' | 'in_progress' | 'resolved';
 
+/** GET /api/chats/message-search の1件(友だちごとに、新しい該当メッセージ1件) */
+export interface MessageSearchHit {
+  friendId: string;
+  name: string;
+  displayName: string | null;
+  pictureUrl: string | null;
+  direction: string;
+  snippet: string;
+  createdAt: string;
+  /** その友だちの該当メッセージの数 */
+  hits: number;
+}
+
 /** GET /api/chats の1件。id は friend_id と同じ */
 export interface ChatSummary {
   id: string;
