@@ -2,6 +2,7 @@
 
 import { resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
 import { FieldValue } from '@/components/friends/field-value'
+import { FieldFileInput } from '@/components/friends/field-file-input'
 import { FriendRichMenuView, useFriendRichMenu } from '@/components/friends/friend-rich-menu'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
@@ -504,8 +505,22 @@ export default function FriendDetailPage() {
                       <label className="pt-2 text-sm text-kumo-subtle">{def.label}</label>
                       {def.fieldType === 'image' || def.fieldType === 'pdf' ? (
                         <div className="pt-2 text-sm">
-                          <FieldValue value={value} />
-                          <p className="mt-1 text-[11px] text-kumo-subtle">ファイルは回答フォームの「ファイル」ブロックから登録されます。</p>
+                          <FieldFileInput
+                            friendId={friend.id}
+                            fieldKey={def.fieldKey}
+                            fieldType={def.fieldType}
+                            value={value}
+                            onChanged={(url) => {
+                              setFolderDrafts((rows) => ({ ...rows, [def.fieldKey]: url ?? '' }))
+                              setFriend((f) => {
+                                if (!f) return f
+                                const metadata = { ...(f.metadata ?? {}) }
+                                if (url === null) delete metadata[def.fieldKey]
+                                else metadata[def.fieldKey] = url
+                                return { ...f, metadata }
+                              })
+                            }}
+                          />
                         </div>
                       ) : def.fieldType === 'select' || def.fieldType === 'radio' ? (
                         <Select

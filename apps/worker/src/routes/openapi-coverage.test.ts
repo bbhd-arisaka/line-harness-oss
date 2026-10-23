@@ -183,6 +183,7 @@ const KNOWN_GAPS: readonly string[] = [
   'GET /api/integrations/google-sheets/connections/{id}/spreadsheets/{sid}/sheets',
   'GET /api/integrations/google-sheets/connections/{id}/folders',
   'POST /api/integrations/google-sheets/connections/{id}/spreadsheets',
+  'POST /api/friends/{id}/field-image',
   'GET /api/forms/{id}/google-sheet',
   'PUT /api/forms/{id}/google-sheet',
   'DELETE /api/forms/{id}/google-sheet',

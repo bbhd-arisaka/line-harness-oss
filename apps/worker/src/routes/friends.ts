@@ -651,6 +651,63 @@ friends.put('/api/friends/:id/metadata', async (c) => {
   }
 });
 
+// POST /api/friends/:id/field-image?key=<項目キー> — 友だち情報の「画像」「PDF」項目へファイルを登録する(管理画面から・引き継ぎから)。
+// 本文はファイルそのもの(Content-Type = 画像またはPDF)。保存先は回答フォームのファイルと同じ(管理者だけが閲覧できる)。
+const FIELD_FILE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'application/pdf': 'pdf',
+};
+const FIELD_FILE_MAX_BYTES = 10 * 1024 * 1024;
+
+friends.post('/api/friends/:id/field-image', async (c) => {
+  try {
+    const friendId = c.req.param('id');
+    const key = (c.req.query('key') ?? '').trim();
+    if (!key || key.length > 100) return c.json({ success: false, error: '項目を指定してください' }, 400);
+    const friend = await getFriendById(c.env.DB, friendId);
+    if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
+
+    const mimeType = (c.req.header('Content-Type') || '').split(';')[0].trim().toLowerCase();
+    const ext = FIELD_FILE_TYPES[mimeType];
+    if (!ext) return c.json({ success: false, error: '画像(jpg/png/gif/heic)かPDFを選んでください' }, 400);
+    const data = await c.req.arrayBuffer();
+    if (data.byteLength === 0) return c.json({ success: false, error: 'ファイルが空です' }, 400);
+    if (data.byteLength > FIELD_FILE_MAX_BYTES) return c.json({ success: false, error: 'ファイルサイズは10MB以内にしてください' }, 413);
+
+    let originalName = '';
+    try { originalName = decodeURIComponent(c.req.header('X-Filename') ?? ''); } catch { /* 名前が読めなくても保存は続ける */ }
+
+    // 閲覧用の GET /api/form-uploads/:id/:file をそのまま使うため、フォームIDの位置に友だちIDを入れる
+    const file = `${crypto.randomUUID()}.${ext}`;
+    await c.env.IMAGES.put(`form-uploads/${friendId}/${file}`, data, {
+      httpMetadata: { contentType: mimeType },
+      customMetadata: { originalFilename: originalName.slice(0, 200), friendId, fieldName: key },
+    });
+    const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+    const url = `${workerUrl}/api/form-uploads/${friendId}/${file}`;
+
+    const existing = JSON.parse(friend.metadata || '{}') as Record<string, unknown>;
+    await c.env.DB
+      .prepare('UPDATE friends SET metadata = ?, updated_at = ? WHERE id = ?')
+      .bind(JSON.stringify({ ...existing, [key]: url }), jstNow(), friendId)
+      .run();
+    await recordFriendInfoChanged(c.env.DB, {
+      friendId,
+      lineAccountId: friend.line_account_id ?? null,
+      keys: changedMetadataKeys(existing, { [key]: url }),
+      actor: c.get('staff')?.name ?? null,
+    });
+    return c.json({ success: true, data: { url, name: originalName, size: data.byteLength, mimeType } }, 201);
+  } catch (err) {
+    console.error('POST /api/friends/:id/field-image error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // PUT /api/friends/:id/profile - 本名・システム表示名・個別メモを更新。
 // 友だち情報欄(metadata)とは別のLステップ「回答の登録先」相当の専用項目。
 friends.put('/api/friends/:id/profile', async (c) => {

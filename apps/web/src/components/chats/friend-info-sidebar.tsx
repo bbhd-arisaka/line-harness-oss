@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { XIcon } from '@phosphor-icons/react'
+import { CaretDownIcon, CaretRightIcon, XIcon } from '@phosphor-icons/react'
 import { api, fetchApi, type MileageHistoryItem, type MileageSummary } from '@/lib/api'
 import { Button } from '@cloudflare/kumo/components/button'
 import { Input, InputArea } from '@cloudflare/kumo/components/input'
 import { Select } from '@cloudflare/kumo/components/select'
 import { FriendFieldPicker, type PickerFolder } from '@/components/forms/friend-field-picker'
 import { FieldValue } from '@/components/friends/field-value'
+import { FieldFileInput } from '@/components/friends/field-file-input'
 import { FriendRichMenuView, useFriendRichMenu } from '@/components/friends/friend-rich-menu'
 import DefaultAvatar from '@/components/friends/default-avatar'
 import { FriendNameEditDialog, NameEditPencil, resolveFriendName } from '@/components/friends/friend-name-edit-dialog'
@@ -135,6 +136,38 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
       .catch(() => { /* silent */ })
   }, [])
   const fieldDefsByKey = new Map(fieldDefs.map((d) => [d.fieldKey, d]))
+
+  // 友だち情報を、友だち情報欄のフォルダごとに分けて見せる(Lステップと同じ)。開いているフォルダ(null = 初期状態: 先頭だけ)
+  const [openFolders, setOpenFolders] = useState<Set<string> | null>(null)
+  function groupMetadata(metadata: Record<string, unknown>) {
+    const folderOrder = new Map(fieldFolders.map((f, i) => [f.id, i]))
+    const groups = new Map<string, { id: string; name: string; order: number; entries: Array<[string, unknown]> }>()
+    for (const [key, value] of Object.entries(metadata)) {
+      const def = fieldDefsByKey.get(key)
+      const folder = def?.folderId ? fieldFolders.find((f) => f.id === def.folderId) : undefined
+      const id = folder ? folder.id : def ? '__unassigned' : '__other'
+      const name = folder ? folder.name : def ? '未分類' : 'その他'
+      const order = folder ? (folderOrder.get(folder.id) ?? 0) : def ? 100000 : 100001
+      const g = groups.get(id) ?? { id, name, order, entries: [] }
+      g.entries.push([key, value])
+      groups.set(id, g)
+    }
+    return [...groups.values()].sort((a, b) => a.order - b.order)
+  }
+
+  /** 画像・PDF項目のファイルを差し替え/削除したとき、編集中の行と表示中の友だち情報の両方へ反映する */
+  function applyFileChange(key: string, url: string | null) {
+    setFriend((f) => {
+      if (!f) return f
+      const metadata = { ...(f.metadata ?? {}) }
+      if (url === null) delete metadata[key]
+      else metadata[key] = url
+      return { ...f, metadata }
+    })
+    setMetadataRows((rows) =>
+      url === null ? rows.filter((r) => r.key !== key) : rows.map((r) => (r.key === key ? { ...r, value: url } : r)),
+    )
+  }
 
   function startEditingRealName(current: string | null) {
     setDraftRealName(current ?? '')
@@ -495,7 +528,17 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
                           />
                         )}
 
-                        {def && (def.fieldType === 'select' || def.fieldType === 'radio') ? (
+                        {def && (def.fieldType === 'image' || def.fieldType === 'pdf') ? (
+                          <div className="min-w-0 flex-1">
+                            <FieldFileInput
+                              friendId={friend.id}
+                              fieldKey={def.fieldKey}
+                              fieldType={def.fieldType}
+                              value={row.value}
+                              onChanged={(url) => applyFileChange(def.fieldKey, url)}
+                            />
+                          </div>
+                        ) : def && (def.fieldType === 'select' || def.fieldType === 'radio') ? (
                           <Select
                             className="min-w-0 flex-1"
                             aria-label="値"
@@ -595,14 +638,46 @@ export default function FriendInfoSidebar({ friendId, onNameChanged, chatStatus,
                   </div>
                 </div>
               ) : friend.metadata && Object.keys(friend.metadata).length > 0 ? (
-                <dl className="space-y-2 text-xs">
-                  {Object.entries(friend.metadata).map(([key, value]) => (
-                    <div key={key}>
-                      <dt className="text-[10px] text-gray-400 uppercase tracking-wide">{fieldDefsByKey.get(key)?.label ?? METADATA_LABELS[key] ?? key}</dt>
-                      <dd className="text-gray-700 mt-0.5 break-words"><FieldValue value={value} def={fieldDefsByKey.get(key)} /></dd>
-                    </div>
-                  ))}
-                </dl>
+                <div className="space-y-1.5">
+                  {(() => {
+                    const groups = groupMetadata(friend.metadata)
+                    return groups.map((g, gi) => {
+                    const open = openFolders ? openFolders.has(g.id) : gi === 0
+                    const toggle = () =>
+                      setOpenFolders((prev) => {
+                        const next = new Set(prev ?? [groups[0].id])
+                        if (next.has(g.id)) next.delete(g.id)
+                        else next.add(g.id)
+                        return next
+                      })
+                    return (
+                      <div key={g.id} className="rounded border border-gray-100">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={toggle}
+                          aria-expanded={open}
+                          className="flex w-full items-center justify-start gap-1.5 rounded-none bg-gray-50 px-2 py-1.5 text-left text-[11px] font-medium text-gray-600"
+                        >
+                          {open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}
+                          <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                          <span className="text-[10px] font-normal text-gray-400">{g.entries.length}</span>
+                        </Button>
+                        {open && (
+                          <dl className="space-y-2 px-2 py-2 text-xs">
+                            {g.entries.map(([key, value]) => (
+                              <div key={key}>
+                                <dt className="text-[10px] text-gray-400 uppercase tracking-wide">{fieldDefsByKey.get(key)?.label ?? METADATA_LABELS[key] ?? key}</dt>
+                                <dd className="text-gray-700 mt-0.5 break-words"><FieldValue value={value} def={fieldDefsByKey.get(key)} /></dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+                      </div>
+                    )
+                    })
+                  })()}
+                </div>
               ) : (
                 <p className="text-xs text-gray-400">未設定(「編集」から本名などを追加できます)</p>
               )}
