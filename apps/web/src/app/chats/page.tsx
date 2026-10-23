@@ -31,6 +31,8 @@ import { Select } from '@cloudflare/kumo/components/select'
 import FriendAvatar from '@/components/friends/friend-avatar'
 import { PushPinIcon } from '@phosphor-icons/react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
+import { loadDraft, saveDraft, restoreText, loadUndoSend, saveUndoSend } from '@/lib/chat-draft'
+import { cancelPending, getPending, hookPageLifecycle, notifyPending, remainingSeconds, startPending, subscribePending, type PendingSend } from '@/lib/pending-send'
 
 interface Chat {
   id: string
@@ -402,6 +404,12 @@ export default function ChatsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
   const [messageContent, setMessageContent] = useState('')
+  // 「送信の取り消し」: オンのとき、送信を10秒待たせて、そのあいだ取り消せる(この端末のブラウザの設定)
+  const [undoSend, setUndoSend] = useState(false)
+  const [pendingSend, setPendingSend] = useState<PendingSend | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  // 入力欄の文章がどのトークのものか(トークを切り替えた直後に、前のトークの文章を新しいトークの下書きにしないため)
+  const draftOwnerRef = useRef<string | null>(null)
   const [pendingImage, setPendingImage] = useState<ImageUploaderValue | null>(null)
   const [sending, setSending] = useState(false)
   const sendLockRef = useRef(false)
@@ -992,9 +1000,37 @@ export default function ChatsPage() {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [nameQuery, selectedAccountId])
 
+  // 入力途中の文章は、トークごとにブラウザに残す(閉じても・別のページへ移っても、開き直したら続きから)
+  useEffect(() => {
+    draftOwnerRef.current = selectedChatId
+    setMessageContent(selectedChatId ? loadDraft(selectedChatId) : '')
+    setPendingSend(selectedChatId ? getPending(selectedChatId) : null)
+  }, [selectedChatId])
+  useEffect(() => {
+    if (draftOwnerRef.current && draftOwnerRef.current === selectedChatId) saveDraft(selectedChatId, messageContent)
+  }, [messageContent, selectedChatId])
+
+  // 「送信の取り消し」の設定と、待ち状態の変化(予約・取り消し・送信)の受け取り
+  useEffect(() => {
+    setUndoSend(loadUndoSend())
+    hookPageLifecycle()
+  }, [])
+  useEffect(() => {
+    saveUndoSend(undoSend)
+  }, [undoSend])
+  useEffect(() => {
+    return subscribePending((e) => {
+      if (e.chatId === selectedChatId) setPendingSend(getPending(e.chatId))
+    })
+  }, [selectedChatId])
+  useEffect(() => {
+    if (!pendingSend) return
+    const t = setInterval(() => setNowMs(Date.now()), 250)
+    return () => clearInterval(t)
+  }, [pendingSend])
+
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId)
-    setMessageContent('')
     setPendingImage(null)
     setShowImagePicker(false)
     setShowComposerSettings(false)
@@ -1046,10 +1082,49 @@ export default function ChatsPage() {
     }
   }, [showLoadingIndicator, loadingSeconds])
 
-  const handleSendMessage = async () => {
-    if (!selectedChatId || sending || sendLockRef.current) return
-    if (!messageContent.trim() && !pendingImage) return
-    const sendingChatId = selectedChatId  // capture the chat id for this send
+  /** 送信ボタン・Enter から呼ぶ。「送信の取り消し」がオンなら、10秒待たせてから送る(その間は取り消せる) */
+  const handleSendClick = () => {
+    if (!undoSend) {
+      void handleSendMessage()
+      return
+    }
+    if (!selectedChatId || (!messageContent.trim() && !pendingImage)) return
+    const chatId = selectedChatId
+    const text = messageContent
+    const image = pendingImage
+    setMessageContent('')
+    setPendingImage(null)
+    setPendingSend(startPending({ chatId, text, image }, () => handleSendMessage({ chatId, text, image })))
+    setNowMs(Date.now())
+  }
+
+  /** 取り消す: 送らずに、入力欄(と画像)に戻す */
+  const handleCancelSend = () => {
+    if (!selectedChatId) return
+    const info = cancelPending(selectedChatId)
+    if (!info) return
+    if (info.text) setMessageContent((prev) => restoreText(info.text, prev))
+    if (info.image) setPendingImage(info.image as ImageUploaderValue)
+  }
+
+  /**
+   * 送信。override があるときは、「送信の取り消し」の待ちが終わって送る分(待っている間に入力欄は空にしてあり、
+   * 別の文章を打っていることもあるので、入力欄や添付は触らない)
+   */
+  const handleSendMessage = async (override?: { chatId: string; text: string; image: ImageUploaderValue | null }) => {
+    const targetChatId = override?.chatId ?? selectedChatId
+    const bodyText = override ? override.text : messageContent
+    const imageToSend = override ? override.image : pendingImage
+    if (!targetChatId) return
+    // 待たせていた分は、ほかの送信が終わるのを待ってから送る(取りこぼさない)
+    if (override) {
+      for (let i = 0; i < 100 && sendLockRef.current; i++) await new Promise((r) => setTimeout(r, 100))
+    } else if (sending || sendLockRef.current) {
+      return
+    }
+    if (!bodyText.trim() && !imageToSend) return
+    const sendingChatId = targetChatId  // capture the chat id for this send
+    let textSent = false
     sendLockRef.current = true
     nearBottomRef.current = true // 自分の送信は、最新まで追従して見せる
     lastLocalChangeAtRef.current = Date.now()
@@ -1057,13 +1132,13 @@ export default function ChatsPage() {
     try {
       const now = new Date().toISOString()
       // --- Image send path (runs first when image is present) ---
-      if (pendingImage && pendingImage.mode === 'line-image') {
+      if (imageToSend && imageToSend.mode === 'line-image') {
         const imgPayload = JSON.stringify({
-          originalContentUrl: pendingImage.originalContentUrl,
-          previewImageUrl: pendingImage.previewImageUrl,
+          originalContentUrl: imageToSend.originalContentUrl,
+          previewImageUrl: imageToSend.previewImageUrl,
         })
         await api.chats.send(sendingChatId, { messageType: 'image', content: imgPayload })
-        setPendingImage(null)
+        if (!override) setPendingImage(null)
         // Optimistic update for image
         setChatDetail((prev) => (prev && prev.id === sendingChatId) ? {
           ...prev,
@@ -1109,10 +1184,11 @@ export default function ChatsPage() {
         })
       }
       // --- Text send path (runs independently — both paths execute when both image and text are present) ---
-      if (messageContent.trim()) {
-        const content = messageContent.trim()
+      if (bodyText.trim()) {
+        const content = bodyText.trim()
         await api.chats.send(sendingChatId, { content })
-        setMessageContent('')
+        textSent = true
+        if (!override) setMessageContent('')
         // Optimistic update: append message locally instead of refetching (prevents scroll jump / full reload feel)
         // Only mutate chatDetail if it still corresponds to the chat we just sent to
         setChatDetail((prev) => (prev && prev.id === sendingChatId) ? {
@@ -1168,6 +1244,12 @@ export default function ChatsPage() {
       // サーバーが理由を返しているとき(フォームのリンクを作れない等)は、そのまま表示する
       const reason = err instanceof ApiError && err.status === 400 ? (err.serverMessage ?? '') : ''
       setError(reason ? `メッセージを送信できませんでした: ${reason}` : 'メッセージの送信に失敗しました。')
+      // 待たせていた分が送れなかったときは、文章を入力欄(下書き)に戻す
+      if (override && !textSent && override.text.trim()) {
+        saveDraft(sendingChatId, restoreText(override.text, loadDraft(sendingChatId)))
+        if (draftOwnerRef.current === sendingChatId) setMessageContent(loadDraft(sendingChatId))
+      }
+      if (override) notifyPending({ kind: 'failed', chatId: sendingChatId, message: '' })
     } finally {
       setSending(false)
       sendLockRef.current = false
@@ -1266,7 +1348,7 @@ ${t.messageContent}` : t.messageContent))
     const shouldSend = sendMode === 'enter' ? !e.shiftKey : e.shiftKey
     if (shouldSend) {
       e.preventDefault()
-      handleSendMessage()
+      handleSendClick()
     }
   }
 
@@ -1829,9 +1911,19 @@ ${t.messageContent}` : t.messageContent))
                         items={Object.fromEntries([5, 10, 15, 20, 30, 45, 60].map((sec) => [sec, `${sec}秒`]))}
                       />
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox label="送信の取り消し(10秒)" checked={undoSend} onCheckedChange={setUndoSend} />
+                    </div>
                     <div className="flex items-center gap-3">
                       <Radio.Group legend="送信キー" value={sendMode} onValueChange={setSendMode} className="flex gap-3"><Radio.Item value="enter" label="Enter" /><Radio.Item value="shift-enter" label="Shift+Enter" /></Radio.Group>
                     </div>
+                  </div>
+                )}
+                {pendingSend && (
+                  <div className="mb-2 flex items-center gap-3 rounded-lg bg-gray-100 px-3 py-2 text-sm" role="status">
+                    <span className="min-w-0 flex-1 truncate text-gray-500">{pendingSend.text.trim() || '[画像]'}</span>
+                    <span className="flex-shrink-0 font-medium tabular-nums text-gray-600">{remainingSeconds(pendingSend.deadline, nowMs)}秒</span>
+                    <Button type="button" variant="secondary" size="sm" onClick={handleCancelSend}>取り消し</Button>
                   </div>
                 )}
                 {(showImagePicker || pendingImage) && (
@@ -1961,7 +2053,7 @@ ${t.messageContent}` : t.messageContent))
                       type="button"
                       variant="primary"
                       loading={sending}
-                      onClick={handleSendMessage}
+                      onClick={handleSendClick}
                       disabled={sending || (!messageContent.trim() && !pendingImage)}
                     >
                       送信

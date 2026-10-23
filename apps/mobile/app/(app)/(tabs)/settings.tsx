@@ -7,6 +7,7 @@ import { authStore, useAccounts, useAuth } from '../../../src/state/session';
 import { Button, Card, confirmAsync, SectionTitle } from '../../../src/components/ui';
 import { accountLabel } from '../../../src/lib/accounts';
 import { usePushStatus } from '../../../src/state/push';
+import { useUndoSend } from '../../../src/state/undo-send';
 import { api } from '../../../src/state/services';
 import { describeError } from '../../../src/lib/errors';
 import type { PushSettings } from '../../../src/lib/types';
@@ -34,6 +35,7 @@ function SettingsScreen() {
   const router = useRouter();
   const staff = auth.staff;
   const push = usePushStatus();
+  const [undoSend, setUndoSend] = useUndoSend();
   const version = Constants.expoConfig?.version ?? '-';
 
   // 通知の設定は、いま見ている公式アカウントの分だけ(この端末だけの設定)。ほかのアカウントの分は、そのアカウントに切り替えて行う
@@ -222,6 +224,16 @@ function SettingsScreen() {
           </Card>
         </>
       ) : null}
+
+      <SectionTitle>トーク</SectionTitle>
+      <Card>
+        <View style={styles.accountRow}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={{ color: c.text, fontSize: 15, fontWeight: '700' }}>送信の取り消し(10秒)</Text>
+          </View>
+          <Switch accessibilityLabel="送信の取り消し" value={undoSend} onValueChange={setUndoSend} />
+        </View>
+      </Card>
 
       <SectionTitle>アプリ</SectionTitle>
       <Card>

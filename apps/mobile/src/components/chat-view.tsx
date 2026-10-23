@@ -25,6 +25,13 @@ import { MIN_TAP, useColors } from '../theme/theme';
 import { describeError } from '../lib/errors';
 import { ACTIVITY_RETRY_MS, isActivityForChat, subscribeChatActivity } from '../lib/chat-activity';
 import { useUnread } from '../state/unread';
+import { getDraft, loadDrafts, setDraft } from '../state/chat-drafts';
+import { cancelPending, getPending, hookAppStateFlush, notifyPending, startPending, subscribePending, type PendingSend as PendingSendInfo } from '../state/pending-send';
+import { readUndoSendEnabled } from '../state/undo-send';
+import { remainingSeconds } from '../lib/pending-send';
+import { restoreText } from '../lib/chat-draft';
+
+hookAppStateFlush();
 
 const POLL_MS = 10_000;
 /** API は新しい順に 1000 件までしか返さない(それより古い履歴は表示できない) */
@@ -167,8 +174,26 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [text, setText] = useState('');
+  // 入力欄の文章は、トークごとに覚えておく(画面を閉じても・別の画面へ移っても・アプリを終了しても、開き直したら続きから)
+  const [text, setTextState] = useState(() => getDraft(id));
+  const setText = useCallback(
+    (v: string | ((prev: string) => string)) => {
+      setTextState((prev) => {
+        const next = typeof v === 'function' ? v(prev) : v;
+        setDraft(id, next);
+        return next;
+      });
+    },
+    [id],
+  );
+  useEffect(() => {
+    // 前回アプリを使ったときの下書きを、ディスクから読み込む(まだ何も打っていなければ、入力欄に入れる)
+    void loadDrafts().then(() => setTextState((prev) => (prev === '' ? getDraft(id) : prev)));
+  }, [id]);
   const [sending, setSending] = useState(false);
+  // 「送信の取り消し」: 送信を10秒待たせている間の情報(残り秒数の表示と、取り消しボタン)
+  const [pendingSend, setPendingSend] = useState<PendingSendInfo | null>(() => getPending(id));
+  const [nowMs, setNowMs] = useState(() => Date.now());
   // 入力欄の道具: 色付きボックス(LINE名・本名・フォーム)・テンプレート・写真
   const [forms, setForms] = useState<FormOption[] | null>(null);
   const [pickForm, setPickForm] = useState(false);
@@ -361,11 +386,71 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
     }
   }
 
+  /** 入力欄を空にして、10秒後に送る予約をする。実際の送信は、この画面を離れても行われる(画面とは別の置き場で待つ) */
+  function queueUndoSend(plan: { image: string | null; text: string | null }) {
+    const chatId = id;
+    const image = plan.image;
+    const body = plan.text;
+    setText('');
+    setPendingImage(null);
+    selection.current = null;
+    setSendError(null);
+    const info = startPending({ chatId, text: body ?? '', imageUrl: image }, async () => {
+      try {
+        if (image) await api.sendChatMessage(chatId, 'image', imageContent(image));
+        if (body) await api.sendChatText(chatId, body);
+        notifyPending({ kind: 'sent', chatId });
+      } catch (e) {
+        // 送れなかった文章は、入力欄(下書き)に戻す
+        if (body) setDraft(chatId, restoreText(body, getDraft(chatId)));
+        notifyPending({ kind: 'failed', chatId, message: describeError(e, '送信できませんでした') });
+      }
+    });
+    setPendingSend(info);
+    setNowMs(Date.now());
+  }
+
+  /** 取り消す: 送らずに、入力欄(と写真)に戻す */
+  function cancelSend() {
+    const info = cancelPending(id);
+    if (!info) return;
+    if (info.text) setText((prev) => restoreText(info.text, prev));
+    if (info.imageUrl) setPendingImage(info.imageUrl);
+  }
+
+  // 送信の待ち状態の変化(予約・取り消し・送信済み・失敗)を受け取る
+  useEffect(() => {
+    setPendingSend(getPending(id));
+    return subscribePending((e) => {
+      if (e.chatId !== id) return;
+      setPendingSend(getPending(id));
+      if (e.kind === 'sent') {
+        refreshUnread();
+        void load(true);
+        onChanged?.();
+      } else if (e.kind === 'failed') {
+        setTextState(getDraft(id));
+        setSendError(e.message);
+      }
+    });
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 残り秒数の表示を更新する
+  useEffect(() => {
+    if (!pendingSend) return;
+    const t = setInterval(() => setNowMs(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [pendingSend]);
+
   async function send() {
     if (!id || sendLock.current) return;
     const plan = planCompose({ text, imageUrl: pendingImage, unsupportedTag: findUnsupportedTag(text) });
     if (!plan.ok) {
       if (text.trim() || pendingImage) setSendError(plan.reason);
+      return;
+    }
+    // 「送信の取り消し」がオンなら、10秒待たせてから送る(その間は取り消せる)
+    if (await readUndoSendEnabled()) {
+      queueUndoSend(plan);
       return;
     }
     sendLock.current = true;
@@ -568,6 +653,17 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
             </View>
           ) : (
           <View style={[styles.composer, { backgroundColor: c.card, borderTopColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
+            {pendingSend ? (
+              <View style={[styles.undoBar, { backgroundColor: c.inputBackground }]} accessibilityLiveRegion="polite">
+                <Text style={{ color: c.textMuted, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                  {pendingSend.text || '[画像]'}
+                </Text>
+                <Text style={{ color: c.textSub, fontSize: 13, fontWeight: '600' }}>{remainingSeconds(pendingSend.deadline, nowMs)}秒</Text>
+                <Pressable onPress={cancelSend} accessibilityRole="button" accessibilityLabel="送信を取り消す" hitSlop={8} style={({ pressed }) => [styles.undoButton, { opacity: pressed ? 0.6 : 1, borderColor: c.danger }]}>
+                  <Text style={{ color: c.danger, fontSize: 14, fontWeight: '700' }}>取り消し</Text>
+                </Pressable>
+              </View>
+            ) : null}
             {pendingImage ? (
               <View style={styles.pendingRow}>
                 <Image source={{ uri: pendingImage }} style={[styles.pendingThumb, { backgroundColor: c.border }]} resizeMode="cover" accessibilityLabel="送る写真" />
@@ -709,6 +805,8 @@ const styles = StyleSheet.create({
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   input: { flex: 1, minHeight: MIN_TAP, maxHeight: 140, borderRadius: 22, borderWidth: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 16, lineHeight: 22 },
   iconBtn: { width: 40, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
+  undoBar: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  undoButton: { minHeight: 32, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   pendingRow: { alignSelf: 'flex-start' },
   pendingThumb: { width: 72, height: 72, borderRadius: 10 },
   pendingX: { position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
