@@ -31,8 +31,8 @@ export function FieldFileInput({
     setError('')
     try {
       const res = await fetchApi<{ success: boolean; data: { url: string } }>(
-        `/api/friends/${friendId}/field-image?key=${encodeURIComponent(fieldKey)}`,
-        { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Filename': encodeURIComponent(file.name) }, body: file },
+        `/api/friends/${friendId}/field-image?key=${encodeURIComponent(fieldKey)}&name=${encodeURIComponent(file.name)}`,
+        { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file },
       )
       onChanged(res.data.url)
     } catch (e) {

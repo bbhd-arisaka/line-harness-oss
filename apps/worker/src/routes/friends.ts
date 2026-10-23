@@ -678,8 +678,7 @@ friends.post('/api/friends/:id/field-image', async (c) => {
     if (data.byteLength === 0) return c.json({ success: false, error: 'ファイルが空です' }, 400);
     if (data.byteLength > FIELD_FILE_MAX_BYTES) return c.json({ success: false, error: 'ファイルサイズは10MB以内にしてください' }, 413);
 
-    let originalName = '';
-    try { originalName = decodeURIComponent(c.req.header('X-Filename') ?? ''); } catch { /* 名前が読めなくても保存は続ける */ }
+    const originalName = (c.req.query('name') ?? '').slice(0, 200);
 
     // 閲覧用の GET /api/form-uploads/:id/:file をそのまま使うため、フォームIDの位置に友だちIDを入れる
     const file = `${crypto.randomUUID()}.${ext}`;
