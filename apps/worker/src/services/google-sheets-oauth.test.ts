@@ -4,6 +4,8 @@ import {
   appendAnswerRow,
   buildAnswerRow,
   buildHeaderRow,
+  createSpreadsheetInFolder,
+  listFolders,
   getSheetsAccessToken,
   listSpreadsheets,
   type SheetsConnectionRow,
@@ -109,5 +111,37 @@ describe('getSheetsAccessToken', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })));
     await expect(getSheetsAccessToken(e.env, conn({}))).rejects.toThrow('invalid_grant');
     expect(e.run).toHaveBeenCalledOnce();
+  });
+});
+
+describe('フォルダと新規作成', () => {
+  it('フォルダ検索はフォルダだけを対象にし、引用符をエスケープする', async () => {
+    let url = '';
+    vi.stubGlobal('fetch', vi.fn(async (u: string) => {
+      url = u;
+      return new Response(JSON.stringify({ files: [{ id: 'f1', name: '回答' }] }), { status: 200 });
+    }));
+    expect(await listFolders('tok', "a'b")).toEqual([{ id: 'f1', name: '回答' }]);
+    const q = decodeURIComponent(url.replace(/\+/g, ' '));
+    expect(q).toContain("mimeType='application/vnd.google-apps.folder'");
+    expect(q).toContain("name contains 'a\\'b'");
+  });
+
+  it('フォルダを指定して作ると parents が付く。指定なしなら付かない', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(init?.body as string) as Record<string, unknown>);
+      return new Response(JSON.stringify({ id: 'S9', name: 'N' }), { status: 200 });
+    }));
+    expect(await createSpreadsheetInFolder('tok', 'N', 'F1')).toEqual({ id: 'S9', name: 'N' });
+    await createSpreadsheetInFolder('tok', 'N', null);
+    expect(bodies[0].parents).toEqual(['F1']);
+    expect(bodies[0].mimeType).toBe('application/vnd.google-apps.spreadsheet');
+    expect('parents' in bodies[1]).toBe(false);
+  });
+
+  it('作成に失敗したら例外にする', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('no', { status: 403 })));
+    await expect(createSpreadsheetInFolder('tok', 'N', null)).rejects.toThrow('google_api_failed:403');
   });
 });

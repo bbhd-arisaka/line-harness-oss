@@ -15,6 +15,8 @@ export const GOOGLE_CALENDAR_OAUTH_SCOPE = [
 export const GOOGLE_SHEETS_OAUTH_SCOPE = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.metadata.readonly',
+  // 新しいスプレッドシートを、選んだフォルダに作るため(このアプリが作ったファイルだけ)
+  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 

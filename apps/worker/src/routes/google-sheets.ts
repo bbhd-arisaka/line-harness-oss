@@ -14,6 +14,8 @@ import {
 import {
   fetchGoogleEmail,
   getSheetsAccessToken,
+  createSpreadsheetInFolder,
+  listFolders,
   listSheetTabs,
   listSpreadsheets,
   type SheetsConnectionRow,
@@ -178,6 +180,39 @@ googleSheets.get('/api/integrations/google-sheets/connections/:id/spreadsheets',
   } catch (error) {
     console.error('listSpreadsheets failed:', error);
     return c.json({ success: false, error: 'スプレッドシートの一覧を取得できませんでした' }, 502);
+  }
+});
+
+googleSheets.get('/api/integrations/google-sheets/connections/:id/folders', requireRole('owner', 'admin'), async (c) => {
+  const t = await tokenFor(c, c.req.param('id')!);
+  if (t instanceof Response) return t;
+  try {
+    return c.json({ success: true, data: await listFolders(t.token, c.req.query('q') ?? '') });
+  } catch (error) {
+    console.error('listFolders failed:', error);
+    return c.json({ success: false, error: 'フォルダの一覧を取得できませんでした' }, 502);
+  }
+});
+
+// 新しいスプレッドシートを(フォルダを指定して)作る。作った直後のシート(タブ)一覧も返す。
+googleSheets.post('/api/integrations/google-sheets/connections/:id/spreadsheets', requireRole('owner', 'admin'), async (c) => {
+  const body = await c.req.json<{ name?: unknown; folderId?: unknown }>().catch(() => ({}) as { name?: unknown; folderId?: unknown });
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 200) : '';
+  const folderId = typeof body.folderId === 'string' && body.folderId.trim() ? body.folderId.trim() : null;
+  if (!name) return c.json({ success: false, error: 'スプレッドシート名を入力してください' }, 400);
+  const t = await tokenFor(c, c.req.param('id')!);
+  if (t instanceof Response) return t;
+  try {
+    const created = await createSpreadsheetInFolder(t.token, name, folderId);
+    const tabs = await listSheetTabs(t.token, created.id);
+    return c.json({ success: true, data: { id: created.id, name: created.name, sheets: tabs.sheets } });
+  } catch (error) {
+    console.error('createSpreadsheet failed:', error);
+    const message = String(error instanceof Error ? error.message : error);
+    if (message.includes(':403')) {
+      return c.json({ success: false, error: '作成する権限がありません。Googleアカウントを連携し直してください' }, 403);
+    }
+    return c.json({ success: false, error: 'スプレッドシートを作成できませんでした' }, 502);
   }
 });
 

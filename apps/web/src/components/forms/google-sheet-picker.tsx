@@ -7,6 +7,7 @@ import type { GoogleSheetLink } from './editor-types'
 interface Connection { id: string; email: string; status: string }
 interface Spreadsheet { id: string; name: string }
 interface Tab { sheetId: number; title: string }
+interface Folder { id: string; name: string }
 
 const control = 'h-10 w-full rounded border border-[#cacace] bg-white px-3 text-sm outline-none focus:border-[#069e04]'
 const smallBtn = 'inline-flex h-8 items-center rounded border border-[#cacace] bg-white px-3 text-xs hover:bg-[#f5f5f5]'
@@ -19,9 +20,12 @@ function errorText(e: unknown, fallback: string): string {
 export function GoogleSheetPicker({
   value,
   onChange,
+  defaultName,
 }: {
   value: GoogleSheetLink | null
   onChange: (next: GoogleSheetLink | null) => void
+  /** 新規作成するスプレッドシートの初期名(フォーム名) */
+  defaultName: string
 }) {
   const [connections, setConnections] = useState<Connection[] | null>(null)
   const [configured, setConfigured] = useState(true)
@@ -31,6 +35,12 @@ export function GoogleSheetPicker({
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const popupRef = useRef<Window | null>(null)
+  // 新規作成(フォルダ指定)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [folderQuery, setFolderQuery] = useState('')
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [folderId, setFolderId] = useState('')
 
   const connectionId = value?.connectionId ?? ''
   const current = connections?.find((c) => c.id === connectionId) ?? null
@@ -123,6 +133,41 @@ export function GoogleSheetPicker({
     return () => clearTimeout(timer)
   }, [connectionId, query, current?.status])
 
+  // フォルダ一覧(新規作成パネルを開いている間だけ)
+  useEffect(() => {
+    if (!creating || !connectionId) return
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetchApi<{ success: boolean; data: Folder[] }>(
+          `/api/integrations/google-sheets/connections/${connectionId}/folders?q=${encodeURIComponent(folderQuery)}`,
+        )
+        setFolders(res.data)
+      } catch (e) {
+        setError(errorText(e, 'フォルダの一覧を取得できませんでした'))
+      }
+    }, folderQuery ? 400 : 0)
+    return () => clearTimeout(timer)
+  }, [creating, connectionId, folderQuery])
+
+  async function createSpreadsheet() {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetchApi<{ success: boolean; data: { id: string; name: string; sheets: Tab[] } }>(
+        `/api/integrations/google-sheets/connections/${connectionId}/spreadsheets`,
+        { method: 'POST', body: JSON.stringify({ name: newName.trim(), folderId: folderId || null }) },
+      )
+      setSheets((prev) => [{ id: res.data.id, name: res.data.name }, ...prev])
+      setTabs(res.data.sheets)
+      onChange({ connectionId, spreadsheetId: res.data.id, spreadsheetTitle: res.data.name, sheetTitle: res.data.sheets[0]?.title ?? '' })
+      setCreating(false)
+    } catch (e) {
+      setError(errorText(e, 'スプレッドシートを作成できませんでした'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // シート(タブ)一覧
   const spreadsheetId = value?.spreadsheetId ?? ''
   useEffect(() => {
@@ -199,6 +244,31 @@ export function GoogleSheetPicker({
             {spreadsheetId && !known ? <option value={spreadsheetId}>{value?.spreadsheetTitle || '(選択中のスプレッドシート)'}</option> : null}
             {sheets.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
+          <button
+            type="button"
+            className={smallBtn}
+            onClick={() => { setNewName(defaultName); setFolderId(''); setFolderQuery(''); setCreating((v) => !v) }}
+          >
+            ＋ 新しく作成
+          </button>
+          {creating && (
+            <div className="space-y-2 rounded border border-[#cacace] bg-[#fafafa] p-3">
+              <input className={control} placeholder="スプレッドシート名" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <input className={control} placeholder="フォルダ名で検索" value={folderQuery} onChange={(e) => setFolderQuery(e.target.value)} />
+              <select className={control} aria-label="保存先フォルダ" value={folderId} onChange={(e) => setFolderId(e.target.value)}>
+                <option value="">マイドライブ(フォルダなし)</option>
+                {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+              <button
+                type="button"
+                disabled={busy || !newName.trim()}
+                onClick={() => void createSpreadsheet()}
+                className="inline-flex h-9 items-center rounded bg-[#06c755] px-4 text-sm font-bold text-white hover:bg-[#05b34c] disabled:opacity-50"
+              >
+                作成
+              </button>
+            </div>
+          )}
           {spreadsheetId && (
             <select
               className={control}

@@ -110,6 +110,51 @@ export async function listSpreadsheets(token: string, query: string): Promise<Sp
   return (data.files ?? []).map((f) => ({ id: f.id, name: f.name, modifiedTime: f.modifiedTime ?? null }));
 }
 
+export interface DriveFolder {
+  id: string;
+  name: string;
+}
+
+/** フォルダを名前で探す(更新が新しい順)。 */
+export async function listFolders(token: string, query: string): Promise<DriveFolder[]> {
+  const q = ["mimeType='application/vnd.google-apps.folder'", 'trashed=false'];
+  const term = query.trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  if (term) q.push(`name contains '${term}'`);
+  const params = new URLSearchParams({
+    q: q.join(' and '),
+    orderBy: 'modifiedTime desc',
+    pageSize: '50',
+    fields: 'files(id,name)',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
+  });
+  const data = await googleGet<{ files?: Array<{ id: string; name: string }> }>(`${DRIVE_API}?${params.toString()}`, token);
+  return (data.files ?? []).map((f) => ({ id: f.id, name: f.name }));
+}
+
+/** 新しいスプレッドシートを作る。folderId があればそのフォルダの中、なければマイドライブ直下。 */
+export async function createSpreadsheetInFolder(
+  token: string,
+  name: string,
+  folderId: string | null,
+): Promise<{ id: string; name: string }> {
+  const res = await fetch(`${DRIVE_API}?supportsAllDrives=true&fields=id,name`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      mimeType: 'application/vnd.google-apps.spreadsheet',
+      ...(folderId ? { parents: [folderId] } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`google_api_failed:${res.status}:${detail.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as { id: string; name: string };
+  return { id: data.id, name: data.name };
+}
+
 export interface SheetTab {
   sheetId: number;
   title: string;

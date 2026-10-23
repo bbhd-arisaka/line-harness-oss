@@ -130,7 +130,7 @@ export function OptionModal({
           使用する
         </label>
         {d.googleSheetsEnabled && (
-          <GoogleSheetPicker value={d.googleLink} onChange={(googleLink) => set({ googleLink })} />
+          <GoogleSheetPicker defaultName={d.name} value={d.googleLink} onChange={(googleLink) => set({ googleLink })} />
         )}
       </Row>
 
