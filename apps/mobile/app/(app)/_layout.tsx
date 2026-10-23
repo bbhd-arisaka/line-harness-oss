@@ -55,6 +55,7 @@ function Gate() {
       <Stack.Protected guard={ready}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="chat/[id]" options={{ title: 'トーク' }} />
+        <Stack.Screen name="message-search" options={{ title: 'トーク' }} />
         <Stack.Screen name="friend/[id]" options={{ title: '友だち詳細' }} />
         <Stack.Screen name="friend-field" options={{ title: '友だち情報' }} />
         <Stack.Screen name="form-answer/[submissionId]" options={{ title: '回答結果' }} />

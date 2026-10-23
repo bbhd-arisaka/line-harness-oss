@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, type StyleProp, type TextStyle } from 'react-native';
 import { hapticLongPress } from '../lib/haptics';
+import { splitByQuery } from '../lib/search-highlight';
 
 /**
  * トークの文章(吹き出し・フォームの回答カードなど、メッセージの文字は、すべてこれで出す)。
@@ -16,11 +17,14 @@ export function MessageText({
   text,
   style,
   selectable = true,
+  highlight,
 }: {
   text: string;
   /** 文字の書式。fontSize・lineHeight・color などをここで決める(Text と入力欄で同じものを使う) */
   style: StyleProp<TextStyle>;
   selectable?: boolean;
+  /** 検索から開いたとき、検索語の部分を黄色で目立たせる */
+  highlight?: string;
 }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [selecting, setSelecting] = useState(false);
@@ -54,7 +58,17 @@ export function MessageText({
 
   const body = (
     <Text style={style} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-      {text}
+      {highlight
+        ? splitByQuery(text, highlight).map((p, i) =>
+            p.hit ? (
+              <Text key={i} style={{ backgroundColor: '#fff200', color: '#111111' }}>
+                {p.text}
+              </Text>
+            ) : (
+              p.text
+            ),
+          )
+        : text}
     </Text>
   );
   if (!selectable || !text) return body;

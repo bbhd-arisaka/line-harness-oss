@@ -569,9 +569,36 @@ chats.get('/api/chats/message-search', async (c) => {
     if (allowed && !allowed.includes(lineAccountId)) return c.json({ success: false, error: 'Forbidden' }, 403);
     if (q.length < 2 || q.length > 100) return c.json({ success: true, data: { items: [] } });
     const escaped = q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+
+    // 1人のトークの中の該当メッセージを、新しい順にすべて(最大200件)返す(検索結果から「◯件のメッセージ」を開いたとき)
+    const oneFriendId = c.req.query('friendId');
+    if (oneFriendId) {
+      const own = await c.env.DB
+        .prepare(`SELECT id FROM friends WHERE id = ? AND line_account_id = ?`)
+        .bind(oneFriendId, lineAccountId)
+        .first();
+      if (!own) return c.json({ success: true, data: { items: [] } });
+      const found = await c.env.DB
+        .prepare(
+          `SELECT id, direction, content, created_at FROM messages_log
+           WHERE friend_id = ? AND message_type = 'text'
+             AND (delivery_type IS NULL OR delivery_type != 'test')
+             AND content LIKE ? ESCAPE '\\'
+           ORDER BY created_at DESC LIMIT 200`,
+        )
+        .bind(oneFriendId, `%${escaped}%`)
+        .all<{ id: string; direction: string; content: string | null; created_at: string }>();
+      return c.json({
+        success: true,
+        data: {
+          items: (found.results ?? []).map((r) => ({ messageId: r.id, direction: r.direction, content: r.content ?? '', createdAt: r.created_at })),
+        },
+      });
+    }
+
     const rows = await c.env.DB
       .prepare(
-        `SELECT m.friend_id, m.direction, m.content, m.created_at,
+        `SELECT m.id, m.friend_id, m.direction, m.content, m.created_at,
                 f.display_name, f.real_name, f.system_display_name, f.picture_url
          FROM messages_log m
          JOIN friends f ON f.id = m.friend_id
@@ -584,7 +611,7 @@ chats.get('/api/chats/message-search', async (c) => {
       )
       .bind(lineAccountId, `%${escaped}%`)
       .all<Record<string, string | null>>();
-    const byFriend = new Map<string, { friendId: string; name: string; displayName: string | null; pictureUrl: string | null; direction: string; snippet: string; createdAt: string; hits: number }>();
+    const byFriend = new Map<string, { messageId: string; friendId: string; name: string; displayName: string | null; pictureUrl: string | null; direction: string; snippet: string; createdAt: string; hits: number }>();
     for (const r of rows.results ?? []) {
       const friendId = r.friend_id as string;
       const hit = byFriend.get(friendId);
@@ -596,6 +623,7 @@ chats.get('/api/chats/message-search', async (c) => {
       const at = content.toLowerCase().indexOf(q.toLowerCase());
       const start = Math.max(0, at - 20);
       byFriend.set(friendId, {
+        messageId: r.id as string,
         friendId,
         name: r.real_name?.trim() || r.system_display_name?.trim() || r.display_name || '名前なし',
         displayName: r.display_name,
@@ -606,7 +634,24 @@ chats.get('/api/chats/message-search', async (c) => {
         hits: 1,
       });
     }
-    return c.json({ success: true, data: { items: [...byFriend.values()].slice(0, 30) } });
+    const items = [...byFriend.values()].slice(0, 30);
+    // 件数は、その友だちのトークの中の全件を数える(上の検索は新しい400件までなので、数が足りなくなる)
+    if (items.length > 0) {
+      const ids = items.map((i) => i.friendId);
+      const counts = await c.env.DB
+        .prepare(
+          `SELECT friend_id, COUNT(*) AS n FROM messages_log
+           WHERE friend_id IN (${ids.map(() => '?').join(',')}) AND message_type = 'text'
+             AND (delivery_type IS NULL OR delivery_type != 'test')
+             AND content LIKE ? ESCAPE '\\'
+           GROUP BY friend_id`,
+        )
+        .bind(...ids, `%${escaped}%`)
+        .all<{ friend_id: string; n: number }>();
+      const nBy = new Map((counts.results ?? []).map((r) => [r.friend_id, r.n]));
+      for (const it of items) it.hits = nBy.get(it.friendId) ?? it.hits;
+    }
+    return c.json({ success: true, data: { items } });
   } catch (err) {
     console.error('GET /api/chats/message-search error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

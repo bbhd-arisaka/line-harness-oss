@@ -94,12 +94,15 @@ const BubbleView = memo(function BubbleView({
   onImagePress,
   onOpenAnswer,
   avatar,
+  highlight,
 }: {
   bubble: Bubble;
   onImagePress: (url: string) => void;
   onOpenAnswer: (card: FormAnswerCard) => void;
   /** 相手のアイコンの表示に使う情報(受信の吹き出しだけに付ける) */
   avatar: { uri: string | null; name: string; onPress: () => void };
+  /** 検索から開いたとき、文章の中の検索語を目立たせる */
+  highlight?: string;
 }) {
   const c = useColors();
   const out = bubble.side === 'outgoing';
@@ -127,7 +130,7 @@ const BubbleView = memo(function BubbleView({
             <Image source={{ uri: bubble.imageUrl }} style={styles.image} resizeMode="cover" accessibilityIgnoresInvertColors />
           </Pressable>
         ) : (
-          <MessageText text={bubble.text} style={[styles.bubbleText, { color: out ? (bubble.system ? c.bubbleSystemText : c.bubbleOutgoingText) : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' }]} />
+          <MessageText text={bubble.text} highlight={bubble.kind === 'text' ? highlight : undefined} style={[styles.bubbleText, { color: out ? (bubble.system ? c.bubbleSystemText : c.bubbleOutgoingText) : c.bubbleIncomingText, fontStyle: alt ? 'italic' : 'normal' }]} />
         )}
       </View>
       {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
@@ -140,7 +143,7 @@ const BubbleView = memo(function BubbleView({
  * - 通常(iPhone・iPad の縦): 画面として開く(上のヘッダーは Stack が出す)
  * - embedded(iPad の横など、2列表示の右側): 右側の枠の中に出す。ヘッダーは自前の細い帯
  */
-export function ChatView({ id, embedded = false, onChanged }: { id: string; embedded?: boolean; onChanged?: () => void }) {
+export function ChatView({ id, embedded = false, onChanged, focusMessageId, highlight }: { id: string; embedded?: boolean; onChanged?: () => void; focusMessageId?: string; highlight?: string }) {
   const { refresh: refreshUnread } = useUnread();
   const c = useColors();
   const router = useRouter();
@@ -432,6 +435,17 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
 
   // 一覧は新しい順に並べて inverted で表示する(開いたとき自動で一番下=最新が見える)
   const items: ChatListItem[] = useMemo(() => (chat ? buildChatItems(chat.messages, chat.events).reverse() : []), [chat]);
+
+  // 検索から開いたとき: 該当メッセージの位置(画面の真ん中)へ移動する。一度だけ(その後の自動更新では動かさない)
+  const listRef = useRef<FlatList<ChatListItem>>(null);
+  const jumped = useRef(false);
+  const focusIndex = focusMessageId ? items.findIndex((it) => it.type === 'bubble' && it.bubble.id === focusMessageId) : -1;
+  useEffect(() => {
+    if (jumped.current || focusIndex < 0) return;
+    jumped.current = true;
+    const t = setTimeout(() => listRef.current?.scrollToIndex({ index: focusIndex, viewPosition: 0.5, animated: false }), 150);
+    return () => clearTimeout(t);
+  }, [focusIndex]);
   const canSend = (text.trim().length > 0 || !!pendingImage) && !sending && !uploading;
 
   return (
@@ -505,8 +519,14 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
             </View>
           ) : null}
           <FlatList
+            ref={listRef}
             data={items}
             inverted
+            // 画面の外にあって高さが分からない行へは、おおよその位置まで動かしてから、もう一度合わせる
+            onScrollToIndexFailed={(info) => {
+              listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+              setTimeout(() => listRef.current?.scrollToIndex({ index: info.index, viewPosition: 0.5, animated: false }), 250);
+            }}
             keyExtractor={(it) => it.key}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
@@ -519,7 +539,7 @@ export function ChatView({ id, embedded = false, onChanged }: { id: string; embe
               ) : item.type === 'event' ? (
                 <EventView event={item.event} />
               ) : (
-                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} avatar={avatar} />
+                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} avatar={avatar} highlight={highlight} />
               )
             }
             // inverted の末尾 = 画面の一番上

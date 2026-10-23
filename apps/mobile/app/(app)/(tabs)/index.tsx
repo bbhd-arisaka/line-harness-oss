@@ -22,10 +22,14 @@ import { StatusChip } from '../../../src/components/status-chip';
 import { SwipeRow, closeOpenSwipeRow, swallowTouchWhileOpen } from '../../../src/components/swipe-row';
 import { FadeIn } from '../../../src/components/fade-in';
 import { animateLayout } from '../../../src/lib/motion';
+import { HighlightedText } from '../../../src/components/highlighted-text';
+import { snippetAround } from '../../../src/lib/search-highlight';
 
 const PAGE_SIZE = 50;
 /** トーク内容の検索は、2文字以上から(サーバー側も同じ) */
 const MESSAGE_SEARCH_MIN = 2;
+/** 検索結果の「メッセージ」は、最初は5人まで。「もっと見る」で全部 */
+const MESSAGE_PREVIEW = 5;
 
 type Filter = 'all' | ChatStatus;
 const FILTERS: { key: Filter; label: string }[] = [
@@ -77,14 +81,14 @@ const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: 
   );
 });
 
-/** トーク内容の検索結果の1行: 名前・該当メッセージの一部・日付 */
-const MessageHitRow = memo(function MessageHitRow({ hit, onPress }: { hit: MessageSearchHit; onPress: (id: string) => void }) {
+/** トーク内容の検索結果の1行: 名前・「◯件のメッセージ」(1件だけなら該当の文章)・日付 */
+const MessageHitRow = memo(function MessageHitRow({ hit, query, onPress }: { hit: MessageSearchHit; query: string; onPress: (hit: MessageSearchHit) => void }) {
   const c = useColors();
   return (
     <Pressable
-      onPress={() => onPress(hit.friendId)}
+      onPress={() => onPress(hit)}
       accessibilityRole="button"
-      accessibilityLabel={`${hit.name}。${hit.snippet}`}
+      accessibilityLabel={`${hit.name}。${hit.hits > 1 ? `${hit.hits}件のメッセージ` : hit.snippet}`}
       style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.inputBackground : c.card, borderBottomColor: c.border }]}
     >
       <Avatar uri={hit.pictureUrl} name={hit.name} size={48} />
@@ -93,15 +97,21 @@ const MessageHitRow = memo(function MessageHitRow({ hit, onPress }: { hit: Messa
           <Text style={[styles.name, { color: c.text, fontWeight: '600' }]} numberOfLines={1}>
             {hit.name}
           </Text>
-          <Text style={{ color: c.textMuted, fontSize: 12 }}>
-            {formatListTime(hit.createdAt)}
-            {hit.hits > 1 ? ` ・ ${hit.hits}件` : ''}
-          </Text>
+          <Text style={{ color: c.textMuted, fontSize: 12 }}>{formatListTime(hit.createdAt)}</Text>
         </View>
-        <Text style={[styles.preview, { color: c.textMuted, marginTop: 3 }]} numberOfLines={2}>
-          {hit.direction === 'outgoing' ? '送信: ' : ''}
-          {hit.snippet}
-        </Text>
+        {hit.hits > 1 ? (
+          <Text style={[styles.preview, { color: c.textMuted, marginTop: 3 }]} numberOfLines={1}>
+            {hit.hits}件のメッセージ
+          </Text>
+        ) : (
+          <HighlightedText
+            text={snippetAround(hit.snippet.replace(/^…/, ''), query, 14, 70)}
+            query={query}
+            numberOfLines={1}
+            style={[styles.preview, { color: c.textMuted, marginTop: 3 }]}
+            hitStyle={{ color: '#06c755', fontWeight: '700' }}
+          />
+        )}
       </View>
     </Pressable>
   );
@@ -133,6 +143,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   // トーク内容の検索(名前の検索と同じ入力欄)。名前の結果の下に「トークの内容」として出す
   const [msgHits, setMsgHits] = useState<MessageSearchHit[]>([]);
   const [msgSearching, setMsgSearching] = useState(false);
+  const [msgExpanded, setMsgExpanded] = useState(false);
   // ピン留めしたトーク(一覧の上に出す。ふつうの一覧とは別に、小さな問い合わせで取る)
   const [pinnedItems, setPinnedItems] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,6 +205,7 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
     }
     let cancelled = false;
     setMsgSearching(true);
+    setMsgExpanded(false);
     api
       .searchChatMessages(accountId, search)
       .then((res) => {
@@ -301,6 +313,20 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
   const openChat = useCallback(
     (id: string) => (onOpen ? onOpen(id) : router.push({ pathname: '/chat/[id]', params: { id } })),
     [router, onOpen],
+  );
+
+  /** 検索結果のメッセージ: 1件だけなら、そのトークの該当メッセージへ。複数なら「◯件のメッセージ」の一覧へ */
+  const openHit = useCallback(
+    (hit: MessageSearchHit) => {
+      if (hit.hits > 1) {
+        router.push({ pathname: '/message-search', params: { friendId: hit.friendId, q: search, name: hit.name, pictureUrl: hit.pictureUrl ?? '' } });
+      } else if (onOpen) {
+        onOpen(hit.friendId);
+      } else {
+        router.push({ pathname: '/chat/[id]', params: { id: hit.friendId, messageId: hit.messageId, q: search } });
+      }
+    },
+    [router, onOpen, search],
   );
 
   // 2列表示では、右側で状態を変えたり送信したときに、一覧も最新にする。開いている間は定期的にも更新する
@@ -414,10 +440,16 @@ function ChatList({ onOpen, selectedId, reloadSignal = 0 }: { onOpen?: (id: stri
               {loadingMore ? <ActivityIndicator style={{ margin: 16 }} color={c.primary} /> : null}
               {msgHits.length > 0 ? (
                 <View>
-                  <Text style={[styles.sectionLabel, { color: c.textMuted, backgroundColor: c.inputBackground }]}>トークの内容</Text>
-                  {msgHits.map((h) => (
-                    <MessageHitRow key={h.friendId} hit={h} onPress={openChat} />
+                  <Text style={[styles.sectionLabel, { color: c.text }]}>{`メッセージ ${msgHits.reduce((n, h) => n + h.hits, 0)}`}</Text>
+                  {(msgExpanded ? msgHits : msgHits.slice(0, MESSAGE_PREVIEW)).map((h) => (
+                    <MessageHitRow key={h.friendId} hit={h} query={search} onPress={openHit} />
                   ))}
+                  {!msgExpanded && msgHits.length > MESSAGE_PREVIEW ? (
+                    <Pressable onPress={() => setMsgExpanded(true)} accessibilityRole="button" style={styles.moreBtn}>
+                      <Text style={{ color: c.textMuted, fontSize: 15 }}>もっと見る</Text>
+                      <Ionicons name="chevron-down" size={16} color={c.textMuted} />
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
             </>
@@ -467,6 +499,7 @@ const styles = StyleSheet.create({
   preview: { flex: 1, fontSize: 14 },
   unreadDot: { position: 'absolute', top: -1, right: -1, width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
   pinBadge: { position: 'absolute', right: -4, bottom: -4, width: 24, height: 24, borderRadius: 12, borderWidth: 2, backgroundColor: '#4f6bed', alignItems: 'center', justifyContent: 'center' },
-  sectionLabel: { paddingHorizontal: 16, paddingVertical: 6, fontSize: 12, fontWeight: '600' },
+  sectionLabel: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, fontSize: 17, fontWeight: '800' },
+  moreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 14 },
   banner: { padding: 10, margin: 12, borderRadius: 10 },
 });

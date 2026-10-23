@@ -139,6 +139,8 @@ export type ChatStatus = 'unread' | 'in_progress' | 'resolved';
 
 /** GET /api/chats/message-search の1件(友だちごとに、新しい該当メッセージ1件) */
 export interface MessageSearchHit {
+  /** その友だちの、新しい該当メッセージのID(1件だけのとき、トークのその位置へ移動する) */
+  messageId: string;
   friendId: string;
   name: string;
   displayName: string | null;
@@ -148,6 +150,14 @@ export interface MessageSearchHit {
   createdAt: string;
   /** その友だちの該当メッセージの数 */
   hits: number;
+}
+
+/** 1人のトークの中の、該当メッセージ1件(「◯件のメッセージ」の一覧) */
+export interface MessageSearchItem {
+  messageId: string;
+  direction: string;
+  content: string;
+  createdAt: string;
 }
 
 /** GET /api/chats の1件。id は friend_id と同じ */

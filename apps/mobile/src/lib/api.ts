@@ -5,6 +5,7 @@ import type {
   BroadcastProgress,
   ChatDetail,
   MessageSearchHit,
+  MessageSearchItem,
   ChatStatus,
   ChatSummary,
   FormAnswerDetail,
@@ -194,6 +195,9 @@ export function createApiClient(options: ApiClientOptions) {
     /** トーク内容の検索(メッセージ本文に検索語を含む友だちと、その該当メッセージ)。2文字以上 */
     searchChatMessages: (lineAccountId: string, q: string) =>
       request<{ items: MessageSearchHit[] }>('GET', '/api/chats/message-search', { query: { lineAccountId, q } }),
+    /** 1人のトークの中の、検索語を含むメッセージを新しい順にすべて(最大200件) */
+    searchChatMessagesOfFriend: (lineAccountId: string, friendId: string, q: string) =>
+      request<{ items: MessageSearchItem[] }>('GET', '/api/chats/message-search', { query: { lineAccountId, q, friendId } }),
     /** ホーム(トップ)の集計。fresh=true で、覚えている結果を使わず作り直す */
     getHome: (lineAccountId: string, fresh = false) =>
       request<HomeSummary>('GET', '/api/home', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),

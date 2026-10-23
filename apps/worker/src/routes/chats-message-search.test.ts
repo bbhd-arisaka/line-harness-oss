@@ -63,6 +63,18 @@ describe('GET /api/chats/message-search(トーク内容の検索)', () => {
     expect(body.data.items[0]).toMatchObject({ friendId: 'f1', name: 'たろう', hits: 2, direction: 'outgoing' });
     expect(body.data.items[0].snippet).toContain('まつげパーマ');
   });
+  test('一覧の各行に、該当メッセージのIDを付ける(トークを開いたときに、その位置へ移動するため)', async () => {
+    const body = await json(await get('まつげパーマ'));
+    expect(body.data.items[0].messageId).toBe('m2');
+  });
+  test('friendId を付けると、その友だちの該当メッセージを新しい順にすべて返す(別の公式アカウントの友だちは空)', async () => {
+    const one = (friendId: string, account = 'acc-a') =>
+      app().request(`/api/chats/message-search?lineAccountId=${account}&q=${encodeURIComponent('まつげパーマ')}&friendId=${friendId}`, {}, env);
+    const body = await json(await one('f1'));
+    expect(body.data.items.map((i: { messageId: string }) => i.messageId)).toEqual(['m2', 'm1']);
+    expect(body.data.items[0]).toMatchObject({ direction: 'outgoing', content: expect.stringContaining('まつげパーマ') });
+    expect((await json(await one('f3'))).data.items).toEqual([]);
+  });
   test('テスト配信・カード(flex)は探さない。2文字未満は探さない', async () => {
     expect((await json(await get('ネイル'))).data.items).toEqual([]);
     expect((await json(await get('ま'))).data.items).toEqual([]);
