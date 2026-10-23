@@ -694,12 +694,15 @@ friends.post('/api/friends/:id/field-image', async (c) => {
       .prepare('UPDATE friends SET metadata = ?, updated_at = ? WHERE id = ?')
       .bind(JSON.stringify({ ...existing, [key]: url }), jstNow(), friendId)
       .run();
-    await recordFriendInfoChanged(c.env.DB, {
-      friendId,
-      lineAccountId: friend.line_account_id ?? null,
-      keys: changedMetadataKeys(existing, { [key]: url }),
-      actor: c.get('staff')?.name ?? null,
-    });
+    // 引き継ぎなどのまとめ登録では、トークの「友だち情報を変更しました」を残さない(silent=1)
+    if (c.req.query('silent') !== '1') {
+      await recordFriendInfoChanged(c.env.DB, {
+        friendId,
+        lineAccountId: friend.line_account_id ?? null,
+        keys: changedMetadataKeys(existing, { [key]: url }),
+        actor: c.get('staff')?.name ?? null,
+      });
+    }
     return c.json({ success: true, data: { url, name: originalName, size: data.byteLength, mimeType } }, 201);
   } catch (err) {
     console.error('POST /api/friends/:id/field-image error:', err);
