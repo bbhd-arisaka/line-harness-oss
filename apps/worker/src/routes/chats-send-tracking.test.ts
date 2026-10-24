@@ -56,6 +56,19 @@ describe('chat reply tracking and delivery logs', () => {
     expect((await send({ content: '{{name}}さん({{real_name}}様)こんにちは', trackLinks: false })).status).toBe(200);
     expect((requests[0].messages[0] as { text: string }).text).toBe('はなこさん(山田 花子様)こんにちは');
   });
+  it('未対応のトークに返信したら、自動で「対応中」になる。対応中・対応済みは変えない。送れなかったときも変えない', async () => {
+    const statusOf = (id: string) => (fixture.sqlite.prepare('SELECT status FROM chats WHERE id=?').get(id) as { status: string }).status;
+    expect(statusOf('chat-a')).toBe('unread');
+    failDelivery = true;
+    expect((await send({ content: '送れない', trackLinks: false })).status).toBe(500);
+    expect(statusOf('chat-a')).toBe('unread');
+    failDelivery = false;
+    expect((await send({ content: 'こんにちは', trackLinks: false })).status).toBe(200);
+    expect(statusOf('chat-a')).toBe('in_progress');
+    fixture.sqlite.exec("UPDATE chats SET status='resolved' WHERE id='chat-b'");
+    expect((await send({ content: 'こんにちは', trackLinks: false }, 'chat-b')).status).toBe(200);
+    expect(statusOf('chat-b')).toBe('resolved');
+  });
   it('本名が未登録の相手には、{{real_name}} にLINE名を入れる。LINE名も空なら「お客様」', async () => {
     fixture.sqlite.exec("UPDATE friends SET display_name='はなこ', real_name=NULL WHERE id='friend-a'");
     expect((await send({ content: '{{real_name}}様', trackLinks: false })).status).toBe(200);
@@ -152,11 +165,12 @@ describe('chat reply tracking and delivery logs', () => {
     expectLogMatches(requests[0].messages[0]);
   });
 
-  it('送っただけでは、対応状況は変わらない(未対応は未対応・対応済みは対応済みのまま)', async () => {
+  it('返信したときの対応状況: 未対応→対応中になる。対応中・対応済みはそのまま', async () => {
+    const expected: Record<string, string> = { unread: 'in_progress', in_progress: 'in_progress', resolved: 'resolved' };
     for (const status of ['unread', 'in_progress', 'resolved']) {
       fixture.sqlite.prepare('UPDATE chats SET status = ? WHERE id = ?').run(status, 'chat-a');
       expect((await send({ content: 'こんにちは', trackLinks: false })).status).toBe(200);
-      expect(fixture.sqlite.prepare("SELECT status FROM chats WHERE id='chat-a'").get()).toEqual({ status });
+      expect(fixture.sqlite.prepare("SELECT status FROM chats WHERE id='chat-a'").get()).toEqual({ status: expected[status] });
     }
   });
 

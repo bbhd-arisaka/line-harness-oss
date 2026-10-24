@@ -1143,6 +1143,8 @@ export default function ChatsPage() {
         setChatDetail((prev) => (prev && prev.id === sendingChatId) ? {
           ...prev,
           lastMessageAt: now,
+          // 未対応のトークに返信すると、サーバーが「対応中」にする。画面も同じにしておく
+          status: prev.status === 'unread' ? 'in_progress' as const : prev.status,
           messages: [
             ...(prev.messages ?? []),
             {
@@ -1163,6 +1165,7 @@ export default function ChatsPage() {
           const updated = prev.map((c) => c.id === sendingChatId ? {
             ...c,
             lastMessageAt: now,
+            status: c.status === 'unread' ? 'in_progress' as const : c.status,
             lastMessageContent: '[画像]',
             lastMessageDirection: 'outgoing' as const,
             lastMessageType: 'image' as const,
@@ -1194,6 +1197,8 @@ export default function ChatsPage() {
         setChatDetail((prev) => (prev && prev.id === sendingChatId) ? {
           ...prev,
           lastMessageAt: now,
+          // 未対応のトークに返信すると、サーバーが「対応中」にする。画面も同じにしておく
+          status: prev.status === 'unread' ? 'in_progress' as const : prev.status,
           messages: [
             ...(prev.messages ?? []),
             {
@@ -1215,6 +1220,7 @@ export default function ChatsPage() {
           const updated = prev.map((c) => c.id === sendingChatId ? {
             ...c,
             lastMessageAt: now,
+            status: c.status === 'unread' ? 'in_progress' as const : c.status,
             // 一覧の preview も即時更新する。server 側も direction/source を問わず
             // 実際の最新メッセージを返すため、次回 loadChats() 後も同じ表示になる。
             lastMessageContent: content,

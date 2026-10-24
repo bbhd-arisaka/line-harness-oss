@@ -91,3 +91,19 @@ export function planNavigation(
   }
   return { kind: 'open', chatId: target.chatId, switchAccountId: null };
 }
+
+/**
+ * いま通知センターに出ている通知のうち、指定したトーク(友だちID)の分の識別子。
+ * 返信したときに、そのトークの通知だけを消すために使う。
+ */
+export function notificationIdsForChat(
+  presented: ReadonlyArray<{ request: { identifier: string; content: { data?: unknown } } }>,
+  chatId: string,
+): string[] {
+  const ids: string[] = [];
+  for (const n of presented) {
+    if (parseNotificationTarget(n.request.content.data)?.chatId === chatId) ids.push(n.request.identifier);
+  }
+  return ids;
+}
+

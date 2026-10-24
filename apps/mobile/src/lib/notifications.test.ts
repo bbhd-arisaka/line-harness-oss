@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeApnsToken, parseNotificationTarget, planNavigation, planPermission } from './notifications';
+import { normalizeApnsToken, notificationIdsForChat, parseNotificationTarget, planNavigation, planPermission } from './notifications';
 
 const HEX = 'a'.repeat(64);
 
@@ -73,5 +73,20 @@ describe('planNavigation', () => {
   });
   it('開き先なしは何もしない', () => {
     expect(planNavigation(null, 'a1', ['a1'])).toEqual({ kind: 'ignore', reason: 'no-target' });
+  });
+});
+
+describe('notificationIdsForChat(返信したトークの通知だけを選ぶ)', () => {
+  const n = (identifier: string, data: unknown) => ({ request: { identifier, content: { data } } });
+  it('友だちID(なければ chatId)が一致する通知だけを選ぶ', () => {
+    const list = [
+      n('a', { friendId: 'f1', chatId: 'c1' }),
+      n('b', { friendId: 'f2' }),
+      n('c', { chatId: 'f1' }),
+      n('d', undefined),
+      n('e', { body: JSON.stringify({ friendId: 'f1' }) }),
+    ];
+    expect(notificationIdsForChat(list, 'f1')).toEqual(['a', 'c', 'e']);
+    expect(notificationIdsForChat(list, 'zzz')).toEqual([]);
   });
 });

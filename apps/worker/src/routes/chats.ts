@@ -988,8 +988,9 @@ chats.post('/api/chats/:id/send', async (c) => {
     }
 
     // チャットの最終メッセージ日時を更新（chat.id を直接使う — friend_id で呼ばれても resolveOrCreateChat 済み）。
-    // 対応状況(未対応・対応中・対応済み)は、送っただけでは変えない(変えるのは、スタッフが押したときと、お客様から届いたとき)
-    await updateChat(c.env.DB, chat.id, { lastMessageAt: jstNow() });
+    // 対応状況: 未対応のトークに返信したら、自動で「対応中」にする。対応中・対応済みは、返信しても変えない
+    // (対応済みは、スタッフが終わりにした印。変えるのは、スタッフが押したときと、お客様から届いたとき)
+    await updateChat(c.env.DB, chat.id, { lastMessageAt: jstNow(), ...(chat.status === 'unread' ? { status: 'in_progress' } : {}) });
 
     return c.json({ success: true, data: { sent: true, messageId: logId } });
   } catch (err) {

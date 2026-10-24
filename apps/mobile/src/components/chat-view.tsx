@@ -31,6 +31,7 @@ import { readUndoSendEnabled } from '../state/undo-send';
 import { remainingSeconds } from '../lib/pending-send';
 import { restoreText } from '../lib/chat-draft';
 import { endActiveSelection } from '../state/text-selection';
+import { dismissChatNotifications } from '../state/notification-dismiss';
 
 hookAppStateFlush();
 
@@ -376,6 +377,7 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
     setSendError(null);
     try {
       await api.sendChatMessage(id, t.messageType === 'image' ? 'image' : 'flex', t.messageContent);
+      void dismissChatNotifications(id); // 返信したので、このトークの通知を通知センターから消す
       refreshUnread();
       await load(true);
       onChanged?.();
@@ -400,6 +402,7 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
       try {
         if (image) await api.sendChatMessage(chatId, 'image', imageContent(image));
         if (body) await api.sendChatText(chatId, body);
+        void dismissChatNotifications(chatId); // 返信したので、このトークの通知を通知センターから消す
         notifyPending({ kind: 'sent', chatId });
       } catch (e) {
         // 送れなかった文章は、入力欄(下書き)に戻す
@@ -468,6 +471,7 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
         setText('');
         selection.current = null;
       }
+      void dismissChatNotifications(id); // 返信したので、このトークの通知を通知センターから消す
       refreshUnread();
       await load(true);
       onChanged?.();
