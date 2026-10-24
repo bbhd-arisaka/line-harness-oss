@@ -29,7 +29,7 @@ import { Input } from '@cloudflare/kumo/components/input'
 import { Radio } from '@cloudflare/kumo/components/radio'
 import { Select } from '@cloudflare/kumo/components/select'
 import FriendAvatar from '@/components/friends/friend-avatar'
-import { PushPinIcon } from '@phosphor-icons/react'
+import { PushPinIcon, XIcon } from '@phosphor-icons/react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { loadDraft, saveDraft, restoreText, loadUndoSend, saveUndoSend } from '@/lib/chat-draft'
 import { cancelPending, getPending, hookPageLifecycle, notifyPending, remainingSeconds, startPending, subscribePending, type PendingSend } from '@/lib/pending-send'
@@ -407,6 +407,8 @@ export default function ChatsPage() {
   // 「送信の取り消し」: オンのとき、送信を10秒待たせて、そのあいだ取り消せる(この端末のブラウザの設定)
   const [undoSend, setUndoSend] = useState(false)
   const [pendingSend, setPendingSend] = useState<PendingSend | null>(null)
+  // 待っている間(waiting)だけ「× 秒数」を出す。送り始めたあと(sending)は、本物のメッセージが入るまで仮の吹き出しだけを残す
+  const [pendingPhase, setPendingPhase] = useState<'waiting' | 'sending'>('waiting')
   const [nowMs, setNowMs] = useState(() => Date.now())
   // 入力欄の文章がどのトークのものか(トークを切り替えた直後に、前のトークの文章を新しいトークの下書きにしないため)
   const draftOwnerRef = useRef<string | null>(null)
@@ -1005,6 +1007,7 @@ export default function ChatsPage() {
     draftOwnerRef.current = selectedChatId
     setMessageContent(selectedChatId ? loadDraft(selectedChatId) : '')
     setPendingSend(selectedChatId ? getPending(selectedChatId) : null)
+    setPendingPhase('waiting')
   }, [selectedChatId])
   useEffect(() => {
     if (draftOwnerRef.current && draftOwnerRef.current === selectedChatId) saveDraft(selectedChatId, messageContent)
@@ -1020,13 +1023,25 @@ export default function ChatsPage() {
   }, [undoSend])
   useEffect(() => {
     return subscribePending((e) => {
-      if (e.chatId === selectedChatId) setPendingSend(getPending(e.chatId))
+      if (e.chatId !== selectedChatId) return
+      if (e.kind === 'queued') {
+        setPendingSend(getPending(e.chatId))
+        setPendingPhase('waiting')
+      } else if (e.kind === 'flushed') {
+        setPendingPhase('sending')
+      } else if (e.kind === 'cancelled') {
+        setPendingSend(null)
+      }
     })
   }, [selectedChatId])
   useEffect(() => {
-    if (!pendingSend) return
+    if (!pendingSend || pendingPhase !== 'waiting') return
     const t = setInterval(() => setNowMs(Date.now()), 250)
     return () => clearInterval(t)
+  }, [pendingSend, pendingPhase])
+  // 仮の吹き出しが出たら、いちばん下まで見せる
+  useEffect(() => {
+    if (pendingSend && messagesScrollRef.current) messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight
   }, [pendingSend])
 
   const handleSelectChat = (chatId: string) => {
@@ -1094,7 +1109,15 @@ export default function ChatsPage() {
     const image = pendingImage
     setMessageContent('')
     setPendingImage(null)
-    setPendingSend(startPending({ chatId, text, image }, () => handleSendMessage({ chatId, text, image })))
+    setPendingPhase('waiting')
+    setPendingSend(startPending({ chatId, text, image }, async () => {
+      try {
+        await handleSendMessage({ chatId, text, image })
+      } finally {
+        // 本物のメッセージが入ったので、仮の吹き出しを消す(続けて次の送信を待たせているときは、そちらを残す)
+        if (!getPending(chatId)) setPendingSend(null)
+      }
+    }))
     setNowMs(Date.now())
   }
 
@@ -1853,6 +1876,26 @@ ${t.messageContent}` : t.messageContent))
                     )
                   })
                 )}
+                {/* 送信を待たせているメッセージ(まだ送られていない)。うすく見せ、下に小さな「✕ 秒数」を付ける。✕で取り消す */}
+                {pendingSend && pendingSend.chatId === selectedChatId && (
+                  <div className="flex flex-col items-end gap-0.5 opacity-70">
+                    {Boolean((pendingSend.image as { previewImageUrl?: string } | null)?.previewImageUrl) && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={(pendingSend.image as { previewImageUrl: string }).previewImageUrl} alt="送信する画像" className="max-h-40 max-w-[60%] rounded-lg object-cover" />
+                    )}
+                    {pendingSend.text.trim() && (
+                      <div className={`max-w-[75%] lg:max-w-[60%] px-3 py-2 text-sm break-words whitespace-pre-wrap rounded-tl-2xl rounded-tr-md rounded-bl-2xl rounded-br-2xl ${outgoingBubbleClass('manual')}`}>
+                        {pendingSend.text.trim()}
+                      </div>
+                    )}
+                    {pendingPhase === 'waiting' && (
+                      <Button type="button" variant="ghost" size="xs" onClick={handleCancelSend} aria-label={`送信を取り消す(あと${remainingSeconds(pendingSend.deadline, nowMs)}秒)`} className="h-5 gap-0.5 rounded-full bg-white/80 px-2 text-[11px] text-gray-600">
+                        <XIcon size={11} />
+                        <span className="tabular-nums">{remainingSeconds(pendingSend.deadline, nowMs)}秒</span>
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Notes — PC(xl+)は右サイドバーに常設。狭い画面のみトグル表示 */}
@@ -1923,13 +1966,6 @@ ${t.messageContent}` : t.messageContent))
                     <div className="flex items-center gap-3">
                       <Radio.Group legend="送信キー" value={sendMode} onValueChange={setSendMode} className="flex gap-3"><Radio.Item value="enter" label="Enter" /><Radio.Item value="shift-enter" label="Shift+Enter" /></Radio.Group>
                     </div>
-                  </div>
-                )}
-                {pendingSend && (
-                  <div className="mb-2 flex items-center gap-3 rounded-lg bg-gray-100 px-3 py-2 text-sm" role="status">
-                    <span className="min-w-0 flex-1 truncate text-gray-500">{pendingSend.text.trim() || '[画像]'}</span>
-                    <span className="flex-shrink-0 font-medium tabular-nums text-gray-600">{remainingSeconds(pendingSend.deadline, nowMs)}秒</span>
-                    <Button type="button" variant="secondary" size="sm" onClick={handleCancelSend}>取り消し</Button>
                   </div>
                 )}
                 {(showImagePicker || pendingImage) && (

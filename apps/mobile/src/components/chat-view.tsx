@@ -147,6 +147,46 @@ const BubbleView = memo(function BubbleView({
   );
 });
 
+/** 送信を待たせているメッセージ(まだ送られていない)。うすく見せ、下に小さな「✕ 秒数」を付ける。✕で取り消す */
+function PendingBubbles({
+  info,
+  waiting,
+  seconds,
+  onCancel,
+  avatar,
+}: {
+  info: PendingSendInfo;
+  waiting: boolean;
+  seconds: number;
+  onCancel: () => void;
+  avatar: { uri: string | null; name: string; onPress: () => void };
+}) {
+  const c = useColors();
+  const base = { side: 'outgoing' as const, time: '', createdAt: '' };
+  return (
+    <View style={{ opacity: 0.65 }}>
+      {info.imageUrl ? (
+        <BubbleView bubble={{ ...base, id: 'pending-image', kind: 'image', text: '[画像]', imageUrl: info.imageUrl }} onImagePress={() => {}} onOpenAnswer={() => {}} avatar={avatar} />
+      ) : null}
+      {info.text ? <BubbleView bubble={{ ...base, id: 'pending-text', kind: 'text', text: info.text, imageUrl: null }} onImagePress={() => {}} onOpenAnswer={() => {}} avatar={avatar} /> : null}
+      {waiting ? (
+        <View style={styles.undoRow}>
+          <Pressable
+            onPress={onCancel}
+            accessibilityRole="button"
+            accessibilityLabel={`送信を取り消す(あと${seconds}秒)`}
+            hitSlop={12}
+            style={({ pressed }) => [styles.undoChip, { backgroundColor: c.card, opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Ionicons name="close" size={14} color={c.textSub} />
+            <Text style={{ color: c.textSub, fontSize: 11, fontWeight: '600' }}>{seconds}秒</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 /**
  * トーク画面の本体。
  * - 通常(iPhone・iPad の縦): 画面として開く(上のヘッダーは Stack が出す)
@@ -195,6 +235,8 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
   const [sending, setSending] = useState(false);
   // 「送信の取り消し」: 送信を10秒待たせている間の情報(残り秒数の表示と、取り消しボタン)
   const [pendingSend, setPendingSend] = useState<PendingSendInfo | null>(() => getPending(id));
+  // 待ち(waiting)のあいだだけ「× 秒数」を出す。送り始めたあと(sending)は、本物のメッセージが届くまで、仮の吹き出しだけを残す
+  const [pendingPhase, setPendingPhase] = useState<'waiting' | 'sending'>('waiting');
   const [nowMs, setNowMs] = useState(() => Date.now());
   // 入力欄の道具: 色付きボックス(LINE名・本名・フォーム)・テンプレート・写真
   const [forms, setForms] = useState<FormOption[] | null>(null);
@@ -422,17 +464,30 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
     if (info.imageUrl) setPendingImage(info.imageUrl);
   }
 
-  // 送信の待ち状態の変化(予約・取り消し・送信済み・失敗)を受け取る
+  // 送信の待ち状態の変化(予約・取り消し・送り始め・送信済み・失敗)を受け取る
   useEffect(() => {
-    setPendingSend(getPending(id));
+    queueMicrotask(() => {
+      setPendingSend(getPending(id));
+      setPendingPhase('waiting');
+    });
     return subscribePending((e) => {
       if (e.chatId !== id) return;
-      setPendingSend(getPending(id));
-      if (e.kind === 'sent') {
+      if (e.kind === 'queued') {
+        setPendingSend(getPending(id));
+        setPendingPhase('waiting');
+      } else if (e.kind === 'flushed') {
+        setPendingPhase('sending');
+      } else if (e.kind === 'cancelled') {
+        setPendingSend(null);
+      } else if (e.kind === 'sent') {
         refreshUnread();
-        void load(true);
+        // 本物のメッセージを取り込んでから、仮の吹き出しを消す(消えて、また出る、という見え方にしない)
+        void load(true).finally(() => {
+          if (!getPending(id)) setPendingSend(null);
+        });
         onChanged?.();
       } else if (e.kind === 'failed') {
+        setPendingSend(getPending(id));
         setTextState(getDraft(id));
         setSendError(e.message);
       }
@@ -440,10 +495,10 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   // 残り秒数の表示を更新する
   useEffect(() => {
-    if (!pendingSend) return;
+    if (!pendingSend || pendingPhase !== 'waiting') return;
     const t = setInterval(() => setNowMs(Date.now()), 250);
     return () => clearInterval(t);
-  }, [pendingSend]);
+  }, [pendingSend, pendingPhase]);
 
   async function send() {
     if (!id || sendLock.current) return;
@@ -639,6 +694,18 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
                 <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} avatar={avatar} highlight={highlight} />
               )
             }
+            // inverted の先頭 = 画面の一番下。送信を待たせているメッセージを、仮の吹き出しとして出す(小さな「× 秒数」で取り消せる)
+            ListHeaderComponent={
+              pendingSend ? (
+                <PendingBubbles
+                  info={pendingSend}
+                  waiting={pendingPhase === 'waiting'}
+                  seconds={remainingSeconds(pendingSend.deadline, nowMs)}
+                  onCancel={cancelSend}
+                  avatar={avatar}
+                />
+              ) : null
+            }
             // inverted の末尾 = 画面の一番上
             ListFooterComponent={
               chat && chat.messages.length >= HISTORY_LIMIT ? (
@@ -665,17 +732,6 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
             </View>
           ) : (
           <View style={[styles.composer, { backgroundColor: c.card, borderTopColor: c.border, paddingBottom: Math.max(insets.bottom, 8) }]}>
-            {pendingSend ? (
-              <View style={[styles.undoBar, { backgroundColor: c.inputBackground }]} accessibilityLiveRegion="polite">
-                <Text style={{ color: c.textMuted, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                  {pendingSend.text || '[画像]'}
-                </Text>
-                <Text style={{ color: c.textSub, fontSize: 13, fontWeight: '600' }}>{remainingSeconds(pendingSend.deadline, nowMs)}秒</Text>
-                <Pressable onPress={cancelSend} accessibilityRole="button" accessibilityLabel="送信を取り消す" hitSlop={8} style={({ pressed }) => [styles.undoButton, { opacity: pressed ? 0.6 : 1, borderColor: c.danger }]}>
-                  <Text style={{ color: c.danger, fontSize: 14, fontWeight: '700' }}>取り消し</Text>
-                </Pressable>
-              </View>
-            ) : null}
             {pendingImage ? (
               <View style={styles.pendingRow}>
                 <Image source={{ uri: pendingImage }} style={[styles.pendingThumb, { backgroundColor: c.border }]} resizeMode="cover" accessibilityLabel="送る写真" />
@@ -817,8 +873,8 @@ const styles = StyleSheet.create({
   composerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   input: { flex: 1, minHeight: MIN_TAP, maxHeight: 140, borderRadius: 22, borderWidth: 0, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, fontSize: 16, lineHeight: 22 },
   iconBtn: { width: 40, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
-  undoBar: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
-  undoButton: { minHeight: 32, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  undoRow: { alignItems: 'flex-end', paddingRight: 4, marginTop: 1, marginBottom: 4 },
+  undoChip: { flexDirection: 'row', alignItems: 'center', gap: 2, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
   pendingRow: { alignSelf: 'flex-start' },
   pendingThumb: { width: 72, height: 72, borderRadius: 10 },
   pendingX: { position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
