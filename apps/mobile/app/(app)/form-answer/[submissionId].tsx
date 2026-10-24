@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { api } from '../../../src/state/services';
 import { Card, ErrorView, LoadingView } from '../../../src/components/ui';
 import { MessageText } from '../../../src/components/message-text';
+import { endActiveSelection } from '../../../src/state/text-selection';
 import { withReadableWidth } from '../../../src/components/readable-width';
 import { formatDateTime } from '../../../src/lib/format';
 import { describeError } from '../../../src/lib/errors';
@@ -44,7 +45,15 @@ function FormAnswerScreen() {
   if (error || !detail) return <ErrorView message={error ?? '回答結果を読み込めませんでした'} onRetry={() => void load()} />;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: c.background }}
+      contentContainerStyle={styles.content}
+      // 範囲選択中に、ほかの場所をタップ・スクロールし始めたら、選択をやめる
+      onStartShouldSetResponderCapture={(e) => {
+        endActiveSelection((e.nativeEvent as { target?: unknown }).target as number | undefined);
+        return false;
+      }}
+    >
       <Card>
         <Text style={{ color: c.text, fontSize: fs(17), fontWeight: '700' }}>{detail.formName}</Text>
         <Text style={{ color: c.textSub, fontSize: fs(13), marginTop: 6 }}>回答者: {detail.friendName}</Text>

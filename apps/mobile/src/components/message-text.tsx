@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, type StyleProp, type TextStyle } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { findNodeHandle, Pressable, Text, TextInput, type StyleProp, type TextStyle } from 'react-native';
 import { hapticLongPress } from '../lib/haptics';
 import { splitByQuery } from '../lib/search-highlight';
+import { beginSelection, endSelectionOf, setSelectionTag } from '../state/text-selection';
 
 /**
  * トークの文章(吹き出し・フォームの回答カードなど、メッセージの文字は、すべてこれで出す)。
@@ -27,15 +28,27 @@ export function MessageText({
   highlight?: string;
 }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  // ふだんの表示の行数(範囲選択の入力欄の行の高さを、ふだんの表示の高さにそろえるために使う)
+  const [lineCount, setLineCount] = useState(0);
   const [selecting, setSelecting] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
+  // 範囲選択をやめる(ほかをタップ・スクロールしたとき、画面側から呼ばれる)
+  const endSelecting = useCallback(() => setSelecting(false), []);
+
   useEffect(() => {
     if (!selecting) return;
+    beginSelection(endSelecting, null);
     // 入力欄が出てから、選ぶ(focus すると、全文が選ばれる)
-    const t = setTimeout(() => inputRef.current?.focus(), 60);
-    return () => clearTimeout(t);
-  }, [selecting]);
+    const t = setTimeout(() => {
+      inputRef.current?.focus();
+      setSelectionTag(endSelecting, inputRef.current ? findNodeHandle(inputRef.current) : null);
+    }, 60);
+    return () => {
+      clearTimeout(t);
+      endSelectionOf(endSelecting);
+    };
+  }, [selecting, endSelecting]);
 
   if (selecting && size) {
     return (
@@ -50,14 +63,19 @@ export function MessageText({
         onChangeText={() => {}}
         onBlur={() => setSelecting(false)}
         accessibilityLabel="メッセージ(範囲を選んでコピーできます)"
-        // 文字の高さは Text と同じ。選んでいるあいだに折り返しがずれても、切れないよう、スクロールは許す
-        style={[style, { width: size.w, height: size.h, padding: 0 }]}
+        // 全体の高さは、ふだんの表示と同じ。行の高さは、ふだんの表示の「全体の高さ ÷ 行数」にそろえる
+        // (①や全角数字などの文字を含む行は、ふだんの表示のほうが少し高く出るので、一定の高さだと、下の行ほどずれていく)
+        style={[style, { width: size.w, height: size.h, padding: 0 }, lineCount > 0 ? { lineHeight: size.h / lineCount } : null]}
       />
     );
   }
 
   const body = (
-    <Text style={style} onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+    <Text
+      style={style}
+      onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+      onTextLayout={(e) => setLineCount(e.nativeEvent.lines.length)}
+    >
       {highlight
         ? splitByQuery(text, highlight).map((p, i) =>
             p.hit ? (

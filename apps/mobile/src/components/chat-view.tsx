@@ -30,6 +30,7 @@ import { cancelPending, getPending, hookAppStateFlush, notifyPending, startPendi
 import { readUndoSendEnabled } from '../state/undo-send';
 import { remainingSeconds } from '../lib/pending-send';
 import { restoreText } from '../lib/chat-draft';
+import { endActiveSelection } from '../state/text-selection';
 
 hookAppStateFlush();
 
@@ -534,7 +535,14 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
   const canSend = (text.trim().length > 0 || !!pendingImage) && !sending && !uploading;
 
   return (
-    <View style={{ flex: 1, backgroundColor: c.chatBackground }}>
+    <View
+      style={{ flex: 1, backgroundColor: c.chatBackground }}
+      // メッセージの範囲選択中に、ほかの場所をタップ・スクロールし始めたら、選択をやめる(タップそのものは、そのまま行き渡らせる)
+      onStartShouldSetResponderCapture={(e) => {
+        endActiveSelection((e.nativeEvent as { target?: unknown }).target as number | undefined);
+        return false;
+      }}
+    >
       {embedded ? (
         <View style={[styles.paneHeader, { backgroundColor: c.card, borderBottomColor: c.border }]}>
           <Text style={[styles.paneTitle, { color: c.text }]} numberOfLines={1}>

@@ -6,6 +6,7 @@ import { api } from '../../../src/state/services';
 import { useLoader } from '../../../src/state/hooks';
 import { Avatar, Button, Card, ErrorView, LoadingView, SectionTitle } from '../../../src/components/ui';
 import { MessageText } from '../../../src/components/message-text';
+import { endActiveSelection } from '../../../src/state/text-selection';
 import { PickModal } from '../../../src/components/pick-modal';
 import type { InflowRoute } from '../../../src/lib/inflow';
 import { describeRichMenu, formatDateTime, resolveFriendName } from '../../../src/lib/format';
@@ -169,6 +170,11 @@ function FriendDetailScreen() {
   return (
     <ScrollView
       style={{ backgroundColor: c.background }}
+      // 範囲選択中に、ほかの場所をタップ・スクロールし始めたら、選択をやめる
+      onStartShouldSetResponderCapture={(e) => {
+        endActiveSelection((e.nativeEvent as { target?: unknown }).target as number | undefined);
+        return false;
+      }}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
