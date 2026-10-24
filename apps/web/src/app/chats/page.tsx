@@ -1306,18 +1306,22 @@ export default function ChatsPage() {
     setSidebarKey((k) => k + 1)
   }
 
-  /** テンプレートを選んだ。テキストは入力欄に入れる(直してから送れる)。画像・Flex は、送る前の確認へ */
+  /** テンプレートを選んだ。送る前の確認へ(テキストは、そのまま送る・編集して送る、を選べる。画像・Flex は、そのまま送るだけ) */
   const handlePickTemplate = (t: ChatTemplate) => {
-    if (t.messageType === 'text') {
-      setMessageContent((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}
-${t.messageContent}` : t.messageContent))
-      setTimeout(() => textareaRef.current?.focus(), 0)
-      return
-    }
     setTemplateToSend(t)
   }
 
-  /** 画像・Flex のテンプレートを、いま開いているトークに送る */
+  /** テキストのテンプレートを、入力欄に入れて、直してから送れるようにする */
+  const editTemplateBeforeSend = () => {
+    const t = templateToSend
+    if (!t) return
+    setMessageContent((prev) => (prev.trim() ? `${prev.replace(/\s+$/, '')}
+${t.messageContent}` : t.messageContent))
+    setTemplateToSend(null)
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }
+
+  /** テンプレートを、そのまま、いま開いているトークに送る */
   const sendTemplateNow = async () => {
     const t = templateToSend
     const chatId = selectedChatId
@@ -2165,9 +2169,9 @@ ${t.messageContent}` : t.messageContent))
       <Modal open={templateToSend !== null} onClose={() => (sendingTemplate ? undefined : setTemplateToSend(null))} maxWidthClass="max-w-md" align="center">
         {templateToSend ? (
           <div className="p-5">
-            <h2 className="text-base font-bold text-[#333]">このテンプレートを送りますか?</h2>
+            <h2 className="text-base font-bold text-[#333]">{templateToSend.messageType === 'text' ? 'テンプレートの送り方' : 'このテンプレートを送りますか?'}</h2>
             <p className="mt-1 text-xs text-[#757578]">
-              「{templateToSend.name}」を、いま開いているトークの相手に送ります。送ったあとは取り消せません。
+              「{templateToSend.name}」を、いま開いているトークの相手に送ります。そのまま送ったあとは取り消せません。
             </p>
             <div className="mt-3 max-h-72 overflow-y-auto rounded border border-[#e0e0e3] bg-[#f7f7f9] p-3">
               {templateToSend.messageType === 'flex' ? (
@@ -2182,8 +2186,13 @@ ${t.messageContent}` : t.messageContent))
               <button type="button" disabled={sendingTemplate} onClick={() => setTemplateToSend(null)} className="rounded border border-[#cacace] px-4 py-1.5 text-sm text-[#333] hover:bg-[#f1f1f4] disabled:opacity-50">
                 キャンセル
               </button>
+              {templateToSend.messageType === 'text' ? (
+                <Button type="button" variant="secondary" disabled={sendingTemplate} onClick={editTemplateBeforeSend}>
+                  編集して送る
+                </Button>
+              ) : null}
               <Button type="button" variant="primary" loading={sendingTemplate} disabled={sendingTemplate} onClick={() => void sendTemplateNow()}>
-                送る
+                そのまま送る
               </Button>
             </div>
           </div>

@@ -399,14 +399,24 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
     const t = (templates ?? []).find((x) => x.id === item.id);
     setPickTemplate(false);
     if (!t) return;
+    const who = chat?.friendName || 'この相手';
     if (t.messageType === 'text') {
-      // テキストは入力欄に入れる(直してから送れる)
-      setText((prev) => appendTemplateText(prev, t.messageContent));
-      setForcedPos(null);
+      // テキストは、そのまま送る・入力欄に入れて編集して送る、を選ぶ
+      Alert.alert('テンプレートの送り方', `「${t.name}」を、${who}に送ります。`, [
+        {
+          text: '編集して送る',
+          onPress: () => {
+            setText((prev) => appendTemplateText(prev, t.messageContent));
+            setForcedPos(null);
+          },
+        },
+        { text: 'そのまま送る', onPress: () => void sendTemplateNow(t) },
+        { text: 'やめる', style: 'cancel' },
+      ]);
       return;
     }
-    // 画像・Flex は、すぐ送ることになるので、送る前に確認する
-    Alert.alert('このテンプレートを送りますか?', `「${t.name}」を、${chat?.friendName || 'この相手'}に送ります。送ったあとは取り消せません。`, [
+    // 画像・Flex は、編集できないので、送る前に確認する
+    Alert.alert('このテンプレートを送りますか?', `「${t.name}」を、${who}に送ります。送ったあとは取り消せません。`, [
       { text: 'やめる', style: 'cancel' },
       { text: '送る', onPress: () => void sendTemplateNow(t) },
     ]);
@@ -418,7 +428,8 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
     setSending(true);
     setSendError(null);
     try {
-      await api.sendChatMessage(id, t.messageType === 'image' ? 'image' : 'flex', t.messageContent);
+      if (t.messageType === 'text') await api.sendChatText(id, t.messageContent);
+      else await api.sendChatMessage(id, t.messageType === 'image' ? 'image' : 'flex', t.messageContent);
       void dismissChatNotifications(id); // 返信したので、このトークの通知を通知センターから消す
       refreshUnread();
       await load(true);
