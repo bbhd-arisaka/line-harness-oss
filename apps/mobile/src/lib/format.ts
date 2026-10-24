@@ -228,6 +228,8 @@ export interface Bubble {
   fullImageUrl?: string | null;
   /** kind が formAnswer のとき、カードの内容 */
   formAnswer?: FormAnswerCard;
+  /** kind が flex のとき、カードの本文(JSON の文字列)。お客様のLINEと同じ見た目で描くために使う */
+  flexContent?: string;
   time: string;
   createdAt: string;
 }
@@ -263,7 +265,7 @@ export function toBubble(m: ChatMessage): Bubble {
       return { ...base, kind: 'sticker', text: '[スタンプ]', imageUrl: null };
     case 'flex': {
       const summary = extractFlexText(m.content);
-      return { ...base, kind: 'flex', text: summary ? `[カード] ${summary}` : '[カード]', imageUrl: null };
+      return { ...base, kind: 'flex', text: summary ? `[カード] ${summary}` : '[カード]', imageUrl: null, flexContent: m.content };
     }
     case 'form_answer': {
       const card = parseFormAnswerCard(m.content);

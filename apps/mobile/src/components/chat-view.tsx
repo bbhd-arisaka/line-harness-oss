@@ -17,6 +17,8 @@ import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListIte
 import { STATUS_LABEL } from '../lib/format';
 import { StatusChip } from './status-chip';
 import { MessageText } from './message-text';
+import { FlexMessageView } from './flex-card';
+import { parseFlexMessages } from '../lib/flex-style';
 import { animateLayout } from '../lib/motion';
 import type { ChatDetail, ChatStatus, FormOption, TemplateOption } from '../lib/types';
 import { ImageViewer } from '../components/image-viewer';
@@ -118,6 +120,19 @@ const BubbleView = memo(function BubbleView({
   const alt = bubble.kind !== 'text';
   if (bubble.kind === 'formAnswer' && bubble.formAnswer) {
     return <FormAnswerCardView card={bubble.formAnswer} time={bubble.time} avatar={avatar} onOpen={onOpenAnswer} />;
+  }
+  // カード(Flex): 吹き出しに包まず、お客様のLINEと同じ見た目のカードをそのまま出す
+  if (bubble.kind === 'flex' && bubble.flexContent && parseFlexMessages(bubble.flexContent).length > 0) {
+    return (
+      <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
+        {!out ? <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} /> : null}
+        {out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
+        <View style={styles.flexWrap}>
+          <FlexMessageView content={bubble.flexContent} outgoingColor={out ? (bubble.system ? c.bubbleSystem : c.bubbleOutgoing) : undefined} />
+        </View>
+        {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
+      </View>
+    );
   }
   return (
     <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
@@ -871,6 +886,7 @@ const styles = StyleSheet.create({
   avatar: { width: 36, height: 36, marginBottom: 2 },
   avatarImage: { width: 36, height: 36, borderRadius: 18 },
   bubble: { maxWidth: '75%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
+  flexWrap: { flexShrink: 1, maxWidth: '88%' },
   bubbleIn: { borderTopLeftRadius: 4 },
   bubbleOut: { borderTopRightRadius: 4 },
   image: { width: 200, height: 200, borderRadius: 10 },
