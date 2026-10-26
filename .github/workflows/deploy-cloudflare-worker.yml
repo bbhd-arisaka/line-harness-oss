@@ -100,10 +100,23 @@ jobs:
             echo "Patched admin CORS vars: ADMIN_ORIGIN=$ADMIN_ORIGIN ADMIN_ALLOW_CROSS_SITE=${ADMIN_ALLOW_CROSS_SITE:-true}"
           fi
 
+      # Google OAuth クライアントID(秘密ではない)。ダッシュボードの「変数」で入れると
+      # デプロイのたびに消えるので、リポジトリの Variables からデプロイに焼き込む。
+      - name: Inject Google OAuth client id
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+        run: |
+          if [ -n "$GOOGLE_OAUTH_CLIENT_ID" ]; then
+            cd apps/worker
+            tmp="$(mktemp)"
+            jq --arg id "$GOOGLE_OAUTH_CLIENT_ID" '.vars.GOOGLE_OAUTH_CLIENT_ID = $id' dist/line_harness/wrangler.json > "$tmp" && mv "$tmp" dist/line_harness/wrangler.json
+            echo "Injected GOOGLE_OAUTH_CLIENT_ID"
+          fi
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/worker
-          command: deploy --config dist/line_harness/wrangler.json --name ${{ vars.WORKER_NAME || 'your-worker-name' }}
+          command: deploy --config dist/line_harness/wrangler.json --name ${{ vars.WORKER_NAME || 'your-worker-name' }} --keep-vars
