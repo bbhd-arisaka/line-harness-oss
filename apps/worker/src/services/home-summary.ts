@@ -336,7 +336,7 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
         `SELECT status, COUNT(*) AS n FROM (
            SELECT c.status AS status, MAX(c.created_at) AS created_at
            FROM chats c JOIN friends f ON f.id = c.friend_id
-           WHERE f.line_account_id = ?
+           WHERE f.line_account_id = ? AND f.hide_from_chats = 0
            GROUP BY c.friend_id
          ) GROUP BY status`,
       )
@@ -348,7 +348,7 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
         `SELECT COUNT(*) AS total, SUM(CASE WHEN last_at < ? THEN 1 ELSE 0 END) AS over, MIN(last_at) AS oldest FROM (
            SELECT c.status AS status, MAX(c.created_at) AS created_at, COALESCE(c.last_message_at, c.created_at) AS last_at
            FROM chats c JOIN friends f ON f.id = c.friend_id
-           WHERE f.line_account_id = ?
+           WHERE f.line_account_id = ? AND f.hide_from_chats = 0
            GROUP BY c.friend_id
          ) WHERE status = 'unread'`,
       )
@@ -407,7 +407,7 @@ export async function loadHomeSummary(db: D1Database, account: AccountForHome, n
            FROM (
              SELECT c.friend_id AS friend_id, c.status AS status, COALESCE(c.last_message_at, c.created_at) AS last_at, MAX(c.created_at) AS created_at
              FROM chats c JOIN friends f2 ON f2.id = c.friend_id
-             WHERE f2.line_account_id = ?
+             WHERE f2.line_account_id = ? AND f2.hide_from_chats = 0
              GROUP BY c.friend_id
            ) x JOIN friends f ON f.id = x.friend_id
           WHERE x.status = 'unread'

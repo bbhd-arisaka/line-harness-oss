@@ -1301,6 +1301,9 @@ export const api = {
     /** トークのピン留め(一覧の上に出す)・解除 */
     pin: (id: string, pinned: boolean) =>
       fetchApi<ApiResponse<{ pinned: boolean }>>(`/api/chats/${id}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
+    /** 「トーク一覧に出さない」の切り替え(自分のテスト用アカウントなど) */
+    hide: (id: string, hidden: boolean) =>
+      fetchApi<ApiResponse<{ hidden: boolean }>>(`/api/chats/${id}/hide`, { method: 'PUT', body: JSON.stringify({ hidden }) }),
     send: (id: string, data: { content: string; messageType?: string }) =>
       fetchApi<ApiResponse<unknown>>(`/api/chats/${id}/send`, {
         method: 'POST',

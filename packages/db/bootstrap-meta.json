@@ -120,7 +120,8 @@
     "112_templates_lstep.sql",
     "113_template_taps.sql",
     "114_rich_menu_lstep.sql",
-    "115_google_sheets_oauth.sql"
+    "115_google_sheets_oauth.sql",
+    "116_friend_hide_from_chats.sql"
   ],
-  "migrationCount": 121
+  "migrationCount": 122
 }

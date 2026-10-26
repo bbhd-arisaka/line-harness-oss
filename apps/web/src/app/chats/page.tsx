@@ -29,7 +29,7 @@ import { Input } from '@cloudflare/kumo/components/input'
 import { Radio } from '@cloudflare/kumo/components/radio'
 import { Select } from '@cloudflare/kumo/components/select'
 import FriendAvatar from '@/components/friends/friend-avatar'
-import { PushPinIcon, XIcon } from '@phosphor-icons/react'
+import { EyeIcon, EyeSlashIcon, PushPinIcon, XIcon } from '@phosphor-icons/react'
 import { useAutoAnimate } from '@formkit/auto-animate/react'
 import { loadDraft, saveDraft, restoreText, loadUndoSend, saveUndoSend } from '@/lib/chat-draft'
 import { cancelPending, getPending, hookPageLifecycle, notifyPending, remainingSeconds, startPending, subscribePending, type PendingSend } from '@/lib/pending-send'
@@ -79,6 +79,8 @@ function isRichMenuSwitch(msg: { direction: string; messageType: string; content
 }
 
 interface ChatDetail extends Chat {
+  /** true = トーク一覧に出さない設定 */
+  hideFromChats?: boolean
   friendName: string
   friendPictureUrl: string | null
   /** false = ブロックされている(送信できない)。古いサーバーでは無い */
@@ -790,6 +792,25 @@ export default function ChatsPage() {
       if (!row) void loadChats()
     } catch {
       setError('ピン留めを変更できませんでした。もう一度お試しください。')
+      void loadChats()
+    }
+  }
+
+  /** 「トーク一覧に出さない」の切り替え(自分のテスト用アカウントなど)。出さないにしたら、一覧からすぐ外す */
+  const toggleHide = async (chat: { friendId?: string; id: string; hideFromChats?: boolean }) => {
+    const friendId = chat.friendId ?? chat.id
+    const hiddenNow = chat.hideFromChats === true
+    setChatDetail((prev) => (prev && (prev.friendId === friendId || prev.id === friendId) ? { ...prev, hideFromChats: !hiddenNow } : prev))
+    if (!hiddenNow) {
+      setChats((prev) => prev.filter((c) => c.friendId !== friendId))
+      setPinnedChats((prev) => prev.filter((p) => p.friendId !== friendId))
+    }
+    try {
+      const res = await api.chats.hide(chat.id, !hiddenNow)
+      if (!res.success) throw new Error('hide')
+      if (hiddenNow) void loadChats()
+    } catch {
+      setError('設定を変更できませんでした。もう一度お試しください。')
       void loadChats()
     }
   }
@@ -1666,6 +1687,15 @@ ${t.messageContent}` : t.messageContent))
                         className={`rounded p-1 hover:bg-gray-100 ${isChatPinned(chatDetail) ? 'text-[#4f6bed]' : 'text-gray-400'}`}
                       >
                         <PushPinIcon size={16} weight={isChatPinned(chatDetail) ? 'fill' : 'regular'} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={chatDetail.hideFromChats ? 'トーク一覧に出す' : 'トーク一覧に出さない'}
+                        title={chatDetail.hideFromChats ? 'トーク一覧に出す' : 'トーク一覧に出さない'}
+                        onClick={() => void toggleHide(chatDetail)}
+                        className={`rounded p-1 hover:bg-gray-100 ${chatDetail.hideFromChats ? 'text-[#4f6bed]' : 'text-gray-400'}`}
+                      >
+                        {chatDetail.hideFromChats ? <EyeSlashIcon size={16} weight="fill" /> : <EyeIcon size={16} />}
                       </button>
                     </div>
                   </div>

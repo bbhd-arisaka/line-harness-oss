@@ -281,6 +281,8 @@ chats.get('/api/chats', async (c) => {
     }
     if (pinnedMode === 'only') conditions.push('c.pinned_at IS NOT NULL');
     if (pinnedMode === 'exclude') conditions.push('c.pinned_at IS NULL');
+    // 「トーク一覧に出さない」にした友だち(自分のテスト用など)は、一覧に出さない
+    conditions.push('f.hide_from_chats = 0');
     if (lineAccountId) {
       conditions.push('f.line_account_id = ?');
       conditionBindings.push(lineAccountId);
@@ -542,7 +544,7 @@ chats.get('/api/chats/pulse', async (c) => {
              SELECT c.status AS status, MAX(c.created_at) AS created_at
              FROM chats c
              JOIN friends f ON f.id = c.friend_id
-             WHERE f.line_account_id = ?
+             WHERE f.line_account_id = ? AND f.hide_from_chats = 0
              GROUP BY c.friend_id
            ) WHERE status = 'unread'`,
         )
@@ -692,9 +694,9 @@ chats.get('/api/chats/:id', async (c) => {
     const createdAt = chatRow?.created_at ?? null;
 
     const friend = await c.env.DB
-      .prepare(`SELECT display_name, real_name, system_display_name, picture_url, line_user_id, is_following FROM friends WHERE id = ?`)
+      .prepare(`SELECT display_name, real_name, system_display_name, picture_url, line_user_id, is_following, hide_from_chats FROM friends WHERE id = ?`)
       .bind(resolvedFriendId)
-      .first<{ display_name: string | null; real_name: string | null; system_display_name: string | null; picture_url: string | null; line_user_id: string; is_following: number }>();
+      .first<{ display_name: string | null; real_name: string | null; system_display_name: string | null; picture_url: string | null; line_user_id: string; is_following: number; hide_from_chats: number }>();
 
     // 新しい1000件を取って昇順に戻す。LIMIT 200 ASC だと古い200件だけで broadcast/scenario 等の
     // 新しい push が欠落していた（Shu で 481件中 281件欠落のバグあり）。一覧側と同様に test 配信は除外。
@@ -721,6 +723,8 @@ chats.get('/api/chats/:id', async (c) => {
         friendName: friend?.real_name?.trim() || friend?.system_display_name?.trim() || friend?.display_name || '名前なし',
         friendPictureUrl: friend?.picture_url || null,
         pinned: !!pinnedAt,
+        /** true = トーク一覧に出さない設定 */
+        hideFromChats: friend ? friend.hide_from_chats === 1 : false,
         /** false = ブロックされている(または友だちでない)。送信できない */
         isFollowing: friend ? friend.is_following !== 0 : true,
         operatorId,
@@ -832,6 +836,21 @@ chats.put('/api/chats/:id', async (c) => {
     });
   } catch (err) {
     console.error('PUT /api/chats/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// 「トーク一覧に出さない」の切り替え(自分のテスト用アカウントなど)。友だちリストと個別トークからは開ける。:id は、チャットID または 友だちID
+chats.put('/api/chats/:id/hide', async (c) => {
+  try {
+    const chat = await resolveOrCreateChat(c.env.DB, c.req.param('id'));
+    if (!chat) return c.json({ success: false, error: 'Chat not found' }, 404);
+    const body = await c.req.json<{ hidden?: boolean }>().catch(() => ({}) as { hidden?: boolean });
+    const hidden = body.hidden !== false;
+    await c.env.DB.prepare('UPDATE friends SET hide_from_chats = ? WHERE id = ?').bind(hidden ? 1 : 0, chat.friend_id).run();
+    return c.json({ success: true, data: { hidden } });
+  } catch (err) {
+    console.error('PUT /api/chats/:id/hide error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });
