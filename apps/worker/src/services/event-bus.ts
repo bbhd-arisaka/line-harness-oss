@@ -23,6 +23,8 @@ import { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import { sendAdConversions } from './ad-conversion.js';
 import { notifyEvent } from './notifications.js';
+import { buildMessages, expandVariables, messageToLogPayload, resolveMetadata } from './step-delivery.js';
+import { expandFormLinks } from './form-link.js';
 import { keywordMatches } from './keyword-match.js';
 import {
   claimTagEffects,
@@ -329,9 +331,9 @@ async function executeAction(
     case 'send_message': {
       if (!lineAccessToken || !friendId) throw new Error('LINE account credentials are unavailable for this action');
       const friend = await db
-        .prepare('SELECT line_user_id FROM friends WHERE id = ?')
+        .prepare('SELECT * FROM friends WHERE id = ?')
         .bind(friendId)
-        .first<{ line_user_id: string }>();
+        .first<{ id: string; line_user_id: string; display_name: string | null; user_id: string | null; ref_code?: string | null; metadata?: string | null }>();
       if (!friend) break;
       const lineClient = new LineClient(lineAccessToken);
 
@@ -351,60 +353,62 @@ async function executeAction(
         }
       }
 
-      let msg: Message;
-      let logContent: string;
+      // 差し込み語({{name}} など)とフォームのリンクを、送る相手に合わせて展開する
+      // (展開しないと「{{name}}さん」がそのままお客様に届く)
+      const metadata = await resolveMetadata(db, friend);
+      resolvedContent = expandVariables(resolvedContent, { ...friend, metadata }, undefined, resolvedType);
+      resolvedContent = await expandFormLinks(db, resolvedContent, lineAccountId ?? null);
+
+      let msgs: Message[];
       if (resolvedType === 'flex') {
         const contents = JSON.parse(resolvedContent);
-        msg = { type: 'flex', altText: action.params.altText || extractFlexAltText(contents), contents };
-        logContent = JSON.stringify(contents);
+        msgs = [{ type: 'flex', altText: action.params.altText || extractFlexAltText(contents), contents }];
       } else if (resolvedType === 'image') {
         // template に "originalContentUrl" / "previewImageUrl" を持つ JSON が入る前提。
         // parse 失敗時は text fallback ではなく throw → automation 側で partial 扱いにする。
         const parsed = JSON.parse(resolvedContent) as { originalContentUrl: string; previewImageUrl: string };
-        msg = {
-          type: 'image',
-          originalContentUrl: parsed.originalContentUrl,
-          previewImageUrl: parsed.previewImageUrl,
-        };
-        logContent = JSON.stringify(parsed);
+        msgs = [{ type: 'image', originalContentUrl: parsed.originalContentUrl, previewImageUrl: parsed.previewImageUrl }];
+      } else if (resolvedType === 'text') {
+        msgs = [{ type: 'text', text: resolvedContent }];
       } else {
-        msg = { type: 'text', text: resolvedContent };
-        logContent = resolvedContent;
+        // パック・カルーセルなど(複数通のテンプレート。最大5通)
+        msgs = buildMessages(resolvedType, resolvedContent, action.params.altText).slice(0, 5);
       }
+      if (msgs.length === 0) break;
 
       let deliveryType: 'reply' | 'push';
       if (payload.replyToken) {
         try {
-          await lineClient.replyMessage(payload.replyToken, [msg]);
+          await lineClient.replyMessage(payload.replyToken, msgs);
           payload.replyToken = undefined;
           deliveryType = 'reply';
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           const isTokenError = errMsg.includes('400') || errMsg.includes('Invalid reply token');
           if (isTokenError) {
-            await lineClient.pushMessage(friend.line_user_id, [msg]);
+            await lineClient.pushMessage(friend.line_user_id, msgs);
             deliveryType = 'push';
           } else {
             throw err;
           }
         }
       } else {
-        await lineClient.pushMessage(friend.line_user_id, [msg]);
+        await lineClient.pushMessage(friend.line_user_id, msgs);
         deliveryType = 'push';
       }
 
-      // log は実際に送信した msg の type を反映する。msgType が 'image' 等で
-      // else 経路に入った場合、actual message は text なので 'text' で記録すべき。
-      // params の messageType をそのまま使うと admin 側で画像/Flex プレースホルダ
-      // が出てしまう。
-      await logOutgoingMessage(db, {
-        friendId,
-        messageType: msg.type,
-        content: logContent,
-        deliveryType,
-        source: 'automation',
-        lineAccountId,
-      });
+      // log は実際に送信した各メッセージの type を反映する(画像/Flex の場合に text として記録しない)。
+      for (const m of msgs) {
+        const log = messageToLogPayload(m);
+        await logOutgoingMessage(db, {
+          friendId,
+          messageType: log.messageType,
+          content: log.content,
+          deliveryType,
+          source: 'automation',
+          lineAccountId,
+        });
+      }
       break;
     }
 

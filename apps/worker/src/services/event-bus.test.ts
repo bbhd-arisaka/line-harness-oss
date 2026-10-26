@@ -179,6 +179,36 @@ describe('fireEvent — send_message action logging', () => {
     expect(captured[0].binds[6]).toBe(null);
   });
 
+  it('expands {{name}} in text templates with the friend display name', async () => {
+    const db = await import('@line-crm/db');
+    (db.getActiveAutomationsByEvent as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue([
+      {
+        id: 'auto-vars',
+        line_account_id: null,
+        conditions: JSON.stringify({}),
+        actions: JSON.stringify([{ type: 'send_message', params: { template_id: 'tpl-greet' } }]),
+      },
+    ]);
+    (db.getTemplateById as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({
+      id: 'tpl-greet',
+      name: 'greet',
+      category: 'general',
+      message_type: 'text',
+      message_content: '{{name}}さん、ご登録ありがとうございます',
+      created_at: '2026-05-08T00:00:00.000+09:00',
+      updated_at: '2026-05-08T00:00:00.000+09:00',
+    });
+
+    const dbFake = fakeDb({
+      friend: { id: 'friend-1', line_user_id: 'U_test', display_name: '有坂', user_id: null } as never,
+      capturedInserts: captured,
+    });
+    await fireEvent(dbFake, 'friend_add', { friendId: 'friend-1', eventData: {} }, 'channel-token', null);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].binds[3]).toBe('有坂さん、ご登録ありがとうございます');
+  });
+
   it('resolves params.template_id via templates table when set', async () => {
     const db = await import('@line-crm/db');
     (db.getActiveAutomationsByEvent as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue([
