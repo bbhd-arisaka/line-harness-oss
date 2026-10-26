@@ -102,6 +102,8 @@ export async function listSpreadsheets(token: string, query: string): Promise<Sp
     fields: 'files(id,name,modifiedTime)',
     supportsAllDrives: 'true',
     includeItemsFromAllDrives: 'true',
+    // 共有ドライブの中のものも探す(これがないと、共有ドライブのフォルダ・ファイルが出てこない)
+    corpora: 'allDrives',
   });
   const data = await googleGet<{ files?: Array<{ id: string; name: string; modifiedTime?: string }> }>(
     `${DRIVE_API}?${params.toString()}`,
@@ -127,6 +129,8 @@ export async function listFolders(token: string, query: string): Promise<DriveFo
     fields: 'files(id,name)',
     supportsAllDrives: 'true',
     includeItemsFromAllDrives: 'true',
+    // 共有ドライブの中のものも探す(これがないと、共有ドライブのフォルダ・ファイルが出てこない)
+    corpora: 'allDrives',
   });
   const data = await googleGet<{ files?: Array<{ id: string; name: string }> }>(`${DRIVE_API}?${params.toString()}`, token);
   return (data.files ?? []).map((f) => ({ id: f.id, name: f.name }));
