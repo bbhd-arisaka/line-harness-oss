@@ -18,7 +18,7 @@
     "@line-crm/shared": "workspace:*",
     "@line-harness/update-engine": "workspace:*",
     "hls.js": "^1.6.16",
-    "hono": "^4.6.0",
+    "hono": "^4.13.14",
     "qrcode-generator": "^2.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

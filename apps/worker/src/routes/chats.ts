@@ -528,7 +528,8 @@ chats.get('/api/chats', async (c) => {
 chats.get('/api/chats/pulse', async (c) => {
   try {
     // 一斉配信の記録は数えない(配信中に、全員の一覧が何度も取り直されるのを防ぐ)
-    const row = await c.env.DB.prepare(`SELECT MAX(created_at) AS latest FROM messages_log WHERE ${NOT_BROADCAST_LOG}`).first<{ latest: string | null }>();
+    // MAX() + 条件だと索引が使われず約1.4万行を読んでいた(1日5千万行)。created_at の索引を新しい順にたどって1行で止める。
+    const row = await c.env.DB.prepare(`SELECT created_at AS latest FROM messages_log INDEXED BY idx_messages_log_created_at WHERE ${NOT_BROADCAST_LOG} ORDER BY created_at DESC LIMIT 1`).first<{ latest: string | null }>();
     const body: { latest: string | null; unreadCount?: number } = { latest: row?.latest ?? null };
 
     // ?unread=1&lineAccountId=… のときだけ、その公式アカウントの「未対応」のトーク数も返す(アプリの下バーの数字用)。
