@@ -34,7 +34,14 @@ export interface LineAccount {
   basicId: string | null;
   /** Lステップと並行運用中のとき、転送先の URL(自動送信はしない。一斉配信は送れる) */
   lstepForwardUrl?: string | null;
-  stats?: { friendCount: number; activeScenarios: number; messagesThisMonth: number };
+  stats?: {
+    friendCount: number;
+    activeScenarios: number;
+    messagesThisMonth: number;
+    /** LINE 公式の友だち数(ブロック中を除く)。公式アカウントの管理画面と同じ数(前日の集計)。取れないときは null */
+    officialFriendCount?: number | null;
+    officialBlockCount?: number | null;
+  };
 }
 
 /** GET /api/broadcasts の1件 */
@@ -270,6 +277,8 @@ export interface FriendPage {
   total: number;
   /** 友だち中の人数(ブロック中を除く)。公式アカウントを指定した1ページ目だけ付く */
   followingTotal?: number;
+  /** LINE 公式の友だち数・ブロック数(official=1 のときの1ページ目だけ。取れないときは null) */
+  official?: { friends: number; blocks: number; date: string } | null;
   page: number;
   limit: number;
   hasNextPage: boolean;

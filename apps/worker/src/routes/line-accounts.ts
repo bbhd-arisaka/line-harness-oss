@@ -21,6 +21,7 @@ import {
 import type { FollowerImportClient } from '../services/follower-import.js';
 import type { Env } from '../index.js';
 import { countAccountMonthlyMessages, jstYyyyMmDd } from '../services/quota.js';
+import { getOfficialFollowerCounts } from '../services/official-follower-counts.js';
 import { listAdminDestinations, resolveTenantId } from '../services/notifications.js';
 import { countDeliverableAudience } from '../services/quota-alert.js';
 import { ensureLiffApp, LiffSetupError } from '../services/liff-setup.js';
@@ -167,7 +168,7 @@ lineAccounts.get('/api/line-accounts', async (c) => {
     // Get stats for all accounts in parallel
     const results = await Promise.all(
       items.map(async (item) => {
-        const [profile, friendCount, scenarioCount, msgCount] = await Promise.all([
+        const [profile, friendCount, scenarioCount, msgCount, official] = await Promise.all([
           fetchBotProfile(item.channel_access_token),
           db.prepare(`SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?`).bind(item.id).first<{ count: number }>(),
           db.prepare(
@@ -179,6 +180,8 @@ lineAccounts.get('/api/line-accounts', async (c) => {
           // 近い概算 (マルチアカウント運用では NULL プール分だけ上振れする —
           // countAccountMonthlyMessages の注意書き参照)。定義は services/quota.ts に一本化。
           countAccountMonthlyMessages(db, item.id),
+          // LINE 公式の友だち数・ブロック数(公式アカウントの管理画面と同じ数。前日の集計)。取れなければ null
+          getOfficialFollowerCounts(new LineClient(item.channel_access_token), item.id).catch(() => null),
         ]);
 
         return {
@@ -190,6 +193,9 @@ lineAccounts.get('/api/line-accounts', async (c) => {
             friendCount: friendCount?.count ?? 0,
             activeScenarios: scenarioCount?.count ?? 0,
             messagesThisMonth: msgCount,
+            officialFriendCount: official?.friends ?? null,
+            officialBlockCount: official?.blocks ?? null,
+            officialCountDate: official?.date ?? null,
           },
         };
       }),

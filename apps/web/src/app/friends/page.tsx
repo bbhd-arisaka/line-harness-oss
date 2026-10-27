@@ -51,6 +51,8 @@ export default function FriendsPage() {
   const [total, setTotal] = useState(0)
   // 友だち中の人数(ブロック中を除く)。アカウント切り替えの友だち数と同じ数え方。サーバーは1ページ目だけ返すので、取れたときだけ更新する
   const [followingTotal, setFollowingTotal] = useState<number | null>(null)
+  // LINE 公式の友だち数・ブロック数(公式アカウントの管理画面と同じ数)。取れたらこちらを出す
+  const [official, setOfficial] = useState<{ friends: number; blocks: number } | null>(null)
   const [page, setPage] = useState(1)
   const [selectedTagId, setSelectedTagId] = useState('')
   const [searchInput, setSearchInput] = useState('')
@@ -118,12 +120,15 @@ export default function FriendsPage() {
         sort: sortMode,
         handled: responseFilter === 'unhandled' ? 'unhandled' : undefined,
         fieldKey: fieldFilter?.key,
+        official: page === 1 && Boolean(selectedAccountId),
       })
       if (res.success) {
         setFriends(res.data.items)
         setTotal(res.data.total)
         const following = (res.data as { followingTotal?: number }).followingTotal
         if (typeof following === 'number') setFollowingTotal(following)
+        const off = (res.data as { official?: { friends: number; blocks: number } | null }).official
+        if (off !== undefined) setOfficial(off)
       } else {
         setError(res.error)
       }
@@ -281,6 +286,8 @@ export default function FriendsPage() {
           <span className="ml-auto pb-1 text-xs text-kumo-subtle">
             {loading
               ? '読み込み中'
+              : unfiltered && selectedAccountId && official
+                ? `友だち ${official.friends.toLocaleString('ja-JP')}人${official.blocks > 0 ? `(ほかにブロック中 ${official.blocks.toLocaleString('ja-JP')}人)` : ''}`
               : unfiltered && selectedAccountId && followingTotal !== null
                 ? `友だち ${followingTotal.toLocaleString('ja-JP')}人${total > followingTotal ? `(ほかにブロック・退会 ${(total - followingTotal).toLocaleString('ja-JP')}人)` : ''}`
                 : `${total.toLocaleString('ja-JP')} 件`}

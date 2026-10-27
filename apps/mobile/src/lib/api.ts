@@ -283,13 +283,14 @@ export function createApiClient(options: ApiClientOptions) {
     deleteInflowRoute: (id: string) => request<null>('DELETE', `/api/inflow/routes/${encodeURIComponent(id)}`),
 
     // ── 友だち ──
-    listFriends: (params: { lineAccountId: string; search?: string; limit?: number; offset?: number }) =>
+    listFriends: (params: { lineAccountId: string; search?: string; limit?: number; offset?: number; official?: boolean }) =>
       request<FriendPage>('GET', '/api/friends', {
         query: {
           lineAccountId: params.lineAccountId,
           search: params.search?.trim() || undefined,
           limit: params.limit ?? 30,
           offset: params.offset ?? 0,
+          official: params.official ? '1' : undefined,
         },
       }),
     getFriend: (id: string) => request<FriendDetail>('GET', `/api/friends/${encodeURIComponent(id)}`),

@@ -50,6 +50,8 @@ interface LineAccountListItem {
     friendCount: number
     activeScenarios: number
     messagesThisMonth: number
+    /** LINE 公式の友だち数(ブロック中を除く・前日の集計)。取れないときは null */
+    officialFriendCount?: number | null
   }
   ogSiteName: string | null
   ogDefaultDescription: string | null
@@ -356,7 +358,7 @@ export default function AccountsPage() {
 
                 <div className="mb-4 grid grid-cols-3 gap-3 border-y border-kumo-line py-3">
                   <div className="text-center">
-                    <p className="text-lg font-bold text-kumo-strong">{account.stats.friendCount}</p>
+                    <p className="text-lg font-bold text-kumo-strong">{(account.stats.officialFriendCount ?? account.stats.friendCount).toLocaleString('ja-JP')}</p>
                     <p className="text-xs text-kumo-subtle">友だち</p>
                   </div>
                   <div className="text-center">

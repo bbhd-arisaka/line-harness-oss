@@ -235,6 +235,8 @@ export async function fetchApi<T>(path: string, options?: RequestInit): Promise<
 }
 
 export type FriendListParams = {
+  /** 1ページ目に LINE 公式の友だち数・ブロック数を添える */
+  official?: boolean
   /** 詳細検索の条件(Lステップの「絞り込み条件を設定」相当)。JSON にして ?filter= で渡す */
   filter?: FriendFilter
   offset?: string
@@ -458,6 +460,7 @@ export const api = {
       if (params?.sort) query.sort = params.sort
       if (params?.handled) query.handled = params.handled
       if (params?.fieldKey) query.fieldKey = params.fieldKey
+      if (params?.official) query.official = '1'
       if (params?.filter) query.filter = JSON.stringify(params.filter)
       return fetchApi<ApiResponse<PaginatedResponse<FriendListItem>>>(
         '/api/friends?' + new URLSearchParams(query)

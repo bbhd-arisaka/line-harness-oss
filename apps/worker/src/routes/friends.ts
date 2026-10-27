@@ -28,6 +28,8 @@ import { buildFriendFilterPieces, FilterError, parseFriendFilter } from '../serv
 import { isDemoLineUserId } from '../services/demo-friend.js';
 import { BLOCKED_SEND_MESSAGE } from '../services/blocked-send.js';
 import { nameSearchCondition } from '../services/name-search.js';
+import { getOfficialFollowerCounts, type OfficialFollowerCounts } from '../services/official-follower-counts.js';
+import { LineClient } from '@line-crm/line-sdk';
 
 const friends = new Hono<Env>();
 
@@ -222,6 +224,14 @@ friends.get('/api/friends', async (c) => {
       ? ((await db.prepare('SELECT COUNT(*) as count FROM friends WHERE is_following = 1 AND line_account_id = ?')
           .bind(lineAccountId).first<{ count: number }>())?.count ?? 0)
       : undefined;
+    // ?official=1 のときは1ページ目に、LINE 公式の友だち数・ブロック数(公式アカウントの管理画面と同じ数。前日の集計)も添える
+    let official: OfficialFollowerCounts | null | undefined;
+    if (lineAccountId && offset === 0 && c.req.query('official') === '1') {
+      const acc = await db.prepare('SELECT channel_access_token FROM line_accounts WHERE id = ?').bind(lineAccountId).first<{ channel_access_token: string }>();
+      official = acc?.channel_access_token
+        ? await getOfficialFollowerCounts(new LineClient(acc.channel_access_token), lineAccountId).catch(() => null)
+        : null;
+    }
 
     // When `search` is present we want exact / prefix matches to surface
     // first regardless of friend age. Plain `ORDER BY created_at DESC`
@@ -399,6 +409,7 @@ friends.get('/api/friends', async (c) => {
         items: itemsWithTags,
         total,
         ...(followingTotal !== undefined ? { followingTotal } : {}),
+        ...(official !== undefined ? { official } : {}),
         page: Math.floor(offset / limit) + 1,
         limit,
         hasNextPage: offset + limit < total,

@@ -43,7 +43,7 @@ function SelectAccountScreen() {
                   {accountLabel(item)}
                 </Text>
                 {item.stats ? (
-                  <Text style={{ color: c.textMuted, fontSize: 13, marginTop: 2 }}>友だち {item.stats.friendCount.toLocaleString('ja-JP')}人</Text>
+                  <Text style={{ color: c.textMuted, fontSize: 13, marginTop: 2 }}>友だち {(item.stats.officialFriendCount ?? item.stats.friendCount).toLocaleString('ja-JP')}人</Text>
                 ) : null}
               </View>
               {active ? <Text style={{ color: c.primaryText, fontWeight: '700' }}>選択中</Text> : null}

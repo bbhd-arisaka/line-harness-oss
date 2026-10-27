@@ -60,6 +60,8 @@ function FriendsScreen() {
   const [total, setTotal] = useState(0);
   // 友だち中の人数(ブロック中を除く)。アカウント切り替え画面の友だち数と同じ数え方
   const [followingTotal, setFollowingTotal] = useState<number | null>(null);
+  // LINE 公式の友だち数・ブロック数(公式アカウントの管理画面と同じ数)。取れたらこちらを出す
+  const [official, setOfficial] = useState<{ friends: number; blocks: number } | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,15 +77,17 @@ function FriendsScreen() {
       if (mode === 'initial') {
         setLoading(true);
         setItems([]);
+        setOfficial(null);
       } else if (mode === 'refresh') {
         setRefreshing(true);
       }
       try {
-        const page = await api.listFriends({ lineAccountId: accountId, search, limit: PAGE_SIZE, offset: 0 });
+        const page = await api.listFriends({ lineAccountId: accountId, search, limit: PAGE_SIZE, offset: 0, official: !search });
         if (id !== seq.current) return;
         setItems(page.items);
         setTotal(page.total);
         if (page.followingTotal !== undefined) setFollowingTotal(page.followingTotal);
+        if (page.official !== undefined) setOfficial(page.official);
         setHasMore(page.hasNextPage);
         setError(null);
       } catch (e) {
@@ -177,6 +181,8 @@ function FriendsScreen() {
               <Text style={{ color: c.textMuted, fontSize: 12, marginHorizontal: 16, marginVertical: 8 }}>
                 {search
                   ? `「${search}」の検索結果 ${total.toLocaleString('ja-JP')}人`
+                  : official
+                    ? `友だち ${official.friends.toLocaleString('ja-JP')}人${official.blocks > 0 ? `(ほかにブロック中 ${official.blocks.toLocaleString('ja-JP')}人)` : ''}`
                   : followingTotal === null
                     ? `${total.toLocaleString('ja-JP')}人`
                     : `友だち ${followingTotal.toLocaleString('ja-JP')}人${total > followingTotal ? `(ほかにブロック中 ${(total - followingTotal).toLocaleString('ja-JP')}人)` : ''}`}
