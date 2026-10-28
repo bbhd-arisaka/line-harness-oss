@@ -72,7 +72,8 @@
         "expo-media-library",
         {
           "photosPermission": false,
-          "savePhotosPermission": "友だち追加のQRコードを、写真アプリに保存するために使います。"
+          "savePhotosPermission": "友だち追加のQRコードを、写真アプリに保存するために使います。",
+          "granularPermissions": []
         }
       ]
     ],
@@ -94,7 +95,7 @@
     "android": {
       "package": "jp.cms_manager.beyondline",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#06c755"
       },
       "googleServicesFile": "./google-services.json",
@@ -105,7 +106,11 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     }
   }

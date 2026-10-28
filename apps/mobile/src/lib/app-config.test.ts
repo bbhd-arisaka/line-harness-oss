@@ -23,4 +23,10 @@ describe('Android の設定', () => {
     expect(a?.permissions).toContain('POST_NOTIFICATIONS');
     expect(a?.googleServicesFile).toBe('./google-services.json');
   });
+  it('Google Play で審査に引っかかりやすい権限(写真・動画の読み取り・画面の重ね表示など)は入れない', () => {
+    const blocked = (config.expo as unknown as { android?: { blockedPermissions?: string[] } }).android?.blockedPermissions ?? [];
+    for (const p of ['READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_MEDIA_AUDIO', 'READ_EXTERNAL_STORAGE', 'SYSTEM_ALERT_WINDOW', 'CAMERA', 'RECORD_AUDIO']) {
+      expect(blocked).toContain(`android.permission.${p}`);
+    }
+  });
 });

@@ -67,6 +67,8 @@ const SIZE = 1024;
 writeFileSync('assets/icon.png', png(SIZE, (x, y) => [...mix(GREEN, WHITE, coverage(x, y, SIZE, 1)), 255]));
 // スプラッシュ: 透明背景 + 白い b(背景色は app.json の splash 設定で緑)
 writeFileSync('assets/splash-icon.png', png(SIZE, (x, y) => [...WHITE, Math.round(coverage(x, y, SIZE, 0.8) * 255)]));
+// Android のアダプティブアイコン前景: 透明背景 + 白い b(端末が円・角丸に切り抜くので、中央の安全な範囲(約66%)に収める。背景色は app.json の adaptiveIcon)
+writeFileSync('assets/adaptive-icon.png', png(SIZE, (x, y) => [...WHITE, Math.round(coverage(x, y, SIZE, 0.55) * 255)]));
 // Web ファビコン
 writeFileSync('assets/favicon.png', png(48, (x, y) => [...mix(GREEN, WHITE, coverage(x, y, 48, 1)), 255]));
 console.log('assets/icon.png, splash-icon.png, favicon.png を生成しました');
