@@ -121,7 +121,8 @@
     "113_template_taps.sql",
     "114_rich_menu_lstep.sql",
     "115_google_sheets_oauth.sql",
-    "116_friend_hide_from_chats.sql"
+    "116_friend_hide_from_chats.sql",
+    "117_app_sessions_fcm_token.sql"
   ],
-  "migrationCount": 122
+  "migrationCount": 123
 }
