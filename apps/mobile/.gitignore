@@ -20,3 +20,6 @@ credentials.json
 .ios-credentials/
 asc-key.p8
 *.p8
+*.keystore
+*.jks
+*.p12
