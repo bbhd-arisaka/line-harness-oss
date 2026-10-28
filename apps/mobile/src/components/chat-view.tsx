@@ -679,7 +679,7 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
       ) : (
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 44 + (embedded ? 44 : 0) : 0}
         >
           {chat ? (

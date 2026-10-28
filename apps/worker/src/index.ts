@@ -139,6 +139,10 @@ export type Env = {
     APNS_TEAM_ID?: string;
     APNS_BUNDLE_ID?: string; // 既定 jp.cms-manager.beyondline
     APNS_ENVIRONMENT?: string; // 'production'(既定) | 'sandbox'
+    // Android アプリへのプッシュ通知(FCM)。3つそろったときだけ有効。services/fcm.ts
+    FCM_PROJECT_ID?: string;
+    FCM_SERVICE_ACCOUNT_EMAIL?: string;
+    FCM_SERVICE_ACCOUNT_PRIVATE_KEY?: string;
     // beyond admin のID・パスワードでログイン(services/external-auth.ts)。3つとも任意で、
     // BEYOND_ADMIN_URL と BEYOND_ADMIN_INTERNAL_TOKEN が揃ったときだけ有効になる。
     BEYOND_ADMIN_URL?: string;

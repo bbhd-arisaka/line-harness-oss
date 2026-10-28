@@ -105,7 +105,7 @@ function FriendAddScreen() {
       // 写真アプリへの「追加」だけの許可(写真を見る許可は求めない)
       const perm = await MediaLibrary.requestPermissionsAsync(true);
       if (!perm.granted) {
-        setSaveMessage({ ok: false, text: '写真への保存が許可されていません。iPhoneの設定で「写真」への追加を許可してください。' });
+        setSaveMessage({ ok: false, text: '写真への保存が許可されていません。端末の設定で「写真」への追加を許可してください。' });
         return;
       }
       const file = new File(Paths.cache, fileName);

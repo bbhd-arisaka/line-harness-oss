@@ -14,6 +14,7 @@ import {
   requestStaffDeletion,
   revokeAppSession,
   setAppSessionApnsToken,
+  setAppSessionFcmToken,
   setAppSessionMutedAccounts,
   setAppSessionPushForAccount,
   setAppSessionMutedKinds,
@@ -104,7 +105,16 @@ appAuth.post('/api/app/logout', async (c) => {
 appAuth.put('/api/app/device', async (c) => {
   const sessionId = c.get('appSessionId');
   if (!sessionId) return c.json({ success: false, error: 'アプリのログインで呼び出してください' }, 400);
-  const body = await c.req.json<{ apnsToken?: unknown }>().catch(() => ({}) as { apnsToken?: unknown });
+  const body = await c.req.json<{ apnsToken?: unknown; fcmToken?: unknown }>().catch(() => ({}) as { apnsToken?: unknown; fcmToken?: unknown });
+  // Android(FCM)の送り先。iOS の apnsToken とは別の列に持つ
+  if ('fcmToken' in body) {
+    const fcm = body.fcmToken;
+    if (fcm !== null && (typeof fcm !== 'string' || !/^[A-Za-z0-9_:-]{20,4096}$/.test(fcm))) {
+      return c.json({ success: false, error: 'fcmToken が正しくありません' }, 400);
+    }
+    await setAppSessionFcmToken(c.env.DB, sessionId, fcm as string | null);
+    return c.json({ success: true, data: null });
+  }
   const token = body.apnsToken;
   if (token !== null && (typeof token !== 'string' || !/^[0-9a-fA-F]{32,200}$/.test(token))) {
     return c.json({ success: false, error: 'apnsToken が正しくありません' }, 400);

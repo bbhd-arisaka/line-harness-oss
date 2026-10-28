@@ -1,5 +1,5 @@
-// プッシュ通知(iOS の実機・TestFlight のみ)。許可の確認・APNs デバイストークンの登録・通知タップでのトーク表示。
-// web / Android では何もしない。失敗しても画面は壊さない(ログのみ)。
+// プッシュ通知(iOS・Android の実機のみ)。許可の確認・デバイストークン(iOS は APNs・Android は FCM)の登録・通知タップでのトーク表示。
+// web では何もしない。失敗しても画面は壊さない(ログのみ)。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -9,6 +9,7 @@ import { useAccounts } from './session';
 import { emitChatActivity } from '../lib/chat-activity';
 import {
   normalizeApnsToken,
+  normalizeFcmToken,
   parseNotificationTarget,
   planNavigation,
   planPermission,
@@ -16,9 +17,30 @@ import {
   type PermissionState,
 } from '../lib/notifications';
 
-export const PUSH_SUPPORTED = Platform.OS === 'ios';
+export const PUSH_SUPPORTED = Platform.OS === 'ios' || Platform.OS === 'android';
+
+/** Android の通知チャンネル(サーバー services/fcm.ts の ANDROID_CHANNEL_ID と同じ ID) */
+const ANDROID_CHANNEL_ID = 'messages';
+
+/** 端末のトークンを、この OS の形にそろえる(iOS=APNs の16進・Android=FCM の登録トークン) */
+function normalizeDeviceToken(data: unknown): string | null {
+  return Platform.OS === 'android' ? normalizeFcmToken(data) : normalizeApnsToken(data);
+}
+
+/** サーバーに、この端末の送り先を登録する */
+function sendTokenToServer(token: string): Promise<null> {
+  return Platform.OS === 'android' ? api.setFcmToken(token) : api.setApnsToken(token);
+}
 
 if (PUSH_SUPPORTED) {
+  if (Platform.OS === 'android') {
+    // Android 8 以降は、通知チャンネルが無いと通知が出ない。許可を求める前に作っておく
+    Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      name: 'お客様からのメッセージ',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 200, 100, 200],
+    }).catch((e) => console.warn('[push] channel', e));
+  }
   // アプリが前面のときも、バナーと通知一覧に出す(音は出す・バッジは触らない)
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -46,13 +68,13 @@ async function readPermission(): Promise<PermissionState> {
   }
 }
 
-/** APNs デバイストークンを取り、サーバーに登録する。Expo Go など取れない環境では何もしない */
+/** デバイストークン(iOS は APNs・Android は FCM)を取り、サーバーに登録する。Expo Go など取れない環境では何もしない */
 async function registerCurrentToken(): Promise<boolean> {
   try {
     const t = await Notifications.getDevicePushTokenAsync();
-    const token = normalizeApnsToken(t.data);
+    const token = normalizeDeviceToken(t.data);
     if (!token) return false;
-    await api.setApnsToken(token);
+    await sendTokenToServer(token);
     return true;
   } catch (e) {
     logFailure('register token', e);
@@ -132,8 +154,8 @@ export function PushSetup() {
     let sub: { remove: () => void } | null = null;
     try {
       sub = Notifications.addPushTokenListener((t) => {
-        const token = normalizeApnsToken(t.data);
-        if (token) api.setApnsToken(token).catch((e) => logFailure('update token', e));
+        const token = normalizeDeviceToken(t.data);
+        if (token) sendTokenToServer(token).catch((e) => logFailure('update token', e));
       });
     } catch (e) {
       logFailure('addPushTokenListener', e);
@@ -141,7 +163,7 @@ export function PushSetup() {
     return () => sub?.remove();
   }, []);
 
-  // 通知のタップは iOS のときだけ扱う(フックは web では使えないので、コンポーネントごと出し分ける)
+  // 通知のタップは iOS・Android のときだけ扱う(フックは web では使えないので、コンポーネントごと出し分ける)
   return PUSH_SUPPORTED ? <NotificationTaps ready={ready} /> : null;
 }
 
@@ -215,11 +237,12 @@ function NotificationTaps({ ready }: { ready: boolean }) {
   return null;
 }
 
-/** 通知の中身は、content.data にあるはずだが、環境によっては trigger.payload の側にだけ入っている。両方を見る */
+/** 通知の中身は、content.data にあるはずだが、環境によっては trigger.payload の側(Android の FCM は remoteMessage.data)にだけ入っている。すべて見る */
 function targetOf(req: Notifications.NotificationRequest) {
-  const trigger = req.trigger as { payload?: unknown } | null;
+  const trigger = req.trigger as { payload?: unknown; remoteMessage?: { data?: unknown } } | null;
   return (
     parseNotificationTarget(req.content.data) ??
+    parseNotificationTarget(trigger?.remoteMessage?.data) ??
     parseNotificationTarget(trigger?.payload) ??
     parseNotificationTarget((trigger?.payload as { body?: unknown } | undefined)?.body)
   );

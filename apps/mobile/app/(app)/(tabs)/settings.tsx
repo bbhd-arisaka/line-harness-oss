@@ -1,4 +1,4 @@
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
@@ -14,6 +14,7 @@ import type { PushSettings } from '../../../src/lib/types';
 import { MIN_TAP, useColors } from '../../../src/theme/theme';
 import { withReadableWidth } from '../../../src/components/readable-width';
 
+const DEVICE_LABEL = Platform.OS === 'android' ? 'Android' : 'iPhone';
 const ROLE_LABEL: Record<string, string> = { owner: 'オーナー', admin: '管理者', staff: 'スタッフ' };
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -174,11 +175,11 @@ function SettingsScreen() {
           {/* iPhone の通知の許可が「オン」のときは、何も出さない。許可が要るとき(未確認・拒否)だけ、操作を出す */}
           {push.state === 'denied' || push.state === 'undetermined' ? (
             <>
-              <SectionTitle>iPhone の通知の許可</SectionTitle>
+              <SectionTitle>{`${DEVICE_LABEL} の通知の許可`}</SectionTitle>
               <Card>
-                <Row label="状態" value={push.state === 'denied' ? 'オフ(iPhone の設定で拒否されています)' : 'まだ許可していません'} />
+                <Row label="状態" value={push.state === 'denied' ? `オフ(${DEVICE_LABEL} の設定で拒否されています)` : 'まだ許可していません'} />
                 {push.state === 'denied' ? (
-                  <Button title="iPhone の設定を開く" variant="secondary" onPress={() => void Linking.openSettings()} style={{ marginTop: 8 }} />
+                  <Button title={`${DEVICE_LABEL} の設定を開く`} variant="secondary" onPress={() => void Linking.openSettings()} style={{ marginTop: 8 }} />
                 ) : (
                   <Button title="通知を受け取る" variant="secondary" loading={push.busy} onPress={() => void push.enable()} style={{ marginTop: 8 }} />
                 )}

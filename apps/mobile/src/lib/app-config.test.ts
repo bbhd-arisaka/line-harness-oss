@@ -15,3 +15,12 @@ describe('app.json の方針', () => {
     expect(config.expo.ios.supportsTablet).toBe(true);
   });
 });
+
+describe('Android の設定', () => {
+  const a = (config.expo as unknown as { android?: { package?: string; permissions?: string[]; googleServicesFile?: string } }).android;
+  it('パッケージ名・通知の許可・Firebase の設定ファイルを指定している', () => {
+    expect(a?.package).toBe('jp.cms_manager.beyondline');
+    expect(a?.permissions).toContain('POST_NOTIFICATIONS');
+    expect(a?.googleServicesFile).toBe('./google-services.json');
+  });
+});

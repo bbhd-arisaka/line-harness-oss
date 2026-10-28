@@ -93,6 +93,11 @@ export async function setAppSessionApnsToken(db: D1Database, sessionId: string, 
   await db.prepare('UPDATE app_sessions SET apns_token = ? WHERE id = ?').bind(apnsToken, sessionId).run();
 }
 
+/** Android 端末のプッシュ通知(FCM)の送り先。null で解除 */
+export async function setAppSessionFcmToken(db: D1Database, sessionId: string, fcmToken: string | null): Promise<void> {
+  await db.prepare('UPDATE app_sessions SET fcm_token = ? WHERE id = ?').bind(fcmToken, sessionId).run();
+}
+
 /** この端末が、通知を止めている公式アカウントのID */
 export async function getAppSessionMutedAccounts(db: D1Database, sessionId: string): Promise<string[]> {
   const r = await db.prepare('SELECT muted_account_ids FROM app_sessions WHERE id = ?').bind(sessionId).first<{ muted_account_ids: string | null }>();
@@ -266,7 +271,7 @@ export async function setAppSessionPushForAccount(
 
 export async function listAppSessionsForStaff(db: D1Database, staffId: string): Promise<AppSessionRow[]> {
   const r = await db
-    .prepare('SELECT id, staff_id, device_name, apns_token, created_at, last_used_at, expires_at, revoked_at FROM app_sessions WHERE staff_id = ? AND revoked_at IS NULL ORDER BY created_at DESC')
+    .prepare('SELECT id, staff_id, device_name, apns_token, fcm_token, created_at, last_used_at, expires_at, revoked_at FROM app_sessions WHERE staff_id = ? AND revoked_at IS NULL ORDER BY created_at DESC')
     .bind(staffId)
     .all<AppSessionRow>();
   return r.results ?? [];

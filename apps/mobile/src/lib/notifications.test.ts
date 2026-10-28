@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeApnsToken, notificationIdsForChat, parseNotificationTarget, planNavigation, planPermission } from './notifications';
+import { normalizeApnsToken, normalizeFcmToken, notificationIdsForChat, parseNotificationTarget, planNavigation, planPermission } from './notifications';
 
 const HEX = 'a'.repeat(64);
 
@@ -88,5 +88,17 @@ describe('notificationIdsForChat(返信したトークの通知だけを選ぶ)'
     ];
     expect(notificationIdsForChat(list, 'f1')).toEqual(['a', 'c', 'e']);
     expect(notificationIdsForChat(list, 'zzz')).toEqual([]);
+  });
+});
+
+describe('normalizeFcmToken(Android の FCM 登録トークン)', () => {
+  it('英数字・_ : - の長い文字列だけ受け付ける', () => {
+    const tok = 'cXyZ0123456789_abc-DEF:APA91bHexample0123456789';
+    expect(normalizeFcmToken(tok)).toBe(tok);
+    expect(normalizeFcmToken(`  ${tok}  `)).toBe(tok);
+    expect(normalizeFcmToken('short')).toBeNull();
+    expect(normalizeFcmToken('has space in the token 0123456789')).toBeNull();
+    expect(normalizeFcmToken(null)).toBeNull();
+    expect(normalizeFcmToken({})).toBeNull();
   });
 });

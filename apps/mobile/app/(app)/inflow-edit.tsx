@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/state/services';
@@ -353,7 +353,7 @@ function InflowEditScreen() {
         onClose={() => setPicker(null)}
       />
       <Modal visible={newFolderOpen} transparent animationType="fade" onRequestClose={() => setNewFolderOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBack}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalBack}>
           <View style={[styles.modalCard, { backgroundColor: c.card }]}>
             <Text style={{ color: c.text, fontSize: 17, fontWeight: '700' }}>新しいフォルダ</Text>
             <TextInput

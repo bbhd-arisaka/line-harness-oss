@@ -17,6 +17,16 @@ export function normalizeApnsToken(data: unknown): string | null {
   return APNS_TOKEN.test(token) ? token : null;
 }
 
+/** サーバー(PUT /api/app/device の fcmToken)が受け付ける形と同じ: 英数字・_ : - の 20〜4096 文字 */
+const FCM_TOKEN = /^[A-Za-z0-9_:-]{20,4096}$/;
+
+/** getDevicePushTokenAsync() の data(Android では FCM の登録トークン)を、サーバーに登録できる形にそろえる。形が違えば null */
+export function normalizeFcmToken(data: unknown): string | null {
+  if (typeof data !== 'string') return null;
+  const token = data.trim();
+  return FCM_TOKEN.test(token) ? token : null;
+}
+
 export type PermissionState = 'granted' | 'denied' | 'undetermined';
 
 export type PermissionPlan =

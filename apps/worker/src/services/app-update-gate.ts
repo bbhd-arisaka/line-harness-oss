@@ -128,6 +128,10 @@ export async function evaluateUpdateGate(
   opts: { fetchImpl?: typeof fetch; rule?: typeof APP_FORCE_UPDATE_RULE } = {},
 ): Promise<GateResult> {
   const rule = opts.rule ?? APP_FORCE_UPDATE_RULE;
+  // Android アプリは、App Store の版では判定できない(Play ストアの版の確認は未対応)ので、止めない
+  if (headers.get('x-app-platform')?.trim().toLowerCase() === 'android') {
+    return { required: false, client: readClientInfo(headers), storeVersion: null, minVersion: rule.minVersion };
+  }
   const client = readClientInfo(headers);
   const behind = isBehind(client, rule);
   // 古くないとき・分からないときは、Apple に聞かない(無駄な通信を避ける)

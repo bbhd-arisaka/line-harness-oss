@@ -150,6 +150,8 @@ export function createApiClient(options: ApiClientOptions) {
     requestAccountDeletion: () => request<null>('POST', '/api/app/account-deletion'),
     /** プッシュ通知の送り先(APNs デバイストークン)を登録。null で解除。 */
     setApnsToken: (apnsToken: string | null) => request<null>('PUT', '/api/app/device', { body: { apnsToken } }),
+    /** Android 端末のプッシュ通知(FCM)の送り先。null で解除 */
+    setFcmToken: (fcmToken: string | null) => request<null>('PUT', '/api/app/device', { body: { fcmToken } }),
     /** この端末の通知設定: 止めている公式アカウント・止めている通知の種類(設定はアプリの中だけで完結する) */
     getPushSettings: (accountId?: string) => request<PushSettings>('GET', `/api/app/push-settings${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`),
     /** 送った項目だけを更新する。accountId を付けると、その公式アカウントだけの設定(accountMuted・mutedKinds)を更新する */

@@ -2,6 +2,8 @@ import { getStaffAllowedAccountIds, mutedPushKindsForAccount, parseMutedAccountI
 import type { AppPushKind } from '@line-crm/db';
 import { clearInvalidApnsToken, getApnsConfig, sendApnsAlert } from './apns.js';
 import type { ApnsEnv, ApnsSendOptions } from './apns.js';
+import { clearInvalidFcmToken, getFcmConfig, sendFcmAlert } from './fcm.js';
+import type { FcmEnv, FcmSendOptions } from './fcm.js';
 
 /**
  * 友だちからの新着メッセージ・フォームの回答・友だち追加を、アプリ(iOS)を入れているスタッフの端末に通知する。
@@ -43,7 +45,8 @@ export function describeMessageForPush(messageType: string, content: string): st
 }
 
 interface SessionRow {
-  apns_token: string;
+  apns_token: string | null;
+  fcm_token: string | null;
   muted_account_ids: string | null;
   muted_push_kinds: string | null;
   enabled_push_kinds: string | null;
@@ -53,18 +56,33 @@ interface SessionRow {
   role: string | null;
 }
 
-/** 通知を受け取る端末トークン(重複なし・最大50)を決める */
+export interface PushDevice {
+  platform: 'ios' | 'android';
+  token: string;
+}
+
+/** 通知を受け取る iOS 端末トークン(重複なし・最大50)を決める */
 export async function resolvePushRecipients(
   db: D1Database,
   accountId: string | null,
   now = Date.now(),
   kind: AppPushKind = 'message',
 ): Promise<string[]> {
+  return (await resolvePushDevices(db, accountId, now, kind)).filter((d) => d.platform === 'ios').map((d) => d.token);
+}
+
+/** 通知を受け取る端末(iOS・Android 合わせて、重複なし・最大50)を決める */
+export async function resolvePushDevices(
+  db: D1Database,
+  accountId: string | null,
+  now = Date.now(),
+  kind: AppPushKind = 'message',
+): Promise<PushDevice[]> {
   const rows = await db
     .prepare(
-      `SELECT s.apns_token, s.muted_account_ids, s.muted_push_kinds, s.enabled_push_kinds, s.push_by_account, s.expires_at, s.staff_id, m.role
+      `SELECT s.apns_token, s.fcm_token, s.muted_account_ids, s.muted_push_kinds, s.enabled_push_kinds, s.push_by_account, s.expires_at, s.staff_id, m.role
          FROM app_sessions s INNER JOIN staff_members m ON m.id = s.staff_id
-        WHERE s.revoked_at IS NULL AND s.apns_token IS NOT NULL AND s.apns_token != ''
+        WHERE s.revoked_at IS NULL AND ((s.apns_token IS NOT NULL AND s.apns_token != '') OR (s.fcm_token IS NOT NULL AND s.fcm_token != ''))
           AND m.is_active = 1
         ORDER BY s.last_used_at DESC, s.created_at DESC`,
     )
@@ -86,7 +104,7 @@ export async function resolvePushRecipients(
     return ok;
   };
 
-  const tokens: string[] = [];
+  const tokens: PushDevice[] = [];
   const seen = new Set<string>();
   for (const row of rows.results ?? []) {
     if (tokens.length >= MAX_DEVICES_PER_NOTIFICATION) break;
@@ -96,10 +114,11 @@ export async function resolvePushRecipients(
     // この端末が、この種類(メッセージ・フォームの回答など)の通知を止めている(初期オフの種類は、オンにした端末だけ送る)
     // (設定は、公式アカウントごとに持つ。そのアカウントの設定が無ければ、端末全体の設定)
     if (mutedPushKindsForAccount(row, accountId).includes(kind)) continue;
-    if (seen.has(row.apns_token)) continue;
+    const device: PushDevice | null = row.apns_token ? { platform: 'ios', token: row.apns_token } : row.fcm_token ? { platform: 'android', token: row.fcm_token } : null;
+    if (!device || seen.has(device.token)) continue;
     if (!(await canSee(row.staff_id, row.role))) continue;
-    seen.add(row.apns_token);
-    tokens.push(row.apns_token);
+    seen.add(device.token);
+    tokens.push(device);
   }
   return tokens;
 }
@@ -116,12 +135,13 @@ interface PushJob {
   body: string;
 }
 
-async function sendPush(env: ApnsEnv, db: D1Database, job: PushJob, options: ApnsSendOptions): Promise<void> {
+async function sendPush(env: ApnsEnv & FcmEnv, db: D1Database, job: PushJob, options: ApnsSendOptions & FcmSendOptions): Promise<void> {
   const config = getApnsConfig(env);
-  if (!config) return;
+  const fcmConfig = getFcmConfig(env);
+  if (!config && !fcmConfig) return;
   try {
     const now = (options.now ?? Date.now)();
-    const tokens = await resolvePushRecipients(db, job.accountId, now, job.kind);
+    const tokens = await resolvePushDevices(db, job.accountId, now, job.kind);
     if (tokens.length === 0) return;
 
     let title = job.friendName?.trim() || '';
@@ -151,10 +171,15 @@ async function sendPush(env: ApnsEnv, db: D1Database, job: PushJob, options: Apn
     };
 
     const results = await Promise.all(
-      tokens.map(async (token) => ({ token, result: await sendApnsAlert(config, token, alert, options) })),
+      tokens.map(async (d) => {
+        if (d.platform === 'ios') return config ? { d, result: await sendApnsAlert(config, d.token, alert, options) } : null;
+        return fcmConfig ? { d, result: await sendFcmAlert(fcmConfig, d.token, alert, options) } : null;
+      }),
     );
-    for (const { token, result } of results) {
-      if (result.invalidToken) await clearInvalidApnsToken(db, token);
+    for (const r of results) {
+      if (!r?.result.invalidToken) continue;
+      if (r.d.platform === 'ios') await clearInvalidApnsToken(db, r.d.token);
+      else await clearInvalidFcmToken(db, r.d.token);
     }
   } catch (err) {
     console.error('[push-notify] 通知に失敗', err instanceof Error ? err.message : 'error');
@@ -162,10 +187,10 @@ async function sendPush(env: ApnsEnv, db: D1Database, job: PushJob, options: Apn
 }
 
 export async function notifyIncomingMessage(
-  env: ApnsEnv,
+  env: ApnsEnv & FcmEnv,
   db: D1Database,
   notice: IncomingMessageNotice,
-  options: ApnsSendOptions = {},
+  options: ApnsSendOptions & FcmSendOptions = {},
 ): Promise<void> {
   await sendPush(
     env,
@@ -209,10 +234,10 @@ export function describeFriendBlocked(): string {
 
 /** お客様にブロックされたとき、アプリの端末に通知する(「ブロック」の通知をオンにした端末だけ。初期はオフ) */
 export async function notifyFriendBlocked(
-  env: ApnsEnv,
+  env: ApnsEnv & FcmEnv,
   db: D1Database,
   notice: FriendBlockedNotice,
-  options: ApnsSendOptions = {},
+  options: ApnsSendOptions & FcmSendOptions = {},
 ): Promise<void> {
   await sendPush(
     env,
@@ -229,10 +254,10 @@ export function describeFriendAdded(returning: boolean): string {
 
 /** お客様が友だち追加したとき、アプリの端末に通知する。はじめての追加は「友だち追加」、再追加・ブロック解除は「友だち再追加」(初期オフ)の設定に従う */
 export async function notifyFriendAdded(
-  env: ApnsEnv,
+  env: ApnsEnv & FcmEnv,
   db: D1Database,
   notice: FriendAddedNotice,
-  options: ApnsSendOptions = {},
+  options: ApnsSendOptions & FcmSendOptions = {},
 ): Promise<void> {
   await sendPush(
     env,
@@ -244,10 +269,10 @@ export async function notifyFriendAdded(
 
 /** お客様がフォームに回答したとき、アプリの端末に通知する(「フォームの回答」を止めている端末には送らない) */
 export async function notifyFormAnswered(
-  env: ApnsEnv,
+  env: ApnsEnv & FcmEnv,
   db: D1Database,
   notice: FormAnsweredNotice,
-  options: ApnsSendOptions = {},
+  options: ApnsSendOptions & FcmSendOptions = {},
 ): Promise<void> {
   await sendPush(
     env,

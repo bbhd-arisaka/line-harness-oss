@@ -36,7 +36,7 @@ function createStorage(): KeyValueStorage {
 export const storage = createStorage();
 
 /** ログイン一覧(「ログイン中の端末」)に出る名前 */
-const deviceName = Device.deviceName || Device.modelName || (Platform.OS === 'web' ? 'Web' : 'iPhone');
+const deviceName = Device.deviceName || Device.modelName || (Platform.OS === 'web' ? 'Web' : Platform.OS === 'android' ? 'Android' : 'iPhone');
 
 export const api = createApiClient({
   baseUrl: process.env.EXPO_PUBLIC_API_URL || undefined,
@@ -45,7 +45,7 @@ export const api = createApiClient({
     void authStore.handleUnauthorized();
   },
   // アプリの版を、毎回サーバーに伝える(古いアプリだけを、更新の案内に切り替えるため)
-  defaultHeaders: appVersionHeaders(Constants.expoConfig?.version, Constants.nativeBuildVersion),
+  defaultHeaders: { ...appVersionHeaders(Constants.expoConfig?.version, Constants.nativeBuildVersion), ...(Platform.OS === 'android' ? { 'X-App-Platform': 'android' } : {}) },
   onUpdateRequired: (storeUrl) => markUpdateRequired(storeUrl),
 });
 
@@ -54,9 +54,10 @@ export const authStore = createAuthStore({
   login: (email, password, name) => api.login(email, password, name),
   logout: async () => {
     // プッシュ通知の送り先を先に解除する(失敗しても、ログアウト自体は続ける)
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
       try {
-        await api.setApnsToken(null);
+        if (Platform.OS === 'ios') await api.setApnsToken(null);
+        else await api.setFcmToken(null);
       } catch {
         // 通信できなくても端末側は必ずログアウトする
       }

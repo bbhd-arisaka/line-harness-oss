@@ -45,7 +45,12 @@
         }
       ],
       "expo-font",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "color": "#06c755"
+        }
+      ],
       "expo-updates",
       [
         "expo-build-properties",
@@ -85,6 +90,23 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "android": {
+      "package": "jp.cms_manager.beyondline",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#06c755"
+      },
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     }
   }
 }
