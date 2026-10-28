@@ -1,0 +1,66 @@
+name: Mobile Android Build (APK・Google Play用AAB)
+
+# Androidアプリ(apps/mobile)を EAS でビルドする。手動実行。
+#   format=apk ... スタッフに配る「インストール用ファイル」(Google Play なしで入れられる)。ビルド結果のURLが出る
+#   format=aab ... Google Play に出す用
+# 事前に、リポジトリの Secrets に次を登録しておく(登録済み):
+#   EXPO_TOKEN / ANDROID_KEYSTORE_B64(署名キー・PKCS12を base64) / ANDROID_KEYSTORE_PASSWORD
+# 署名キーの別名は upload 固定(鍵のパスワードは、キーストアと同じ)。
+# 通知(FCM)に使う apps/mobile/google-services.json は、リポジトリに置いてある(秘密ではない設定ファイル)。
+on:
+  workflow_dispatch:
+    inputs:
+      format:
+        description: ビルドの種類
+        type: choice
+        options: [apk, aab]
+        default: apk
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - name: 通知の設定ファイルがあるか確かめる
+        run: test -s google-services.json || (echo "google-services.json がありません(Firebase の設定)" && exit 1)
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: 署名キーを、一時ファイルに置く(ログには出さない)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android.keystore
+          test -s android.keystore
+          node -e "require('fs').writeFileSync('credentials.json', JSON.stringify({android:{keystore:{keystorePath:'android.keystore',keystorePassword:process.env.KEYSTORE_PASSWORD,keyAlias:'upload',keyPassword:process.env.KEYSTORE_PASSWORD}}}))"
+      - name: Android をビルド
+        env:
+          EAS_BUILD_NO_EXPO_GO_WARNING: 'true'
+          FORMAT: ${{ inputs.format }}
+        run: |
+          if [ "$FORMAT" = "aab" ]; then
+            eas build --platform android --profile production --non-interactive --wait
+          else
+            eas build --platform android --profile android --non-interactive --wait
+          fi
+      - name: 署名キーの一時ファイルを消す
+        if: always()
+        run: rm -f android.keystore credentials.json

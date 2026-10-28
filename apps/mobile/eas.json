@@ -18,7 +18,18 @@
     "production": {
       "channel": "production",
       "autoIncrement": true,
-      "credentialsSource": "local"
+      "credentialsSource": "local",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    },
+    "android": {
+      "distribution": "internal",
+      "channel": "production",
+      "credentialsSource": "local",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
