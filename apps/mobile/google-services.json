@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "63804878707",
+    "project_id": "beyond-admin-bbhd",
+    "storage_bucket": "beyond-admin-bbhd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:63804878707:android:c7d168d02e7abb1abb5f06",
+        "android_client_info": {
+          "package_name": "jp.cms_manager.beyondline"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "63804878707-he92o5pt34l685jmn5a1akcejvn7j5rv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDzT5nJ-k0zr5pEbqk7qK27FoXxOjgSPow"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "63804878707-he92o5pt34l685jmn5a1akcejvn7j5rv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
