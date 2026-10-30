@@ -376,6 +376,7 @@ const KNOWN_GAPS: readonly string[] = [
   'POST /api/app/login',
   'GET /api/app/config',
   'GET /api/home',
+  'GET /api/home/form-analytics',
   // テンプレート(Lステップ同形・Web の管理画面専用。外部連携向けの公開は未定)
   'DELETE /api/tpl/folders/{id}',
   'DELETE /api/tpl/items/{id}',

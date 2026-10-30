@@ -26,6 +26,7 @@ import type {
 } from './types';
 import type { ApiMessage, SegmentCondition } from './broadcast';
 import type { HomeSummary } from './home';
+import type { FormAnalytics } from './form-analytics';
 import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
 
 /** 本番 API。EXPO_PUBLIC_API_URL で上書きできる。 */
@@ -203,6 +204,9 @@ export function createApiClient(options: ApiClientOptions) {
     /** ホーム(トップ)の集計。fresh=true で、覚えている結果を使わず作り直す */
     getHome: (lineAccountId: string, fresh = false) =>
       request<HomeSummary>('GET', '/api/home', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),
+    /** ホーム → フォーム分析。フォーム×月の回答数(足し合わせは端末側) */
+    getFormAnalytics: (lineAccountId: string, fresh = false) =>
+      request<FormAnalytics>('GET', '/api/home/form-analytics', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),
     getChat: (id: string) => request<ChatDetail>('GET', `/api/chats/${encodeURIComponent(id)}`),
     /** トークのピン留め・解除(スタッフ全員で共通) */
     pinChat: (id: string, pinned: boolean) => request<{ pinned: boolean }>('PUT', `/api/chats/${encodeURIComponent(id)}/pin`, { body: { pinned } }),

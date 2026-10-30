@@ -155,6 +155,18 @@ function HomeScreen() {
 
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="フォーム分析を開く"
+            onPress={() => router.push('/form-analytics' as never)}
+            style={({ pressed }) => [styles.numbersToggle, { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border }]}
+          >
+            <Ionicons name="bar-chart-outline" size={20} color={c.primaryText} />
+            <Text style={{ color: c.text, fontSize: 15, fontWeight: '600', flex: 1 }}>フォーム分析</Text>
+            <Text style={{ color: c.textMuted, fontSize: 12 }}>{`今月 ${num(data.ops.formAnswersThisMonth)}件`}</Text>
+            <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             accessibilityState={{ expanded: showNumbers }}
             onPress={() => setShowNumbers((v) => !v)}
             style={({ pressed }) => [styles.numbersToggle, { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border }]}
