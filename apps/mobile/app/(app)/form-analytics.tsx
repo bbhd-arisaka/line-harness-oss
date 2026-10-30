@@ -12,7 +12,6 @@ import {
   buildMonthBars,
   buildRows,
   hasFolders,
-  monthLabel,
   PERIODS,
   periodMonths,
   previousTotal,
@@ -140,7 +139,7 @@ function FormAnalyticsScreen() {
           <View style={styles.axisRow}>
             {view.bars.map((b, i) => (
               <Text key={b.month} style={[styles.axisLabel, { color: c.textMuted }]} numberOfLines={1}>
-                {i % 2 === 1 || i === view.bars.length - 1 ? monthLabel(b.month).replace('月', '') : ''}
+                {i % 2 === 1 || i === view.bars.length - 1 ? String(Number(b.month.slice(5))) : ''}
               </Text>
             ))}
           </View>
