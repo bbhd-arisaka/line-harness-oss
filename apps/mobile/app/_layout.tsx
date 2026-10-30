@@ -4,6 +4,7 @@ import { useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuth, useRestoreSession } from '../src/state/session';
 import { LoadingView } from '../src/components/ui';
+import { AutoUpdate } from '../src/components/auto-update';
 import { UpdateRequiredScreen, useCheckUpdateAtLaunch, useUpdateRequired } from '../src/components/update-required';
 import { contentMaxWidth, isSplitLayout } from '../src/lib/layout';
 import { useColors } from '../src/theme/theme';
@@ -60,6 +61,7 @@ export default function RootLayout() {
       <Frame>
         <Navigator />
       </Frame>
+      <AutoUpdate />
     </SafeAreaProvider>
   );
 }

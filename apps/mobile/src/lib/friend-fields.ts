@@ -7,7 +7,7 @@ export interface InfoItem {
   /** 表示用の値。未入力は空文字 */
   value: string;
   def: FriendFieldDefinition;
-  /** タップして編集できるか(画像・PDF は、フォームからの添付なので編集しない) */
+  /** タップして編集できるか(PDF は、フォームからの添付なので編集しない。画像は写真を選んで登録できる) */
   editable: boolean;
 }
 
@@ -43,7 +43,7 @@ export function buildInfoGroups(
     label: def.label,
     value: fieldText(metadata?.[def.fieldKey]),
     def,
-    editable: !isAttachmentType(def.fieldType),
+    editable: def.fieldType !== 'pdf',
   });
   const known = new Set(folders.map((f) => f.id));
   const groups: InfoGroup[] = [...folders]
@@ -55,7 +55,7 @@ export function buildInfoGroups(
   return groups;
 }
 
-export type FieldInputKind = 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'checkbox';
+export type FieldInputKind = 'image' | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'checkbox';
 
 export function inputKindOf(fieldType: string): FieldInputKind | null {
   switch (fieldType) {
@@ -65,6 +65,7 @@ export function inputKindOf(fieldType: string): FieldInputKind | null {
     case 'date':
     case 'datetime':
     case 'checkbox':
+    case 'image':
       return fieldType;
     case 'select':
     case 'radio':

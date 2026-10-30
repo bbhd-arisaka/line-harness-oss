@@ -31,7 +31,7 @@ describe('buildInfoGroups(フォルダごと・全項目を上から順に)', ()
       ['a', '山田'],
       ['b', ''],
     ]);
-    expect(g[0].items[0]).toMatchObject({ key: 'c', value: '(添付ファイルあり)', editable: false });
+    expect(g[0].items[0]).toMatchObject({ key: 'c', value: '(添付ファイルあり)', editable: true });
     expect(g[2].items.map((i) => i.key)).toEqual(['x', 'y']);
   });
   it('定義が無ければ空', () => {
@@ -42,7 +42,8 @@ describe('buildInfoGroups(フォルダごと・全項目を上から順に)', ()
 describe('入力の変換', () => {
   it('種類', () => {
     expect(inputKindOf('radio')).toBe('select');
-    expect(inputKindOf('image')).toBeNull();
+    expect(inputKindOf('image')).toBe('image');
+    expect(inputKindOf('pdf')).toBeNull();
     expect(inputKindOf('datetime')).toBe('datetime');
   });
   it('表示用の文字', () => {

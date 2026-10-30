@@ -18,7 +18,7 @@ function errDetail(e: unknown): string {
 }
 
 /** ネイティブの送信で、画像ファイルを /api/images へ。サーバーの返事(JSON)から URL を取り出す */
-async function uploadNative(uri: string): Promise<string> {
+async function uploadNative(uri: string, path: string): Promise<string> {
   const token = authStore.getToken();
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -26,7 +26,7 @@ async function uploadNative(uri: string): Promise<string> {
     ...appVersionHeaders(Constants.expoConfig?.version, Constants.nativeBuildVersion),
   };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await uploadAsync(`${api.baseUrl}/api/images`, uri, {
+  const res = await uploadAsync(`${api.baseUrl}${path}`, uri, {
     httpMethod: 'POST',
     uploadType: FileSystemUploadType.BINARY_CONTENT,
     sessionType: FileSystemSessionType.FOREGROUND,
@@ -55,7 +55,15 @@ async function uploadNative(uri: string): Promise<string> {
  * アップロードは、画像のバイナリをそのまま送る(base64 の JSON より小さく、通信が失敗しにくい)。通信の失敗は、1回だけやり直す。
  * 戻り値: アップロードした画像のURL。選ぶのをやめたときは null。失敗したときは例外(失敗した段階を含む日本語の理由)。
  */
-export async function pickAndUploadImage(): Promise<string | null> {
+export interface UploadTarget {
+  /** アップロード先のパス(既定は /api/images) */
+  path: string;
+  /** ネイティブの送信ができなかったときの、fetch でのやり直し */
+  fallback: (blob: Blob) => Promise<{ url: string }>;
+}
+
+export async function pickAndUploadImage(target?: UploadTarget): Promise<string | null> {
+  const path = target?.path ?? '/api/images';
   let asset: ImagePicker.ImagePickerAsset;
   try {
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 1 });
@@ -91,7 +99,7 @@ export async function pickAndUploadImage(): Promise<string | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 1500));
     try {
-      url = await uploadNative(uri);
+      url = await uploadNative(uri, path);
       nativeErr = null;
       break;
     } catch (e) {
@@ -107,7 +115,7 @@ export async function pickAndUploadImage(): Promise<string | null> {
       throw stepError('写真を読み込めませんでした', e);
     }
     try {
-      url = (await api.uploadImageBinary(blob, 'image/jpeg')).url;
+      url = (await (target?.fallback ?? ((b: Blob) => api.uploadImageBinary(b, 'image/jpeg')))(blob)).url;
     } catch (e) {
       if (e instanceof ApiError && e.status === 0) {
         throw new ApiError(`${e.message}(アップロード: ${errDetail(nativeErr)} / ${errDetail(e)})`.slice(0, 220), 0);

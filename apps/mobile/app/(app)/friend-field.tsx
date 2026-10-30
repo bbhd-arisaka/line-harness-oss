@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../../src/state/services';
+import { api, authStore } from '../../src/state/services';
+import { pickAndUploadImage } from '../../src/state/image-upload';
 import { useLoader } from '../../src/state/hooks';
 import { Button, Card, ErrorView, LoadingView } from '../../src/components/ui';
 import { withReadableWidth } from '../../src/components/readable-width';
@@ -26,6 +27,7 @@ function FriendFieldScreen() {
   const [text, setText] = useState('');
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const def = defs.data?.find((d) => d.fieldKey === key) ?? null;
@@ -59,6 +61,26 @@ function FriendFieldScreen() {
     }
   }
 
+  async function chooseImage() {
+    if (!def || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const url = await pickAndUploadImage({
+        path: api.friendFieldImagePath(friendId, def.fieldKey),
+        fallback: (blob) => api.uploadFriendFieldImage(friendId, def.fieldKey, blob),
+      });
+      if (url) {
+        setImageFailed(false);
+        await friend.refresh();
+      }
+    } catch (e) {
+      setError(describeError(e, '登録できませんでした'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function submit() {
     if (!kind) return;
     const r = parseFieldInput(kind, text);
@@ -70,6 +92,8 @@ function FriendFieldScreen() {
   }
 
   const options = def.options ?? [];
+  const stored = friend.data?.metadata?.[def.fieldKey];
+  const imageUrl = typeof stored === 'string' && stored.startsWith(api.baseUrl) ? stored : null;
   const input = [
     styles.input,
     { backgroundColor: c.inputBackground, color: c.text, fontSize: fs(17) },
@@ -81,7 +105,25 @@ function FriendFieldScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={{ color: c.textMuted, fontSize: fs(13), marginBottom: 6 }}>{def.label}</Text>
 
-        {kind === 'select' ? (
+        {kind === 'image' ? (
+          <View style={{ gap: 12 }}>
+            {imageUrl && !imageFailed ? (
+              <Image
+                source={{ uri: imageUrl, headers: { Authorization: `Bearer ${authStore.getToken() ?? ''}` } }}
+                style={[styles.photo, { backgroundColor: c.inputBackground }]}
+                resizeMode="contain"
+                accessibilityLabel={def.label}
+                onError={() => setImageFailed(true)}
+              />
+            ) : imageUrl ? (
+              <View style={[styles.photo, styles.photoEmpty, { backgroundColor: c.inputBackground }]}>
+                <Ionicons name="image-outline" size={fs(40)} color={c.textMuted} />
+              </View>
+            ) : null}
+            <Button title={imageUrl ? '写真を変える' : '写真を選ぶ'} onPress={() => void chooseImage()} loading={saving} />
+            {imageUrl ? <Button title="写真を消す" variant="secondary" onPress={() => void save(null)} disabled={saving} /> : null}
+          </View>
+        ) : kind === 'select' ? (
           <Card style={{ padding: 0 }}>
             {options.map((o, i) => {
               const on = text === o;
@@ -135,10 +177,10 @@ function FriendFieldScreen() {
 
         {error ? <Text style={{ color: c.danger, fontSize: fs(14), marginTop: 10 }}>{error}</Text> : null}
 
-        <View style={{ marginTop: 20, gap: 10 }}>
+        {kind === 'image' ? null : <View style={{ marginTop: 20, gap: 10 }}>
           <Button title="保存" onPress={submit} loading={saving} disabled={!ready} />
           {text !== '' ? <Button title="値を消す" variant="secondary" onPress={() => void save(null)} disabled={saving} /> : null}
-        </View>
+        </View>}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -148,6 +190,8 @@ const styles = StyleSheet.create({
   content: { padding: 16, paddingBottom: 48 },
   input: { minHeight: MIN_TAP, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   inputMultiline: { minHeight: 140, textAlignVertical: 'top' },
+  photo: { width: '100%', height: 280, borderRadius: 12 },
+  photoEmpty: { alignItems: 'center', justifyContent: 'center' },
   option: { minHeight: MIN_TAP, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
 });
 

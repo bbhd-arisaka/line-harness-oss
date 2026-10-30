@@ -315,6 +315,18 @@ export function createApiClient(options: ApiClientOptions) {
     updateFriendMetadata: (id: string, patch: Record<string, string | null>) =>
       request<FriendDetail>('PUT', `/api/friends/${encodeURIComponent(id)}/metadata`, { body: patch }),
 
+    /** 友だち情報の「画像」項目の登録先(アップロードしたファイルが、そのまま項目の値になる) */
+    friendFieldImagePath: (friendId: string, key: string) =>
+      `/api/friends/${encodeURIComponent(friendId)}/field-image?key=${encodeURIComponent(key)}`,
+    /** 同じ登録を fetch で行う(ネイティブの送信ができなかったときの、やり直し用) */
+    uploadFriendFieldImage: (friendId: string, key: string, blob: Blob) =>
+      request<{ url: string }>('POST', `/api/friends/${encodeURIComponent(friendId)}/field-image`, {
+        query: { key },
+        rawBody: blob,
+        contentType: 'image/jpeg',
+        timeoutMs: 60_000,
+      }),
+
     /** リッチメニュー画像(認証なしで取得できる proxy)。<Image source={{uri}}> で使う */
     richMenuImageUrl: (richMenuId: string, accountId: string) =>
       `${baseUrl}/api/rich-menu-groups/external/${richMenuId}/image?accountId=${encodeURIComponent(accountId)}`,
