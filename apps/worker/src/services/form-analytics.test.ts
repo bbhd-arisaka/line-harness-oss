@@ -38,6 +38,47 @@ describe('フォーム分析', () => {
     ]);
   });
 
+  it('お気に入りの項目: 選択肢ごとの人数(月別)。選択肢に無い回答は「その他」・未回答は数えない・別アカウントは入らない', async () => {
+    const db = fixture.sqlite;
+    const fields = [
+      { name: 'q1', label: 'きっかけ', type: 'checkbox', options: ['紹介', 'SNS', '通りがかり'], favorite: true },
+      { name: 'q2', label: 'メモ', type: 'textarea', favorite: true },
+      { name: 'q3', label: '年代', type: 'radio', options: ['20代', '30代'] },
+    ];
+    db.prepare('UPDATE forms SET fields = ? WHERE id = ?').run(JSON.stringify(fields), 'F2');
+    const upd = db.prepare('UPDATE form_submissions SET data = ? WHERE id = ?');
+    upd.run(JSON.stringify({ q1: ['紹介', 'SNS'], q2: 'x' }), 's4');
+    upd.run(JSON.stringify({ q1: ['紹介'] }), 's5'); // 別のアカウント
+    db.prepare('INSERT INTO form_submissions(id,form_id,friend_id,data,created_at) VALUES(?,?,?,?,?)').run(
+      's7', 'F2', 'f1', JSON.stringify({ q1: ['その他(友人)', '知らない選択肢'] }), '2026-09-10T10:00:00.000+09:00',
+    );
+    db.prepare('INSERT INTO form_submissions(id,form_id,friend_id,data,created_at) VALUES(?,?,?,?,?)').run(
+      's8', 'F2', 'f1', JSON.stringify({ q1: [] }), '2026-10-06T10:00:00.000+09:00',
+    );
+
+    const r = await loadFormAnalytics(fixture.db, 'a1', NOW);
+    expect(r.favorites).toEqual([
+      {
+        formId: 'F2',
+        formName: 'アンケート',
+        fieldName: 'q1',
+        label: 'きっかけ',
+        answered: { '2026-10': 1, '2026-09': 1 },
+        options: [
+          { value: '紹介', counts: { '2026-10': 1 } },
+          { value: 'SNS', counts: { '2026-10': 1 } },
+          { value: '通りがかり', counts: {} },
+          { value: 'その他', counts: { '2026-09': 1 } },
+        ],
+      },
+    ]);
+  });
+
+  it('お気に入りが無ければ、空', async () => {
+    const r = await loadFormAnalytics(fixture.db, 'a1', NOW);
+    expect(r.favorites).toEqual([]);
+  });
+
   it('回答がまったく無いアカウントは、空の一覧', async () => {
     const r = await loadFormAnalytics(fixture.db, 'none', NOW);
     expect(r.forms).toEqual([]);

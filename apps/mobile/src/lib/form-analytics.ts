@@ -2,7 +2,16 @@
 // サーバーは「フォーム×月の回答数」だけを返し、全体・フォーム別・フォルダ別・期間別は、ここで足し合わせる(切り替えてもサーバーを呼ばない)。
 
 export type FormAnalyticsForm = { id: string; name: string; folder: string | null; counts: Record<string, number> };
-export type FormAnalytics = { accountId: string; generatedAt: string; currentMonth: string; forms: FormAnalyticsForm[] };
+/** お気に入りの項目。月(YYYY-MM)→その項目に答えた人数 / 選択肢ごとの、選んだ人数 */
+export type FavoriteField = {
+  formId: string;
+  formName: string;
+  fieldName: string;
+  label: string;
+  answered: Record<string, number>;
+  options: Array<{ value: string; counts: Record<string, number> }>;
+};
+export type FormAnalytics = { accountId: string; generatedAt: string; currentMonth: string; forms: FormAnalyticsForm[]; favorites?: FavoriteField[] };
 
 export type Period = 'thisMonth' | 'lastMonth' | 'last3' | 'last12' | 'all';
 export type GroupBy = 'form' | 'folder';
@@ -105,4 +114,27 @@ export function monthLabel(ym: string): string {
 
 export function hasFolders(data: FormAnalytics): boolean {
   return data.forms.some((f) => f.folder);
+}
+
+export type FavoriteRow = { value: string; count: number; /** 答えた人のうち、その選択肢を選んだ割合(0〜100・整数) */ percent: number };
+export type FavoriteSummary = { field: FavoriteField; answered: number; rows: FavoriteRow[] };
+
+/**
+ * お気に入りの項目ごとの、期間内の回答人数と、選択肢ごとの人数・割合。
+ * 割合は「その項目に答えた人」に対するもの(チェックボックスは複数選べるので、合計が100%を超えることがある)。選択肢は、フォームの並び順。
+ * 選んだフォーム(フォルダ)があれば、そのフォームの項目だけ。
+ */
+export function favoriteSummaries(data: FormAnalytics, period: Period, forms: FormAnalyticsForm[]): FavoriteSummary[] {
+  const months = periodMonths(data.currentMonth, period);
+  const ids = new Set(forms.map((f) => f.id));
+  return (data.favorites ?? [])
+    .filter((f) => ids.has(f.formId))
+    .map((field) => {
+      const answered = sumCounts(field.answered, months);
+      const rows = field.options.map((o) => {
+        const count = sumCounts(o.counts, months);
+        return { value: o.value, count, percent: answered > 0 ? Math.round((count / answered) * 100) : 0 };
+      });
+      return { field, answered, rows };
+    });
 }

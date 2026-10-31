@@ -11,6 +11,7 @@ import { num, signed } from '../../src/lib/home';
 import {
   buildMonthBars,
   buildRows,
+  favoriteSummaries,
   hasFolders,
   PERIODS,
   periodMonths,
@@ -80,6 +81,7 @@ function FormAnalyticsScreen() {
       total: totalFor(forms, data.currentMonth, period),
       previous: previousTotal(forms, data.currentMonth, period),
       bars: buildMonthBars(forms, data.currentMonth),
+      favorites: favoriteSummaries(data, period, forms),
       inPeriod: (month: string) => (months ? months.includes(month) : true),
     };
   }, [data, period, groupBy, selectedKey]);
@@ -182,6 +184,37 @@ function FormAnalyticsScreen() {
             );
           })}
         </Card>
+
+        {view.favorites.length > 0 ? (
+          <>
+            <View style={styles.listHead}>
+              <SectionTitle>お気に入りの項目</SectionTitle>
+            </View>
+            {view.favorites.map((fav) => (
+              <Card key={`${fav.field.formId}:${fav.field.fieldName}`} style={{ gap: 10 }}>
+                <View style={styles.rowTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: c.text, fontSize: 15, fontWeight: '700' }} numberOfLines={2}>{fav.field.label}</Text>
+                    <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{fav.field.formName}</Text>
+                  </View>
+                  <Text style={{ color: c.textMuted, fontSize: 13 }}>回答 {num(fav.answered)}件</Text>
+                </View>
+                {fav.rows.map((r) => (
+                  <View key={r.value} style={{ gap: 4 }} accessibilityLabel={`${r.value} ${r.count}件 ${r.percent}%`}>
+                    <View style={styles.rowTop}>
+                      <Text style={{ color: c.text, fontSize: 14, flex: 1 }} numberOfLines={2}>{r.value}</Text>
+                      <Text style={{ color: c.textMuted, fontSize: 13 }}>{num(r.count)}件</Text>
+                      <Text style={{ color: c.text, fontSize: 15, fontWeight: '700', minWidth: 44, textAlign: 'right' }}>{r.percent}%</Text>
+                    </View>
+                    <View style={[styles.track, { backgroundColor: c.border }]}>
+                      <View style={[styles.fill, { width: `${r.percent}%`, backgroundColor: c.primary }]} />
+                    </View>
+                  </View>
+                ))}
+              </Card>
+            ))}
+          </>
+        ) : null}
       </ScrollView>
     </FadeIn>
   );

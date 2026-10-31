@@ -9,6 +9,7 @@ import {
   BLOCK_TYPE_LABEL,
   CHOICE_TYPES,
   DISPLAY_ONLY_TYPES,
+  FAVORITE_TYPES,
   FRIEND_FIELD_ONLY_TYPES,
   OPTION_TYPES,
   REGISTRATION_TARGET_TYPES,
@@ -143,6 +144,18 @@ export function BlockCard({
       <div className="flex w-16 flex-shrink-0 flex-col items-center justify-center text-center">
         <span className="mb-1 flex h-6 w-6 items-center justify-center rounded-sm bg-[#069e04] text-xs font-bold text-white">{number}</span>
         <span className="whitespace-pre-line text-[11px] font-bold leading-tight text-[#069e04]">{BLOCK_TYPE_LABEL[block.type]}</span>
+        {FAVORITE_TYPES.includes(block.type) && (
+          <button
+            type="button"
+            aria-label="お気に入り"
+            aria-pressed={block.favorite}
+            title="お気に入り"
+            onClick={(e) => { e.stopPropagation(); onChange({ favorite: !block.favorite }) }}
+            className={`mt-2 text-xl leading-none ${block.favorite ? 'text-[#f5a800]' : 'text-[#cacace] hover:text-[#f5a800]'}`}
+          >
+            {block.favorite ? '★' : '☆'}
+          </button>
+        )}
       </div>
 
       <div className="min-w-0 flex-1 space-y-3">

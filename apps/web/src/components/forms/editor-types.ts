@@ -50,6 +50,8 @@ export const TEXT_SUBTYPES: Array<{ value: FieldType; label: string }> = [
 ]
 
 export const OPTION_TYPES: FieldType[] = ['select', 'radio', 'checkbox']
+/** 「お気に入り」にできる項目(選択肢の割合を、アプリのフォーム分析で見る)。 */
+export const FAVORITE_TYPES: FieldType[] = ['select', 'radio', 'checkbox', 'prefecture']
 /** 「タイプ」プルダウンで相互に切り替えられる選択系ブロック */
 export const CHOICE_TYPES: Array<{ value: FieldType; label: string }> = [
   { value: 'radio', label: 'ラジオボタン' },
@@ -100,6 +102,8 @@ export interface BlockDraft {
   hidden: boolean
   /** 項目名を隠す(タイトルだけ出さない。画面の「非表示」) */
   hideTitle: boolean
+  /** お気に入り(アプリのフォーム分析に、選択肢ごとの数・割合を出す) */
+  favorite: boolean
   description: string
   defaultValue: string
   placeholder: string
@@ -144,6 +148,7 @@ export function newBlock(type: FieldType, section: number): BlockDraft {
     required: false,
     hidden: false,
     hideTitle: false,
+    favorite: false,
     description: '',
     defaultValue: '',
     placeholder: '',
@@ -213,6 +218,7 @@ export interface ApiField {
   maxLength?: number
   hidden?: boolean
   hideTitle?: boolean
+  favorite?: boolean
   optionActions?: Record<string, OptionAction>
   allowOther?: boolean
   defaultOptions?: string[]
@@ -238,6 +244,7 @@ export function blockFromApi(f: ApiField): BlockDraft {
     required: Boolean(f.required),
     hidden: Boolean(f.hidden),
     hideTitle: Boolean(f.hideTitle),
+    favorite: Boolean(f.favorite),
     description: f.description ?? '',
     defaultValue: f.defaultValue ?? '',
     placeholder: f.placeholder ?? '',
@@ -294,6 +301,7 @@ export function blocksToApi(blocks: BlockDraft[]): ApiField[] {
     const f: ApiField = { name, label: b.label.trim(), type: b.type, required: b.required, section: b.section }
     if (b.hidden) f.hidden = true
     if (b.hideTitle) f.hideTitle = true
+    if (b.favorite && FAVORITE_TYPES.includes(b.type)) f.favorite = true
     if (OPTION_TYPES.includes(b.type)) f.options = b.options.map((o) => o.trim()).filter(Boolean)
     if ((REGISTRATION_TARGET_TYPES.includes(b.type) || b.type === 'file') && b.registrationTargets.length > 0) f.registrationTargets = b.registrationTargets
     if (CHOICE_ACTION_TYPES.includes(b.type)) {

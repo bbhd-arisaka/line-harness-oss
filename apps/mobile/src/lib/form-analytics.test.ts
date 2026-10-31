@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMonthBars, buildRows, hasFolders, lastMonths, monthLabel, NO_FOLDER, periodMonths, previousTotal, selectForms, shiftMonth, totalFor, type FormAnalytics } from './form-analytics';
+import { buildMonthBars, buildRows, favoriteSummaries, hasFolders, lastMonths, monthLabel, NO_FOLDER, periodMonths, previousTotal, selectForms, shiftMonth, totalFor, type FormAnalytics } from './form-analytics';
 
 const data: FormAnalytics = {
   accountId: 'a1',
@@ -76,5 +76,47 @@ describe('合計・月別・前の期間との差', () => {
     expect(previousTotal(data.forms, '2026-10', 'lastMonth')).toBe(5);
     expect(previousTotal(data.forms, '2026-10', 'last3')).toBe(2);
     expect(previousTotal(data.forms, '2026-10', 'all')).toBeNull();
+  });
+});
+
+describe('お気に入りの項目', () => {
+  const withFav: FormAnalytics = {
+    ...data,
+    favorites: [
+      {
+        formId: 'F1',
+        formName: '面談予約',
+        fieldName: 'q1',
+        label: 'きっかけ',
+        answered: { '2026-10': 3, '2026-09': 1 },
+        options: [
+          { value: '紹介', counts: { '2026-10': 2, '2026-09': 1 } },
+          { value: 'SNS', counts: { '2026-10': 1 } },
+          { value: '通りがかり', counts: {} },
+        ],
+      },
+    ],
+  };
+  it('期間内の人数と割合(四捨五入)。選択肢の並び順のまま・0件の選択肢も出す', () => {
+    const [s] = favoriteSummaries(withFav, 'thisMonth', withFav.forms);
+    expect(s.answered).toBe(3);
+    expect(s.rows).toEqual([
+      { value: '紹介', count: 2, percent: 67 },
+      { value: 'SNS', count: 1, percent: 33 },
+      { value: '通りがかり', count: 0, percent: 0 },
+    ]);
+    expect(favoriteSummaries(withFav, 'all', withFav.forms)[0].answered).toBe(4);
+  });
+  it('期間に回答が無ければ、割合は0', () => {
+    const [s] = favoriteSummaries(withFav, 'lastMonth', [withFav.forms[1]].concat(withFav.forms[0]));
+    expect(s.answered).toBe(1);
+    const [none] = favoriteSummaries(withFav, 'last3', withFav.forms).map((x) => x);
+    expect(none.answered).toBe(4);
+    const empty = favoriteSummaries({ ...withFav, currentMonth: '2027-06' }, 'thisMonth', withFav.forms)[0];
+    expect(empty.rows.every((r) => r.percent === 0)).toBe(true);
+  });
+  it('選んだフォームの項目だけ・お気に入りが無ければ空', () => {
+    expect(favoriteSummaries(withFav, 'all', [withFav.forms[1]])).toEqual([]);
+    expect(favoriteSummaries(data, 'all', data.forms)).toEqual([]);
   });
 });
