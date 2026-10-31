@@ -347,9 +347,11 @@ function FlexBubble({ bubble, width, stretch }: { bubble: Node; width?: number; 
   );
 }
 
+const CAROUSEL_GAP = 8;
+
 const bubbleStyles = StyleSheet.create({
   bubble: { backgroundColor: '#ffffff', borderRadius: 12, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(0,0,0,0.12)' },
-  carousel: { gap: 8, paddingRight: 8 },
+  carousel: { gap: CAROUSEL_GAP, paddingRight: CAROUSEL_GAP },
   textBubble: { maxWidth: '85%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#a7e99e' },
   image: { width: 200, height: 200, borderRadius: 10 },
 });
@@ -359,8 +361,11 @@ export const FlexCard = memo(function FlexCard({ flex }: { flex: unknown }) {
   if (!flex || typeof flex !== 'object') return null;
   const node = flex as Node;
   if (node.type === 'carousel' && Array.isArray(node.contents)) {
+    // 横にめくる枠の幅は、カードの幅の合計で決める(親の幅が決まっていなくても、広い画面でつぶれない)。親より広ければ、親の幅までで、めくれる
+    const cards = node.contents as Node[];
+    const total = cards.reduce((sum, b) => sum + bubbleWidthOf(b.size), 0) + CAROUSEL_GAP * (cards.length - 1) + CAROUSEL_GAP;
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={bubbleStyles.carousel} nestedScrollEnabled>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ width: total, maxWidth: '100%', flexGrow: 0 }} contentContainerStyle={bubbleStyles.carousel} nestedScrollEnabled>
         {(node.contents as Node[]).map((b, i) => (
           // 高さをそろえる(いちばん高いカードに合わせ、フッターのボタンが下に並ぶ)
           <FlexBubble key={i} bubble={b} stretch />
