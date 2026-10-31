@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
+import { signIncomingMessageContent } from '../lib/incoming-media-url.js';
 
 const conversations = new Hono<Env>();
 
@@ -237,11 +238,11 @@ conversations.get('/api/conversations/:friendId', async (c) => {
         created_at: string;
       }>();
 
-    const messages = msgResult.results.reverse().map((m) => ({
+    const messages = await Promise.all(msgResult.results.reverse().map(async (m) => ({
       id: m.id,
       direction: m.direction,
       messageType: m.message_type,
-      content: m.content,
+      content: (await signIncomingMessageContent(c.env.API_KEY, { direction: m.direction, messageType: m.message_type, content: m.content })) as string,
       deliveryType: m.delivery_type,
       // Infer source from associated foreign keys / delivery_type when missing.
       // Historically some writers (incl. orphan deploys before migration 028)
@@ -261,7 +262,7 @@ conversations.get('/api/conversations/:friendId', async (c) => {
       broadcastId: m.broadcast_id ?? null,
       scenarioStepId: m.scenario_step_id ?? null,
       createdAt: m.created_at,
-    }));
+    })));
 
     return c.json({
       success: true,

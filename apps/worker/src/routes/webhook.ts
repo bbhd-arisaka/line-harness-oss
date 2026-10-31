@@ -661,6 +661,7 @@ async function handleEvent(
       id: string;
       type: string;
       fileName?: string;
+      duration?: number;
       title?: string;
       packageId?: string | number;
       package_id?: string | number;
@@ -687,6 +688,21 @@ async function handleEvent(
       if (stickerContent) {
         finalContent = JSON.stringify(stickerContent);
       }
+    }
+    // 動画・音声・ファイルは、安全な種類だけ保存する(危険な種類・中身が合わないものは「保存していません」と記録)
+    if ((msg.type === 'video' || msg.type === 'audio' || msg.type === 'file') && r2 && workerUrl) {
+      const { fetchAndStoreIncomingMedia } = await import('../services/incoming-media.js');
+      const stored = await fetchAndStoreIncomingMedia({
+        r2,
+        workerUrl,
+        channelAccessToken: lineAccessToken,
+        accountId: lineAccountId ?? 'unknown',
+        messageId: msg.id,
+        kind: msg.type,
+        fileName: msg.fileName,
+        duration: msg.duration,
+      });
+      if (stored) finalContent = JSON.stringify(stored);
     }
     if (msg.type === 'image' && r2 && workerUrl) {
       const lineMessageId = msg.id;

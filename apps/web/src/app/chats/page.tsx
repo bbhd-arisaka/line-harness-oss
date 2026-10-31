@@ -131,6 +131,31 @@ function StickerMessageImage({ content }: { content: string }) {
   )
 }
 
+/** お客様から届いた動画・音声・ファイル。保存済みなら再生・開くことができる(ファイルは開く前に確認)。保存していないものは文字だけ */
+function MediaMessage({ type, content }: { type: 'video' | 'audio' | 'file'; content: string }) {
+  let media: { url?: string; fileName?: string; size?: number; blocked?: boolean } | null = null
+  try { media = JSON.parse(content) } catch { media = null }
+  const url = media && typeof media.url === 'string' && /^https?:\/\//.test(media.url) ? media.url : null
+  const label = type === 'video' ? '動画' : type === 'audio' ? '音声' : 'ファイル'
+  const name = media?.fileName || label
+  if (!media || (!url && !media.blocked)) return <span>[{label}]</span>
+  if (!url) return <span>🚫 {name}(安全のため保存していません)</span>
+  if (type === 'video') return <video src={url} controls preload="metadata" className="max-w-[260px] rounded" />
+  if (type === 'audio') return <audio src={url} controls preload="metadata" className="max-w-[260px]" />
+  const size = typeof media.size === 'number' ? (media.size < 1024 * 1024 ? Math.max(1, Math.round(media.size / 1024)) + 'KB' : (media.size / 1024 / 1024).toFixed(1) + 'MB') : ''
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => { if (!window.confirm('お客様から届いたファイルです。心当たりのないファイルは、開かないでください。')) e.preventDefault() }}
+      className="underline"
+    >
+      📎 {name}{size ? '(' + size + ')' : ''}
+    </a>
+  )
+}
+
 function formatDatetime(iso: string | null): string {
   if (!iso) return '-'
   return new Date(iso).toLocaleString('ja-JP', {
@@ -267,6 +292,7 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
       return <StickerMessageImage content={msg.content} />
     }
     if (msg.messageType === 'form_answer') return <FormAnswerCard content={msg.content} />
+    if (msg.messageType === 'video' || msg.messageType === 'audio' || msg.messageType === 'file') return <MediaMessage type={msg.messageType} content={msg.content} />
     return `[${msg.messageType}]`
   }
 
@@ -1852,6 +1878,8 @@ ${t.messageContent}` : t.messageContent))
                       }
                     } else if (msg.messageType === 'sticker') {
                       bubbleContent = <StickerMessageImage content={msg.content} />
+                    } else if (msg.messageType === 'video' || msg.messageType === 'audio' || msg.messageType === 'file') {
+                      bubbleContent = <MediaMessage type={msg.messageType} content={msg.content} />
                     } else {
                       bubbleContent = <span><TaggedText text={msg.content} /></span>
                     }

@@ -185,7 +185,38 @@ export function extractFlexText(content: string, maxLength = 120): string {
   return joined.length > maxLength ? `${joined.slice(0, maxLength)}…` : joined;
 }
 
-export type BubbleKind = 'text' | 'image' | 'sticker' | 'flex' | 'formAnswer' | 'other';
+export type BubbleKind = 'text' | 'image' | 'sticker' | 'flex' | 'formAnswer' | 'media' | 'other';
+
+/** お客様から届いた動画・音声・ファイル。url が無いのは、保存していないもの(blocked=安全のため断った / それ以外は取り出せなかった・古い) */
+export interface MediaCard {
+  kind: 'video' | 'audio' | 'file';
+  url: string | null;
+  fileName: string;
+  /** バイト数。分からなければ null */
+  size: number | null;
+  blocked: boolean;
+}
+
+/** 動画・音声・ファイルの content(JSON)を読む。JSON でない(古い「[動画]」などの文字だけ)ときは null */
+export function parseMediaCard(kind: MediaCard['kind'], content: string): MediaCard | null {
+  try {
+    const v = JSON.parse(content) as { url?: unknown; fileName?: unknown; size?: unknown; blocked?: unknown } | null;
+    if (!v || typeof v !== 'object') return null;
+    const url = safeUrl(v.url);
+    const blocked = v.blocked === true;
+    if (!url && !blocked) return null;
+    return { kind, url, fileName: typeof v.fileName === 'string' ? v.fileName : '', size: typeof v.size === 'number' ? v.size : null, blocked };
+  } catch {
+    return null;
+  }
+}
+
+/** バイト数を「1.2MB」のように短く */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
+  return `${(n / 1024 / 1024).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)}MB`;
+}
 
 /** トークに残る「回答結果を見る」カード(サーバーが決めた文言) */
 export interface FormAnswerCard {
@@ -228,6 +259,8 @@ export interface Bubble {
   fullImageUrl?: string | null;
   /** kind が formAnswer のとき、カードの内容 */
   formAnswer?: FormAnswerCard;
+  /** kind が media のとき、動画・音声・ファイルの内容 */
+  media?: MediaCard;
   /** kind が flex のとき、カードの本文(JSON の文字列)。お客様のLINEと同じ見た目で描くために使う */
   flexContent?: string;
   time: string;
@@ -261,8 +294,23 @@ export function toBubble(m: ChatMessage): Bubble {
       const { preview, full } = parseImageUrls(m.content);
       return { ...base, kind: 'image', text: '[画像]', imageUrl: preview, fullImageUrl: full };
     }
-    case 'sticker':
-      return { ...base, kind: 'sticker', text: '[スタンプ]', imageUrl: null };
+    case 'sticker': {
+      // スタンプは、保存されている画像のURL(stickerUrl)で出す。取れなければ「[スタンプ]」の文字
+      let url: string | null = null;
+      try {
+        url = safeUrl((JSON.parse(m.content) as { stickerUrl?: unknown } | null)?.stickerUrl);
+      } catch {
+        url = null;
+      }
+      return { ...base, kind: 'sticker', text: '[スタンプ]', imageUrl: url };
+    }
+    case 'video':
+    case 'audio':
+    case 'file': {
+      const media = parseMediaCard(m.messageType, m.content);
+      if (!media) return { ...base, kind: 'other', text: messageTypeLabel(m.messageType), imageUrl: null };
+      return { ...base, kind: 'media', text: media.fileName || messageTypeLabel(m.messageType), imageUrl: null, media };
+    }
     case 'flex': {
       const summary = extractFlexText(m.content);
       return { ...base, kind: 'flex', text: summary ? `[カード] ${summary}` : '[カード]', imageUrl: null, flexContent: m.content };

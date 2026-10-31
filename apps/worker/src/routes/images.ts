@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
+import { INCOMING_KEY_PREFIX, verifyIncomingKey } from '../lib/incoming-media-url.js';
 
 const images = new Hono<Env>();
 
@@ -179,16 +180,53 @@ images.get('/images/:key', async (c) => {
   if (key.includes('/') || key.includes('\\')) {
     return c.json({ success: false, error: 'Image not found' }, 404);
   }
-  const object = await c.env.IMAGES.get(key);
+  // お客様から届いたもの(incoming-)は公開しない。トークの取得APIが発行した、期限つきの署名つきURLでだけ開ける。
+  const incoming = key.startsWith(INCOMING_KEY_PREFIX);
+  if (incoming) {
+    const ok = await verifyIncomingKey(c.env.API_KEY, key, c.req.query('exp'), c.req.query('sig'), Math.floor(Date.now() / 1000));
+    if (!ok) return c.json({ success: false, error: 'Image not found' }, 404);
+  }
+
+  // 動画は、Safari などが一部ずつ(Range)取りに来る
+  const rangeHeader = c.req.header('Range');
+  const object = await c.env.IMAGES.get(key, rangeHeader ? { range: c.req.raw.headers } : undefined);
 
   if (!object) {
     return c.json({ success: false, error: 'Image not found' }, 404);
   }
 
+  const contentType = object.httpMetadata?.contentType || 'image/png';
   const headers = new Headers();
-  headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png');
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  headers.set('Content-Type', contentType);
   headers.set('ETag', object.etag);
+  headers.set('Accept-Ranges', 'bytes');
+  if (incoming) {
+    // 中身を解釈させない。画像・動画・音声以外(PDFなど)は、開くのではなくダウンロード扱いにする
+    headers.set('Cache-Control', 'private, max-age=3600');
+    headers.set('X-Content-Type-Options', 'nosniff');
+    headers.set('Content-Security-Policy', "default-src 'none'; sandbox");
+    const original = object.customMetadata?.originalFilename;
+    const inline = /^(image|video|audio)\//.test(contentType);
+    headers.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}${original ? `; filename*=UTF-8''${encodeURIComponent(original)}` : ''}`);
+  } else {
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+
+  const range = (object as R2ObjectBody & { range?: R2Range }).range;
+  if (rangeHeader && range) {
+    let offset = 0;
+    let length = object.size;
+    if ('suffix' in range && range.suffix !== undefined) {
+      length = Math.min(range.suffix, object.size);
+      offset = object.size - length;
+    } else {
+      offset = (range as { offset?: number }).offset ?? 0;
+      length = (range as { length?: number }).length ?? object.size - offset;
+    }
+    headers.set('Content-Range', `bytes ${offset}-${offset + length - 1}/${object.size}`);
+    headers.set('Content-Length', String(length));
+    return new Response(object.body, { status: 206, headers });
+  }
 
   return new Response(object.body, { headers });
 });

@@ -29,6 +29,7 @@ import type { Env } from '../index.js';
 import { isDemoLineUserId } from '../services/demo-friend.js';
 import { BLOCKED_SEND_MESSAGE } from '../services/blocked-send.js';
 import { buildAnswerItems } from '../services/form-answer-items.js';
+import { signIncomingMessageContent } from '../lib/incoming-media-url.js';
 
 const chats = new Hono<Env>();
 
@@ -733,15 +734,16 @@ chats.get('/api/chats/:id', async (c) => {
         notes,
         lastMessageAt,
         createdAt,
-        messages: (messages.results as Record<string, unknown>[]).map((m) => ({
+        messages: await Promise.all((messages.results as Record<string, unknown>[]).map(async (m) => ({
           id: m.id,
           direction: m.direction,
           messageType: m.message_type,
-          content: m.content,
+          // お客様から届いた画像・動画・音声・ファイルは、期限つきの署名つきURLにして返す(公開URLでは開けない)
+          content: await signIncomingMessageContent(c.env.API_KEY, { direction: m.direction, messageType: m.message_type, content: m.content }),
           createdAt: m.created_at,
           // 送信の出どころ: manual=スタッフの手動 / system=一斉配信・シナリオ・自動応答など(受信は null)
           origin: messageOrigin(m),
-        })),
+        }))),
         events: events.map((e) => ({
           id: e.id,
           type: e.event_type,

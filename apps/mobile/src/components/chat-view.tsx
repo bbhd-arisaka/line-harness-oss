@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,7 +13,7 @@ import { appendTag, insertTag, segsToText, toSegs } from '../lib/tag-editor';
 import { findUnsupportedTag, formTag, NAME_TAG, REAL_NAME_TAG } from '../lib/broadcast';
 import { appendTemplateText, imageContent, planCompose, templateNote } from '../lib/chat-compose';
 import { useInterval } from '../state/hooks';
-import { buildChatItems, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow, type FormAnswerCard } from '../lib/format';
+import { buildChatItems, formatBytes, sameEvents, sameMessages, type Bubble, type ChatListItem, type EventRow, type FormAnswerCard, type MediaCard } from '../lib/format';
 import { STATUS_LABEL } from '../lib/format';
 import { StatusChip } from './status-chip';
 import { MessageText } from './message-text';
@@ -104,12 +104,15 @@ const BubbleView = memo(function BubbleView({
   bubble,
   onImagePress,
   onOpenAnswer,
+  onOpenMedia,
   avatar,
   highlight,
 }: {
   bubble: Bubble;
   onImagePress: (url: string) => void;
   onOpenAnswer: (card: FormAnswerCard) => void;
+  /** お客様から届いた動画・音声・ファイルを開く */
+  onOpenMedia?: (media: MediaCard) => void;
   /** 相手のアイコンの表示に使う情報(受信の吹き出しだけに付ける) */
   avatar: { uri: string | null; name: string; onPress: () => void };
   /** 検索から開いたとき、文章の中の検索語を目立たせる */
@@ -130,6 +133,49 @@ const BubbleView = memo(function BubbleView({
         <View style={styles.flexWrap}>
           <FlexMessageView content={bubble.flexContent} outgoingColor={out ? (bubble.system ? c.bubbleSystem : c.bubbleOutgoing) : undefined} />
         </View>
+        {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
+      </View>
+    );
+  }
+  // スタンプ: 吹き出しに包まず、画像だけを出す
+  if (bubble.kind === 'sticker' && bubble.imageUrl) {
+    return (
+      <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
+        {!out ? <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} /> : null}
+        {out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
+        <Image source={{ uri: bubble.imageUrl }} style={styles.sticker} resizeMode="contain" accessibilityLabel="スタンプ" accessibilityIgnoresInvertColors />
+        {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
+      </View>
+    );
+  }
+  // 動画・音声・ファイル(お客様から届いたもの)
+  if (bubble.kind === 'media' && bubble.media) {
+    const m = bubble.media;
+    const icon = m.blocked || !m.url ? 'ban' : m.kind === 'video' ? 'videocam' : m.kind === 'audio' ? 'musical-notes' : 'document-text';
+    const title = m.fileName || (m.kind === 'video' ? '動画' : m.kind === 'audio' ? '音声' : 'ファイル');
+    const openable = !!m.url && !m.blocked;
+    return (
+      <View style={[styles.bubbleRow, { justifyContent: out ? 'flex-end' : 'flex-start' }]}>
+        {!out ? <Avatar uri={avatar.uri} name={avatar.name} onPress={avatar.onPress} /> : null}
+        {out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
+        <Pressable
+          disabled={!openable}
+          onPress={() => onOpenMedia?.(m)}
+          accessibilityRole="button"
+          accessibilityLabel={openable ? `${title}を開く` : `${title}(保存していません)`}
+          style={({ pressed }) => [styles.mediaCard, { backgroundColor: c.bubbleIncoming, opacity: pressed ? 0.6 : openable ? 1 : 0.7 }]}
+        >
+          <View style={[styles.mediaIcon, { backgroundColor: c.card }]}>
+            <Ionicons name={icon} size={22} color={openable ? c.primary : c.textMuted} />
+          </View>
+          <View style={{ flexShrink: 1 }}>
+            <Text numberOfLines={2} style={{ color: c.bubbleIncomingText, fontSize: 15, fontWeight: '600' }}>{title}</Text>
+            <Text style={{ color: c.textMuted, fontSize: 12, marginTop: 2 }}>
+              {m.blocked ? '安全のため保存していません' : !m.url ? '保存されていません' : m.size !== null ? formatBytes(m.size) : m.kind === 'video' ? '動画' : m.kind === 'audio' ? '音声' : 'ファイル'}
+            </Text>
+          </View>
+          {openable ? <Ionicons name={m.kind === 'file' ? 'download-outline' : 'play-circle'} size={28} color={c.primary} /> : null}
+        </Pressable>
         {!out ? <Text style={[styles.time, { color: c.textMuted }]}>{bubble.time}</Text> : null}
       </View>
     );
@@ -229,6 +275,17 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
     (card: FormAnswerCard) => router.push({ pathname: '/form-answer/[submissionId]', params: { submissionId: card.submissionId, chat: id } }),
     [router, id],
   );
+  // お客様から届いた動画・音声はそのまま開く。ファイルは、開く前に1回だけ確認する
+  const openMedia = useCallback((m: MediaCard) => {
+    const url = m.url;
+    if (!url) return;
+    const go = () => void Linking.openURL(url).catch(() => Alert.alert('開けませんでした'));
+    if (m.kind !== 'file') return go();
+    Alert.alert('お客様から届いたファイル', '心当たりのないファイルは、開かないでください。', [
+      { text: 'キャンセル', style: 'cancel' },
+      { text: '開く', onPress: go },
+    ]);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // 入力欄の文章は、トークごとに覚えておく(画面を閉じても・別の画面へ移っても・アプリを終了しても、開き直したら続きから)
@@ -717,7 +774,7 @@ export function ChatView({ id, embedded = false, onChanged, focusMessageId, high
               ) : item.type === 'event' ? (
                 <EventView event={item.event} />
               ) : (
-                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} avatar={avatar} highlight={highlight} />
+                <BubbleView bubble={item.bubble} onImagePress={setViewerUri} onOpenAnswer={openAnswer} onOpenMedia={openMedia} avatar={avatar} highlight={highlight} />
               )
             }
             // inverted の先頭 = 画面の一番下。送信を待たせているメッセージを、仮の吹き出しとして出す(小さな「× 秒数」で取り消せる)
@@ -890,6 +947,9 @@ const styles = StyleSheet.create({
   bubbleIn: { borderTopLeftRadius: 4 },
   bubbleOut: { borderTopRightRadius: 4 },
   image: { width: 200, height: 200, borderRadius: 10 },
+  sticker: { width: 130, height: 130 },
+  mediaCard: { flexDirection: 'row', alignItems: 'center', gap: 10, maxWidth: '75%', borderRadius: 18, paddingHorizontal: 12, paddingVertical: 10 },
+  mediaIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   time: { fontSize: 11, marginBottom: 2 },
   dateWrap: { alignItems: 'center', marginVertical: 10 },
   dateLabel: { fontSize: 12, fontWeight: '600', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 999, overflow: 'hidden' },

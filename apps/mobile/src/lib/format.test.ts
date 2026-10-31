@@ -5,6 +5,7 @@ import {
   describeRichMenu,
   extractFlexText,
   formatDateSeparator,
+  formatBytes,
   formatDateTime,
   formatListTime,
   formatTime,
@@ -125,6 +126,29 @@ describe('吹き出し', () => {
     expect(toBubble(msg({ messageType: 'sticker', content: '{"packageId":"1"}' })).text).toBe('[スタンプ]');
     expect(toBubble(msg({ messageType: 'audio', content: '[音声]' })).text).toBe('[音声]');
     expect(toBubble(msg({ messageType: 'unknown-x', content: '' })).text).toBe('[unknown-x]');
+  });
+  it('スタンプ: 画像のURLがあれば画像で出す', () => {
+    const json = JSON.stringify({ type: 'sticker', stickerId: '1', stickerUrl: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/1/iPhone/sticker.png' });
+    expect(toBubble(msg({ messageType: 'sticker', content: json }))).toMatchObject({ kind: 'sticker', imageUrl: 'https://stickershop.line-scdn.net/stickershop/v1/sticker/1/iPhone/sticker.png' });
+    expect(toBubble(msg({ messageType: 'sticker', content: '[スタンプ]' })).imageUrl).toBeNull();
+    expect(toBubble(msg({ messageType: 'sticker', content: JSON.stringify({ stickerUrl: 'javascript:alert(1)' }) })).imageUrl).toBeNull();
+  });
+  it('動画・音声・ファイル: 保存済みなら開けるカード・断ったものは開けないカード・古い文字だけのものは代替表示', () => {
+    const saved = JSON.stringify({ url: 'https://x.test/images/incoming-a-1.pdf?exp=1&sig=s', fileName: '見積.pdf', size: 2048 });
+    expect(toBubble(msg({ messageType: 'file', content: saved }))).toMatchObject({
+      kind: 'media',
+      text: '見積.pdf',
+      media: { kind: 'file', url: 'https://x.test/images/incoming-a-1.pdf?exp=1&sig=s', fileName: '見積.pdf', size: 2048, blocked: false },
+    });
+    expect(toBubble(msg({ messageType: 'video', content: JSON.stringify({ url: 'https://x.test/v.mp4', fileName: '' }) })).media).toMatchObject({ kind: 'video', blocked: false });
+    const blocked = JSON.stringify({ fileName: 'a.exe', blocked: true, reason: 'x' });
+    expect(toBubble(msg({ messageType: 'file', content: blocked })).media).toMatchObject({ url: null, blocked: true, fileName: 'a.exe' });
+    expect(toBubble(msg({ messageType: 'file', content: '[ファイル: a.zip]' }))).toMatchObject({ kind: 'other', text: '[ファイル]' });
+    expect(toBubble(msg({ messageType: 'audio', content: JSON.stringify({ url: 'javascript:alert(1)' }) })).kind).toBe('other');
+    expect(formatBytes(500)).toBe('500B');
+    expect(formatBytes(2048)).toBe('2KB');
+    expect(formatBytes(3 * 1024 * 1024)).toBe('3.0MB');
+    expect(formatBytes(30 * 1024 * 1024)).toBe('30MB');
   });
   it('Flex は中の文字を拾って示す', () => {
     const flex = JSON.stringify({
