@@ -125,8 +125,9 @@ async function loadFavorites(
     .bind(accountId, ...ids)
     .all<{ form_id: string; ym: string; data: string }>();
 
-  const out: FavoriteField[] = [];
-  const state = new Map<string, FavoriteField & { index: Map<string, Record<string, number>> }>();
+  type Entry = FavoriteField & { index: Map<string, Record<string, number>> };
+  const out: Entry[] = [];
+  const state = new Map<string, Entry>();
   for (const [formId, form] of byForm) {
     for (const field of form.fields) {
       const defined = (field.options ?? []).map((o) => o.trim()).filter(Boolean);
