@@ -14,6 +14,7 @@ import {
   jstNow,
   getEntryRouteByRefCode,
   getMessageTemplateById,
+  recordFriendEvent,
 } from '@line-crm/db';
 import type { EntryRoute, Friend } from '@line-crm/db';
 import { fireEvent } from '../services/event-bus.js';
@@ -31,7 +32,7 @@ import { publishChatEvent } from '../services/chat-events.js';
 import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
 import { TEMPLATE_POSTBACK_PREFIX, handleTemplatePostback } from '../services/template-postback.js';
-import { RICH_MENU_ACTIONS_PREFIX, RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, runRichMenuActions, sendRichMenuReply, sendRichMenuTemplate } from '../services/rich-menu-reply.js';
+import { RICH_MENU_ACTIONS_PREFIX, RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, describeRichMenuTap, isRichMenuPostback, runRichMenuActions, sendRichMenuReply, sendRichMenuTemplate } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import { ignoresFriendAddSettings } from '../services/inflow-route-runtime.js';
 import type { FriendAddedNotice, FriendBlockedNotice, IncomingMessageNotice } from '../services/push-notify.js';
@@ -545,14 +546,25 @@ async function handleEvent(
     // 利用者が "コスト比較" などのアクションを起こした事実を chat 履歴で可視化する。
     // delivery_type='push' は厳密には push ではないが、incoming/non-test として
     // 既存 chat list / 詳細 SQL のフィルタを通すための妥当な値 (auto_reply text 同様)。
+    // 内部の印(rmact:… など)は、お客様の発言のようには見せない。「リッチメニューのボタンをタップ」の出来事として残す。
     try {
-      await db
-        .prepare(
-          `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
-           VALUES (?, ?, 'incoming', 'text', ?, NULL, NULL, 'postback', ?, ?)`,
-        )
-        .bind(crypto.randomUUID(), friend.id, postbackData, lineAccountId ?? null, jstNow())
-        .run();
+      if (isRichMenuPostback(postbackData) || postbackData.startsWith(TEMPLATE_POSTBACK_PREFIX)) {
+        await recordFriendEvent(db, {
+          friendId: friend.id,
+          lineAccountId: lineAccountId ?? null,
+          type: 'richmenu_tap',
+          text: isRichMenuPostback(postbackData) ? await describeRichMenuTap(db, postbackData) : 'メッセージのボタンをタップ',
+          actor: 'システム',
+        });
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, source, line_account_id, created_at)
+             VALUES (?, ?, 'incoming', 'text', ?, NULL, NULL, 'postback', ?, ?)`,
+          )
+          .bind(crypto.randomUUID(), friend.id, postbackData, lineAccountId ?? null, jstNow())
+          .run();
+      }
     } catch (err) {
       console.error('Failed to log incoming postback', err);
     }

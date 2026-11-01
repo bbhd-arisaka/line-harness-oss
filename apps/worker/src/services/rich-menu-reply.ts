@@ -13,7 +13,35 @@ export const RICH_MENU_TEMPLATE_PREFIX = 'rmtpl:';
 /** リッチメニューの「アクション」ボタン(Lステップのアクション設定)が押されたときの印。rmact:<ボタンID> */
 export const RICH_MENU_ACTIONS_PREFIX = 'rmact:';
 
-export type RichMenuReplySender = (replyToken: string, messages: Message[]) => Promise<void>;
+/** リッチメニューのボタンが送ってくる内部の印(rmact:… など)か */
+export function isRichMenuPostback(data: string): boolean {
+  return data.startsWith(RICH_MENU_REPLY_PREFIX) || data.startsWith(RICH_MENU_TEMPLATE_PREFIX) || data.startsWith(RICH_MENU_ACTIONS_PREFIX);
+}
+
+/** トークの履歴に出す、人が読める一言(内部の印は見せない)。例: リッチメニュー「予約」の ボタン2 をタップ */
+export async function describeRichMenuTap(db: D1Database, data: string): Promise<string> {
+  const fallback = 'リッチメニューのボタンをタップ';
+  if (!data.startsWith(RICH_MENU_ACTIONS_PREFIX)) return fallback;
+  try {
+    const row = await db
+      .prepare(
+        `SELECT g.name AS group_name, p.name AS page_name,
+                (SELECT COUNT(*) FROM rich_menu_areas b WHERE b.page_id = a.page_id AND (b.order_index < a.order_index OR (b.order_index = a.order_index AND b.id < a.id))) AS pos
+         FROM rich_menu_areas a
+         INNER JOIN rich_menu_pages p ON p.id = a.page_id
+         INNER JOIN rich_menu_groups g ON g.id = p.group_id
+         WHERE a.id = ?`,
+      )
+      .bind(data.slice(RICH_MENU_ACTIONS_PREFIX.length))
+      .first<{ group_name: string; page_name: string; pos: number }>();
+    if (!row) return fallback;
+    return `リッチメニュー「${row.group_name}」のボタン${row.pos + 1}をタップ`;
+  } catch {
+    return fallback;
+  }
+}
+
+export type RichMenuReplySender =(replyToken: string, messages: Message[]) => Promise<void>;
 
 /**
  * ボタンを押したお客様に、店舗から設定した文章を返信する(お客様が送ったことにはならない)。

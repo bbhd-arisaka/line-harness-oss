@@ -715,10 +715,25 @@ chats.get('/api/chats/:id', async (c) => {
       )
       .bind(resolvedFriendId)
       .all();
-    messages.results = (messages.results as Record<string, unknown>[]).reverse();
+    // 以前の記録には、リッチメニュー・テンプレートのボタンの内部の印(rmact:… など)が、お客様の発言として残っている。
+    // 発言としては出さず、下の「出来事」の1行に直す。
+    const isButtonMark = (m: Record<string, unknown>) =>
+      m.source === 'postback' && m.direction === 'incoming' && /^(rmact|rmtpl|rmreply|tpl):/.test(String(m.content ?? ''));
+    const allRows = (messages.results as Record<string, unknown>[]).reverse();
+    messages.results = allRows.filter((m) => !isButtonMark(m));
+    const oldTaps = allRows.filter(isButtonMark).map((m) => ({
+      id: `tap-${m.id}`,
+      event_type: 'richmenu_tap',
+      text: String(m.content).startsWith('tpl:') ? 'メッセージのボタンをタップ' : 'リッチメニューのボタンをタップ',
+      actor: 'システム',
+      created_at: m.created_at as string,
+    }));
 
     // トークの履歴に挟む「出来事のログ」(フォーム回答・ブロック・タグ・友だち情報の変更など)。時刻の昇順。
-    const events = await listFriendEvents(c.env.DB, resolvedFriendId, { limit: 500 });
+    const loggedEvents = await listFriendEvents(c.env.DB, resolvedFriendId, { limit: 500 });
+    const events = oldTaps.length === 0
+      ? loggedEvents
+      : [...loggedEvents, ...oldTaps].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
 
     return c.json({
       success: true,
