@@ -85,7 +85,7 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
   if (isGet && friendAddMatch) return allowed.includes(friendAddMatch[1]) ? next() : forbidden(c);
 
   // 一覧系: アカウントの指定が必須
-  if (isGet && ['/api/friends', '/api/friends/count', '/api/friends/ref-stats', '/api/chats', '/api/conversations', '/api/home', '/api/home/form-analytics'].includes(path)) {
+  if (isGet && ['/api/friends', '/api/friends/count', '/api/friends/ref-stats', '/api/chats', '/api/conversations', '/api/home', '/api/home/form-analytics', '/api/home/inflow-analytics'].includes(path)) {
     return queryAccountAllowed(c, allowed, 'lineAccountId') ? next() : forbidden(c);
   }
   if (isGet && (path === '/api/inbox/unanswered' || path === '/api/inbox/unanswered/count')) {
@@ -111,6 +111,13 @@ export async function accountAccessGuard(c: Context<Env>, next: Next): Promise<R
   if (chatMatch) {
     const accountId = await chatAccountId(db, chatMatch[1]);
     return accountId && allowed.includes(accountId) ? next() : forbidden(c);
+  }
+
+  // 流入経路の集計(アプリの「流入経路分析」から開く詳細): その経路の公式アカウントが許可されているときだけ
+  const inflowStatsMatch = path.match(/^\/api\/inflow\/routes\/([^/]+)\/stats$/);
+  if (isGet && inflowStatsMatch) {
+    const row = await db.prepare('SELECT line_account_id FROM entry_routes WHERE id = ?').bind(inflowStatsMatch[1]).first<{ line_account_id: string | null }>();
+    return row?.line_account_id && allowed.includes(row.line_account_id) ? next() : forbidden(c);
   }
 
   // 友だちリストの「保存した検索」: アカウントの確認は、各ハンドラーが行う

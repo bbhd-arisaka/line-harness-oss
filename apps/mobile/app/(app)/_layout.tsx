@@ -60,6 +60,8 @@ function Gate() {
         <Stack.Screen name="friend-field" options={{ title: '友だち情報' }} />
         <Stack.Screen name="form-answer/[submissionId]" options={{ title: '回答結果' }} />
         <Stack.Screen name="form-analytics" options={{ title: 'フォーム分析' }} />
+        <Stack.Screen name="inflow-analytics" options={{ title: '流入経路分析' }} />
+        <Stack.Screen name="inflow-stats" options={{ title: '流入経路の詳細' }} />
         <Stack.Screen name="friend-add" options={{ title: '友だち追加のQR・URL' }} />
         <Stack.Screen name="inflow-edit" options={{ title: '流入経路' }} />
         <Stack.Screen name="inflow-landing" options={{ title: 'ページのデザイン' }} />

@@ -167,6 +167,17 @@ function HomeScreen() {
 
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="流入経路分析を開く"
+            onPress={() => router.push('/inflow-analytics' as never)}
+            style={({ pressed }) => [styles.numbersToggle, { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border }]}
+          >
+            <Ionicons name="git-branch-outline" size={20} color={c.primaryText} />
+            <Text style={{ color: c.text, fontSize: 15, fontWeight: '600', flex: 1 }}>流入経路分析</Text>
+            <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             accessibilityState={{ expanded: showNumbers }}
             onPress={() => setShowNumbers((v) => !v)}
             style={({ pressed }) => [styles.numbersToggle, { backgroundColor: pressed ? c.inputBackground : c.card, borderColor: c.border }]}

@@ -27,6 +27,7 @@ import type {
 import type { ApiMessage, SegmentCondition } from './broadcast';
 import type { HomeSummary } from './home';
 import type { FormAnalytics } from './form-analytics';
+import type { InflowAnalytics, InflowStats } from './inflow-analytics';
 import { NETWORK_ERROR_MESSAGE, TIMEOUT_ERROR_MESSAGE, toJapaneseError, UNAUTHORIZED_MESSAGE } from './errors';
 
 /** 本番 API。EXPO_PUBLIC_API_URL で上書きできる。 */
@@ -207,6 +208,12 @@ export function createApiClient(options: ApiClientOptions) {
     /** ホーム → フォーム分析。フォーム×月の回答数(足し合わせは端末側) */
     getFormAnalytics: (lineAccountId: string, fresh = false) =>
       request<FormAnalytics>('GET', '/api/home/form-analytics', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),
+    /** ホーム → 流入経路分析。経路×月の人数・回数(足し合わせは端末側) */
+    getInflowAnalytics: (lineAccountId: string, fresh = false) =>
+      request<InflowAnalytics>('GET', '/api/home/inflow-analytics', { query: { lineAccountId, fresh: fresh ? '1' : undefined } }),
+    /** 流入経路分析 → 経路の詳細。その経路を読み取った人(新しい順) */
+    getInflowStats: (routeId: string, page: number) =>
+      request<InflowStats>('GET', `/api/inflow/routes/${encodeURIComponent(routeId)}/stats`, { query: { page: String(page), pageSize: '50' } }),
     getChat: (id: string) => request<ChatDetail>('GET', `/api/chats/${encodeURIComponent(id)}`),
     /** トークのピン留め・解除(スタッフ全員で共通) */
     pinChat: (id: string, pinned: boolean) => request<{ pinned: boolean }>('PUT', `/api/chats/${encodeURIComponent(id)}/pin`, { body: { pinned } }),
