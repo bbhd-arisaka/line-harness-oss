@@ -158,6 +158,7 @@ export default function ChoiceEditor({
           </select>
           <select value={b.value ?? ''} onChange={(e) => setB({ value: e.target.value })} className={smallSelect} aria-label={`${title}のシナリオ`}>
             <option value="">シナリオを選択</option>
+            {b.scenarioOp === 'stop' ? <option value="*">進行中のすべてのシナリオ</option> : null}
             {env.lookups.scenarios.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}

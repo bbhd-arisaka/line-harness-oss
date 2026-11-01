@@ -1,5 +1,5 @@
 import type { LineClient, Message } from '@line-crm/line-sdk';
-import { jstNow } from '@line-crm/db';
+import { jstNow, stopAllFriendScenarios } from '@line-crm/db';
 import type { FriendAddAction, Friend } from '@line-crm/db';
 import { parseTemplatePostback } from '@line-crm/shared';
 import type { CarouselData, ChoiceDef, FlexEditorData, QuestionData, ReplyDef, TapLimit } from '@line-crm/shared';
@@ -179,7 +179,10 @@ export async function handleTemplatePostback(
     await reply(replyDef);
 
     const effects = choiceActions(choice);
-    if (effects.stopScenarioId) {
+    if (effects.stopScenarioId === '*') {
+      // Lステップの「シナリオを停止」: 進行中のシナリオをすべて止める
+      await stopAllFriendScenarios(db, friend.id);
+    } else if (effects.stopScenarioId) {
       await db
         .prepare("UPDATE friend_scenarios SET status = 'completed', updated_at = ? WHERE friend_id = ? AND scenario_id = ? AND status IN ('active', 'paused')")
         .bind(now, friend.id, effects.stopScenarioId)
