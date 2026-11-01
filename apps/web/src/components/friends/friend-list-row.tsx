@@ -60,7 +60,7 @@ export default function FriendListRow({ friend, onTagEditClick, favoriteFields =
           navigateToChat()
         }
       }}
-      className="grid cursor-pointer grid-cols-[80px_220px_120px_1fr_280px] items-start gap-3 border-b border-kumo-line px-4 py-3 hover:bg-kumo-tint focus:bg-kumo-tint focus:outline-none"
+      className={`grid cursor-pointer grid-cols-[80px_220px_120px_1fr_280px] items-start gap-3 border-b border-kumo-line px-4 py-3 hover:bg-kumo-tint focus:bg-kumo-tint focus:outline-none ${isFollowing ? '' : 'opacity-50 grayscale'}`}
     >
       {/* 対応マーク — chats.status 由来 (unread / in_progress / resolved). */}
       <div className="pt-1">

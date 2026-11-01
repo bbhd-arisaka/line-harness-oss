@@ -100,7 +100,7 @@ export default function FriendTable({ friends, allTags, onRefresh }: FriendTable
             return (
               <Fragment key={friend.id}>
                 <Table.Row
-                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  className={`hover:bg-gray-50 cursor-pointer transition-colors ${friend.isFollowing ? '' : 'opacity-50 grayscale'}`}
                   onClick={() => toggleExpand(friend.id)}
                 >
                   {/* Avatar + Name */}

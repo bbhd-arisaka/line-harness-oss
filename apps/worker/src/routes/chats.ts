@@ -343,7 +343,7 @@ chats.get('/api/chats', async (c) => {
           GROUP BY friend_id
         )
         SELECT
-          f.id AS id, f.id AS friend_id, f.display_name, f.real_name, f.system_display_name, f.picture_url, f.line_user_id, f.line_account_id,
+          f.id AS id, f.id AS friend_id, f.display_name, f.real_name, f.system_display_name, f.picture_url, f.is_following, f.line_user_id, f.line_account_id,
           c.operator_id, COALESCE(c.status, 'resolved') AS status, c.notes, c.pinned_at,
           CASE WHEN fa.form_at > COALESCE(rm.created_at, '') THEN fa.form_at ELSE COALESCE(rm.created_at, c.last_message_at, c.created_at) END AS last_message_at,
           CASE WHEN fa.form_at > COALESCE(rm.created_at, '') THEN fa.form_text ELSE rm.content END AS last_message_content,
@@ -365,6 +365,7 @@ chats.get('/api/chats', async (c) => {
           friendId: ch.friend_id,
           friendName: (ch.real_name as string | null)?.trim() || (ch.system_display_name as string | null)?.trim() || (ch.display_name as string | null) || '名前なし',
           friendPictureUrl: ch.picture_url || null,
+          isFollowing: ch.is_following !== 0,
           operatorId: ch.operator_id,
           status: ch.status,
           notes: ch.notes,
@@ -444,6 +445,7 @@ chats.get('/api/chats', async (c) => {
         f.real_name,
         f.system_display_name,
         f.picture_url,
+        f.is_following,
         f.line_user_id,
         f.line_account_id,
         c.operator_id,
@@ -481,6 +483,7 @@ chats.get('/api/chats', async (c) => {
       friendId: ch.friend_id,
       friendName: (ch.real_name as string | null)?.trim() || (ch.system_display_name as string | null)?.trim() || (ch.display_name as string | null) || '名前なし',
       friendPictureUrl: ch.picture_url || null,
+      isFollowing: ch.is_following !== 0,
       operatorId: ch.operator_id,
       status: ch.status,
       notes: ch.notes,

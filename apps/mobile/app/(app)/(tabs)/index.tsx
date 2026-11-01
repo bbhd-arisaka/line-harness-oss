@@ -49,7 +49,7 @@ const ChatRow = memo(function ChatRow({ chat, onPress, onLongPress, selected }: 
       delayLongPress={400}
       accessibilityRole="button"
       accessibilityLabel={`${chat.pinned ? 'ピン留め。' : ''}${chat.friendName}。${unread ? '未対応。' : ''}${messagePreview(chat)}`}
-      style={({ pressed }) => [styles.row, { backgroundColor: pressed || selected ? c.inputBackground : c.card, borderBottomColor: c.border }]}
+      style={({ pressed }) => [styles.row, { backgroundColor: pressed || selected ? c.inputBackground : c.card, borderBottomColor: c.border, opacity: chat.isFollowing === false ? 0.45 : 1 }]}
     >
       <View>
         <Avatar uri={chat.friendPictureUrl} name={chat.friendName} size={48} />

@@ -24,7 +24,7 @@ const FriendRow = memo(function FriendRow({ friend, onPress }: { friend: Friend;
       onPress={() => onPress(friend.id)}
       accessibilityRole="button"
       accessibilityLabel={name}
-      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.inputBackground : c.card, borderBottomColor: c.border }]}
+      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.inputBackground : c.card, borderBottomColor: c.border, opacity: friend.isFollowing ? 1 : 0.45 }]}
     >
       <Avatar uri={friend.pictureUrl} name={name} size={44} />
       <View style={{ flex: 1, marginLeft: 12 }}>

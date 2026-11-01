@@ -44,6 +44,8 @@ interface Chat {
   notes: string | null
   /** ピン留め中(一覧の上に出す) */
   pinned?: boolean
+  /** false = ブロックされている(一覧では薄いグレーにする) */
+  isFollowing?: boolean
   lastMessageAt: string | null
   lastMessageContent: string | null
   lastMessageDirection: 'incoming' | 'outgoing' | null
@@ -1583,7 +1585,7 @@ ${t.messageContent}` : t.messageContent))
                       onClick={() => { setSelectedFriendId(null); handleSelectChat(chat.id); }}
                       className={`group w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
                         isSelected && !selectedFriendId ? 'bg-green-50' : chat.pinned ? 'bg-gray-50 hover:bg-gray-100' : 'hover:bg-gray-50'
-                      }`}
+                      } ${chat.isFollowing === false ? 'opacity-50 grayscale' : ''}`}
                     >
                       <div className="flex items-start gap-3">
                         <span className="relative flex-shrink-0">

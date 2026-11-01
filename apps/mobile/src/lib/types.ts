@@ -178,6 +178,8 @@ export interface ChatSummary {
   notes: string | null;
   /** ピン留め中(一覧の上に出る) */
   pinned?: boolean;
+  /** false = ブロックされている(一覧では薄いグレーにする)。古いサーバーでは無い */
+  isFollowing?: boolean;
   lastMessageAt: string | null;
   /** text のときだけ本文(先頭200文字)。それ以外は null */
   lastMessageContent: string | null;
