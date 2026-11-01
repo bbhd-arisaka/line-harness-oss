@@ -64,6 +64,21 @@ export function resolveTappedChoice(editorType: string | null, data: unknown, pa
   return null;
 }
 
+/** トークの履歴に出す一言。例: テンプレート「ご予約案内」のボタン「予約する」をタップ(内部の印は見せない) */
+export async function describeTemplateTap(db: D1Database, data: string): Promise<string> {
+  const fallback = 'テンプレートのボタンをタップ';
+  const parsed = parseTemplatePostback(data);
+  if (!parsed) return fallback;
+  try {
+    const tpl = await db.prepare('SELECT name, editor_type, editor_data FROM templates WHERE id = ?').bind(parsed.templateId).first<{ name: string | null; editor_type: string | null; editor_data: string | null }>();
+    if (!tpl?.name) return fallback;
+    const label = resolveTappedChoice(tpl.editor_type, parseJson(tpl.editor_data), parsed.panel, parsed.choice)?.choice.label?.trim();
+    return label ? `テンプレート「${tpl.name}」のボタン「${label}」をタップ` : `テンプレート「${tpl.name}」のボタンをタップ`;
+  } catch {
+    return fallback;
+  }
+}
+
 /** 回数制限に引っかかるか。引っかかるなら、すでに押された記録がある */
 function limited(limit: TapLimit, rows: Array<{ panel: number; choice: number }>, panel: number, choice: number): boolean {
   if (limit === 'carousel_once') return rows.length > 0;

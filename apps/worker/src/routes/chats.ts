@@ -30,6 +30,8 @@ import { isDemoLineUserId } from '../services/demo-friend.js';
 import { BLOCKED_SEND_MESSAGE } from '../services/blocked-send.js';
 import { buildAnswerItems } from '../services/form-answer-items.js';
 import { signIncomingMessageContent } from '../lib/incoming-media-url.js';
+import { describeRichMenuTap } from '../services/rich-menu-reply.js';
+import { describeTemplateTap } from '../services/template-postback.js';
 
 const chats = new Hono<Env>();
 
@@ -721,12 +723,15 @@ chats.get('/api/chats/:id', async (c) => {
       m.source === 'postback' && m.direction === 'incoming' && /^(rmact|rmtpl|rmreply|tpl):/.test(String(m.content ?? ''));
     const allRows = (messages.results as Record<string, unknown>[]).reverse();
     messages.results = allRows.filter((m) => !isButtonMark(m));
-    const oldTaps = allRows.filter(isButtonMark).map((m) => ({
-      id: `tap-${m.id}`,
-      event_type: 'richmenu_tap',
-      text: String(m.content).startsWith('tpl:') ? 'メッセージのボタンをタップ' : 'リッチメニューのボタンをタップ',
-      actor: 'システム',
-      created_at: m.created_at as string,
+    const oldTaps = await Promise.all(allRows.filter(isButtonMark).slice(-50).map(async (m) => {
+      const mark = String(m.content);
+      return {
+        id: `tap-${m.id}`,
+        event_type: 'richmenu_tap',
+        text: mark.startsWith('tpl:') ? await describeTemplateTap(c.env.DB, mark) : await describeRichMenuTap(c.env.DB, mark),
+        actor: 'システム',
+        created_at: m.created_at as string,
+      };
     }));
 
     // トークの履歴に挟む「出来事のログ」(フォーム回答・ブロック・タグ・友だち情報の変更など)。時刻の昇順。

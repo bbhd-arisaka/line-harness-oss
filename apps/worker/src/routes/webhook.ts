@@ -31,7 +31,7 @@ import { notifyFriendAdded, notifyFriendBlocked, notifyIncomingMessage } from '.
 import { publishChatEvent } from '../services/chat-events.js';
 import type { ChatEventKind } from '../durable-objects/chat-events.js';
 import { forwardWebhookToLstep, statusForLine } from '../services/lstep-forward.js';
-import { TEMPLATE_POSTBACK_PREFIX, handleTemplatePostback } from '../services/template-postback.js';
+import { TEMPLATE_POSTBACK_PREFIX, describeTemplateTap, handleTemplatePostback } from '../services/template-postback.js';
 import { RICH_MENU_ACTIONS_PREFIX, RICH_MENU_REPLY_PREFIX, RICH_MENU_TEMPLATE_PREFIX, describeRichMenuTap, isRichMenuPostback, runRichMenuActions, sendRichMenuReply, sendRichMenuTemplate } from '../services/rich-menu-reply.js';
 import { describeIncomingMessage, notifyEvent } from '../services/notifications.js';
 import { ignoresFriendAddSettings } from '../services/inflow-route-runtime.js';
@@ -553,7 +553,7 @@ async function handleEvent(
           friendId: friend.id,
           lineAccountId: lineAccountId ?? null,
           type: 'richmenu_tap',
-          text: isRichMenuPostback(postbackData) ? await describeRichMenuTap(db, postbackData) : 'メッセージのボタンをタップ',
+          text: isRichMenuPostback(postbackData) ? await describeRichMenuTap(db, postbackData) : await describeTemplateTap(db, postbackData),
           actor: 'システム',
         });
       } else {
