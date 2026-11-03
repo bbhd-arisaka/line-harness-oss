@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { Hono } from 'hono';
 import { createReserveCalendar, createReserveCourse, createReserveSlot, getReserveCalendar, saveReserveCalendarSection, setReserveCalendarStatus } from '@line-crm/db';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
+import { isJapaneseHoliday } from '../services/reserve-time.js';
 
 // LINEのIDトークン確認だけ差し替える(友だちは U1 の人)。ほかは、本物のAPIとDBで動かす。
 vi.mock('./booking.js', () => ({
@@ -36,11 +37,11 @@ async function setup() {
   return { call, cal, slot, c1 };
 }
 
-// 日付は、いまから十分先の平日(月曜)にする
+// 日付は、いまから十分先の平日(月曜)にする。祝日の月曜は休業なので避ける
 const monday = (() => {
   const d = new Date(Date.now() + 9 * 3600 * 1000);
   d.setUTCDate(d.getUTCDate() + 14);
-  while (d.getUTCDay() !== 1) d.setUTCDate(d.getUTCDate() + 1);
+  while (d.getUTCDay() !== 1 || isJapaneseHoliday(d.toISOString().slice(0, 10))) d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 })();
 
