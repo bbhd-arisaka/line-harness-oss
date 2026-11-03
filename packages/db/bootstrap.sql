@@ -1741,6 +1741,8 @@ CREATE INDEX IF NOT EXISTS idx_menus_account_sort ON menus (line_account_id, sor
 
 CREATE INDEX IF NOT EXISTS idx_messages_log_broadcast_id ON messages_log(broadcast_id);
 
+CREATE INDEX IF NOT EXISTS idx_messages_log_chat_last ON messages_log (friend_id, created_at) WHERE (delivery_type IS NULL OR delivery_type != 'test') AND (broadcast_id IS NULL AND COALESCE(source, '') != 'broadcast');
+
 CREATE INDEX IF NOT EXISTS idx_messages_log_created_at ON messages_log (created_at);
 
 CREATE INDEX IF NOT EXISTS idx_messages_log_friend_direction_created ON messages_log (friend_id, direction, created_at);

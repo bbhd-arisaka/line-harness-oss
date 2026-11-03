@@ -385,12 +385,18 @@ chats.get('/api/chats', async (c) => {
 
     const sql = `
       WITH last_any AS MATERIALIZED (
-        SELECT friend_id, MAX(created_at) AS last_message_at
-        FROM messages_log
-        WHERE (delivery_type IS NULL OR delivery_type != 'test')
-          AND ${NOT_BROADCAST_LOG}
-          AND ${accountFilterSql}
-        GROUP BY friend_id
+        -- 友だち1人につき、部分インデックス idx_messages_log_chat_last で最後の1行だけを引く(履歴の全走査をしない)。
+        -- 部分インデックスを使うため、messages_log 側の条件は index の WHERE と同じ式にしてある。
+        SELECT friend_id, last_message_at FROM (
+          SELECT f.id AS friend_id,
+            (SELECT m.created_at FROM messages_log m
+              WHERE m.friend_id = f.id
+                AND (m.delivery_type IS NULL OR m.delivery_type != 'test')
+                AND (m.broadcast_id IS NULL AND COALESCE(m.source, '') != 'broadcast')
+              ORDER BY m.created_at DESC LIMIT 1) AS last_message_at
+          FROM friends f
+          WHERE ${lineAccountId ? 'f.line_account_id = ?' : '1=1'}
+        ) WHERE last_message_at IS NOT NULL
       ),
       deduped AS MATERIALIZED (
         SELECT friend_id, MAX(last_message_at) AS last_message_at FROM (

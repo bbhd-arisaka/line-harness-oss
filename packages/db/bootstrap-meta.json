@@ -122,7 +122,8 @@
     "114_rich_menu_lstep.sql",
     "115_google_sheets_oauth.sql",
     "116_friend_hide_from_chats.sql",
-    "117_app_sessions_fcm_token.sql"
+    "117_app_sessions_fcm_token.sql",
+    "118_messages_log_chat_last_index.sql"
   ],
-  "migrationCount": 123
+  "migrationCount": 124
 }
