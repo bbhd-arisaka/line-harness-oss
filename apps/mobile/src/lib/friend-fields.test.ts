@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildInfoGroups, fieldText, initialInputText, inputKindOf, parseFieldInput, toggleChoice } from './friend-fields';
+import { buildInfoGroups, isGroupOpenByDefault, fieldText, initialInputText, inputKindOf, parseFieldInput, toggleChoice } from './friend-fields';
 import type { FriendFieldDefinition, FriendFieldFolder } from './types';
 
 const def = (o: Partial<FriendFieldDefinition> & Pick<FriendFieldDefinition, 'fieldKey' | 'label'>): FriendFieldDefinition => ({
@@ -36,6 +36,14 @@ describe('buildInfoGroups(フォルダごと・全項目を上から順に)', ()
   });
   it('定義が無ければ空', () => {
     expect(buildInfoGroups({}, [], folders)).toEqual([]);
+  });
+  it('フォルダの開閉の最初の状態: 入力済みの項目があれば開き、1つも無ければ閉じる', () => {
+    const g = buildInfoGroups({ a: '山田' }, defs, folders);
+    expect(g.map((x) => [x.name, isGroupOpenByDefault(x)])).toEqual([
+      ['施術', false],
+      ['お客様情報', true],
+      ['未分類', false],
+    ]);
   });
 });
 

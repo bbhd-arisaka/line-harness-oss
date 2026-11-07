@@ -10,7 +10,7 @@ import { endActiveSelection } from '../../../src/state/text-selection';
 import { PickModal } from '../../../src/components/pick-modal';
 import type { InflowRoute } from '../../../src/lib/inflow';
 import { describeRichMenu, formatDateTime, resolveFriendName } from '../../../src/lib/format';
-import { buildInfoGroups } from '../../../src/lib/friend-fields';
+import { buildInfoGroups, isGroupOpenByDefault } from '../../../src/lib/friend-fields';
 import { describeError } from '../../../src/lib/errors';
 import { charLength, draftFromFriend, NAME_MAX_LENGTH, planProfileUpdate, type ProfileDraft } from '../../../src/lib/profile';
 import type { Tag } from '../../../src/lib/types';
@@ -98,6 +98,8 @@ function FriendDetailScreen() {
   const [routeDraft, setRouteDraft] = useState<string | null>(null);
   const [routes, setRoutes] = useState<InflowRoute[]>([]);
   const [routePicker, setRoutePicker] = useState(false);
+  // 友だち情報のフォルダの開閉(タップで切り替えた分だけ持つ。触っていないフォルダは、入力済みの項目があれば開き、なければ閉じる)
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({});
 
   const friend = useLoader(() => api.getFriend(id), [id]);
   // 友だち情報欄の定義・リッチメニューは、取れなくても詳細そのものは見せる(個別に状態を持つ)
@@ -328,9 +330,21 @@ function FriendDetailScreen() {
           <Button title="再取得" variant="secondary" onPress={() => { void defs.reload(); void folders.reload(); }} style={{ marginTop: 10 }} />
         </Card>
       ) : infoGroups.length > 0 ? (
-        infoGroups.map((g) => (
+        infoGroups.map((g) => {
+          const open = groupOpen[g.id] ?? isGroupOpenByDefault(g);
+          return (
           <View key={g.id}>
-            <Text style={{ color: c.textMuted, fontSize: fs(13), fontWeight: '700', marginTop: 12, marginBottom: 6, marginLeft: 4 }}>{g.name}</Text>
+            <Pressable
+              onPress={() => setGroupOpen((prev) => ({ ...prev, [g.id]: !open }))}
+              accessibilityRole="button"
+              accessibilityLabel={`${g.name}を${open ? '閉じる' : '開く'}`}
+              accessibilityState={{ expanded: open }}
+              style={styles.folderHeader}
+            >
+              <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={fs(16)} color={c.textMuted} />
+              <Text style={{ color: c.textMuted, fontSize: fs(13), fontWeight: '700', flexShrink: 1 }}>{g.name}</Text>
+            </Pressable>
+            {open ? (
             <Card style={{ paddingVertical: 4 }}>
               {g.items.map((it, i) => (
                 <Pressable
@@ -353,8 +367,10 @@ function FriendDetailScreen() {
                 </Pressable>
               ))}
             </Card>
+            ) : null}
           </View>
-        ))
+          );
+        })
       ) : (
         <Card>
           <Text style={{ color: c.textMuted, fontSize: fs(15) }}>友だち情報の項目がありません</Text>
@@ -413,6 +429,7 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', paddingTop: 8 },
   title: { fontSize: fs(22), fontWeight: '800', marginTop: 12, textAlign: 'center' },
   field: { paddingVertical: 6 },
+  folderHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: MIN_TAP, marginTop: 4, marginLeft: 4 },
   infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
   headerButton: { minWidth: MIN_TAP, height: MIN_TAP, alignItems: 'center', justifyContent: 'center' },
   notice: { marginTop: 16, padding: 12, borderRadius: 10 },

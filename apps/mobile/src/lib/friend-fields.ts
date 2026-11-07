@@ -55,6 +55,11 @@ export function buildInfoGroups(
   return groups;
 }
 
+/** フォルダの開閉の最初の状態: 入力済みの項目が1つでもあれば開く。1つも無ければ閉じる */
+export function isGroupOpenByDefault(group: InfoGroup): boolean {
+  return group.items.some((it) => it.value !== '');
+}
+
 export type FieldInputKind = 'image' | 'text' | 'textarea' | 'number' | 'date' | 'datetime' | 'select' | 'checkbox';
 
 export function inputKindOf(fieldType: string): FieldInputKind | null {
