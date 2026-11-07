@@ -48,7 +48,10 @@ export default function ActionSettingsModal({
   const [items, setItems] = useState<FriendAddActionItem[]>(initial)
   const [active, setActive] = useState<number>(-1)
   const [conditionFor, setConditionFor] = useState<number | null>(null)
+  // 決定を押したとき、タグが1つも選ばれていないタグ操作の位置(選べば消える)
+  const [tagError, setTagError] = useState<number | null>(null)
   const dragFrom = useRef<number | null>(null)
+  const noTagSelected = (a: FriendAddActionItem | undefined) => a?.type === 'tag' && ((a.params.tagIds as string[] | undefined) ?? []).length === 0
 
   const describeCtx: DescribeContext = useMemo(
     () => ({ tags: lookups.tags, fields: lookups.fields, scenarios: lookups.scenarios, forms: lookups.forms }),
@@ -115,6 +118,7 @@ export default function ActionSettingsModal({
               ) : null}
               <div className="p-3">
                 <ActionBody action={a} lookups={lookups} onChange={(next) => update(i, next)} />
+                {tagError === i && noTagSelected(a) ? <p role="alert" className="mt-1 text-sm text-red-600">タグを選択してください</p> : null}
               </div>
             </div>
           ))}
@@ -146,7 +150,15 @@ export default function ActionSettingsModal({
         <div className="flex justify-end border-t border-kumo-line px-5 py-3">
           <button
             type="button"
-            onClick={() => onSave(items)}
+            onClick={() => {
+              const bad = items.findIndex((a) => noTagSelected(a))
+              if (bad >= 0) {
+                setActive(bad)
+                setTagError(bad)
+                return
+              }
+              onSave(items)
+            }}
             className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
           >
             この条件で決定する
