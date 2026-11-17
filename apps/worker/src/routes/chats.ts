@@ -44,6 +44,29 @@ const chats = new Hono<Env>();
  */
 const NOT_BROADCAST_LOG = `(broadcast_id IS NULL AND COALESCE(source, '') != 'broadcast')`;
 
+// 友だちごとの「最後のメッセージ」(一覧の本文・向き・種類)。履歴を全部読む GROUP BY ではなく、
+// 部分インデックス idx_messages_log_chat_last を友だちごとに1回だけ引いて、その1行だけを読む(D1 の読み取り行数を減らす)。
+// 索引の WHERE と同じ式にしてあるので、変えるときは移行(118)とそろえること。from は、friend_id の列を持つ CTE の名前。
+export function latestMessagePerFriendSql(from: string): string {
+  return `
+        SELECT m.friend_id AS friend_id,
+          CASE WHEN m.message_type = 'text' THEN SUBSTR(m.content, 1, 200)
+               WHEN m.message_type = 'form_answer' THEN SUBSTR(json_extract(m.content, '$.title'), 1, 200)
+               ELSE NULL END AS content,
+          m.direction AS direction,
+          -- 「回答結果を見る」カードは、一覧では普通の文(カードの見出し)として出す
+          CASE WHEN m.message_type = 'form_answer' THEN 'text' ELSE m.message_type END AS message_type,
+          m.created_at AS created_at
+        FROM ${from} p
+        INNER JOIN messages_log m ON m.rowid = (
+          SELECT m2.rowid FROM messages_log m2
+          WHERE m2.friend_id = p.friend_id
+            AND (m2.delivery_type IS NULL OR m2.delivery_type != 'test')
+            AND (m2.broadcast_id IS NULL AND COALESCE(m2.source, '') != 'broadcast')
+          ORDER BY m2.created_at DESC LIMIT 1
+        )`;
+}
+
 function clampLoadingSeconds(value: number | undefined): number {
   const n = Number.isFinite(value) ? Math.floor(value as number) : 5;
   return Math.min(60, Math.max(5, n));
@@ -324,19 +347,7 @@ chats.get('/api/chats', async (c) => {
           ${conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : ''}
           LIMIT 200
         ),
-        any_agg AS (
-          SELECT friend_id,
-            CASE WHEN message_type = 'text' THEN SUBSTR(content, 1, 200)
-                 WHEN message_type = 'form_answer' THEN SUBSTR(json_extract(content, '$.title'), 1, 200)
-                 ELSE NULL END AS content,
-            direction,
-            CASE WHEN message_type = 'form_answer' THEN 'text' ELSE message_type END AS message_type,
-            MAX(created_at) AS created_at
-          FROM messages_log
-          WHERE (delivery_type IS NULL OR delivery_type != 'test')
-            AND ${NOT_BROADCAST_LOG}
-            AND friend_id IN (SELECT friend_id FROM pg)
-          GROUP BY friend_id
+        any_agg AS (${latestMessagePerFriendSql('pg')}
         ),
         form_agg AS (
           SELECT friend_id, text AS form_text, MAX(created_at) AS form_at
@@ -418,20 +429,7 @@ chats.get('/api/chats', async (c) => {
         ORDER BY d.last_message_at DESC, d.friend_id DESC
         LIMIT ?
       ),
-      any_agg AS (
-        SELECT friend_id,
-          CASE WHEN message_type = 'text' THEN SUBSTR(content, 1, 200)
-               WHEN message_type = 'form_answer' THEN SUBSTR(json_extract(content, '$.title'), 1, 200)
-               ELSE NULL END AS content,
-          direction,
-          -- 「回答結果を見る」カードは、一覧では普通の文(カードの見出し)として出す
-          CASE WHEN message_type = 'form_answer' THEN 'text' ELSE message_type END AS message_type,
-          MAX(created_at) AS created_at
-        FROM messages_log
-        WHERE (delivery_type IS NULL OR delivery_type != 'test')
-          AND ${NOT_BROADCAST_LOG}
-          AND friend_id IN (SELECT friend_id FROM page)
-        GROUP BY friend_id
+      any_agg AS (${latestMessagePerFriendSql('page')}
       ),
       recent_msg AS (
         SELECT friend_id, content, direction, message_type, created_at AS preview_at

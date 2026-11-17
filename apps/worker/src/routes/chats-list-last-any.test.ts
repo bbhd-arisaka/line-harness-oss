@@ -3,7 +3,7 @@ import { URL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { sqliteD1 } from '../test-support/sqlite-d1.js';
-import { chats } from './chats.js';
+import { chats, latestMessagePerFriendSql } from './chats.js';
 
 const schema = readFileSync(new URL('../../../../packages/db/bootstrap.sql', import.meta.url), 'utf8');
 
@@ -65,6 +65,41 @@ describe('トーク一覧の最後のメッセージ(部分インデックス)',
 
   it('友だちごとに部分インデックスを1回引くだけで、履歴を走査しない', () => {
     const plan = fixture.sqlite.prepare(`EXPLAIN QUERY PLAN ${NEW_LAST_ANY}`).all('a').map((r) => (r as { detail: string }).detail).join('\n');
+    expect(plan).toContain('idx_messages_log_chat_last (friend_id=?)');
+  });
+
+  it('最後のメッセージの本文・向き・種類も、以前の全走査と同じ結果で、部分インデックスだけで引く', () => {
+    fixture.sqlite.exec(`
+      INSERT INTO messages_log(id,friend_id,direction,message_type,content,created_at) VALUES
+        ('10','f3','incoming','form_answer','{"title":"回答結果"}','2026-10-06T10:00:00.000+09:00'),
+        ('11','f1','outgoing','image','https://x/a.png','2026-10-07T10:00:00.000+09:00');
+    `);
+    const OLD = `
+      SELECT friend_id,
+        CASE WHEN message_type = 'text' THEN SUBSTR(content, 1, 200)
+             WHEN message_type = 'form_answer' THEN SUBSTR(json_extract(content, '$.title'), 1, 200)
+             ELSE NULL END AS content,
+        direction,
+        CASE WHEN message_type = 'form_answer' THEN 'text' ELSE message_type END AS message_type,
+        MAX(created_at) AS created_at
+      FROM messages_log
+      WHERE (delivery_type IS NULL OR delivery_type != 'test')
+        AND (broadcast_id IS NULL AND COALESCE(source, '') != 'broadcast')
+        AND friend_id IN ('f1','f2','f3','f4','f5')
+      GROUP BY friend_id ORDER BY friend_id`;
+    const NEW = `
+      WITH page(friend_id) AS (VALUES ('f1'),('f2'),('f3'),('f4'),('f5'))
+      ${latestMessagePerFriendSql('page')}
+      ORDER BY friend_id`;
+    const oldRows = fixture.sqlite.prepare(OLD).all();
+    const newRows = fixture.sqlite.prepare(NEW).all();
+    expect(newRows).toEqual(oldRows);
+    expect(newRows).toEqual([
+      { friend_id: 'f1', content: null, direction: 'outgoing', message_type: 'image', created_at: '2026-10-07T10:00:00.000+09:00' },
+      { friend_id: 'f2', content: 'e', direction: 'incoming', message_type: 'text', created_at: '2026-10-03T10:00:00.000+09:00' },
+      { friend_id: 'f3', content: '回答結果', direction: 'incoming', message_type: 'text', created_at: '2026-10-06T10:00:00.000+09:00' },
+    ]);
+    const plan = fixture.sqlite.prepare(`EXPLAIN QUERY PLAN ${NEW}`).all().map((r) => (r as { detail: string }).detail).join('\n');
     expect(plan).toContain('idx_messages_log_chat_last (friend_id=?)');
   });
 
